@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router";
 import { FileText, Link2, Play, Upload } from "lucide-react";
 import { parseImportCatalog, type MaterialRow, type ModelRef } from "@contracts/import-catalog";
 import { createDocumentMaterial, matchMaterials, parseMaterialTable } from "@contracts/material-import";
+import { parseMiloBom, type MiloBom } from "@contracts/milo-bom";
+import { initialMiloWorkspace, withMiloBom } from "@contracts/milo-workspace";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import { installPackage, type TwinWorkspace } from "@contracts/twin-simulation";
 import { Button } from "@/components/ui/button";
@@ -30,6 +33,7 @@ function sourceLink(value: string) {
 }
 
 export default function ImportCenterMaterials({ workspace, onChange, onOpenDevice, onOpenPhysics, onUseSource }: Props) {
+  const navigate = useNavigate();
   const [kind, setKind] = useState<"bom" | "manual">("bom");
   const [name, setName] = useState("");
   const [source, setSource] = useState("");
@@ -59,6 +63,18 @@ export default function ImportCenterMaterials({ workspace, onChange, onOpenDevic
     setReading(false); setDraft([]); setError(""); setNotice("");
   }
 
+  function openMiloBom(text: string, origin: string) {
+    let bom: MiloBom;
+    try { bom = parseMiloBom(text); }
+    catch (error) {
+      if (/^#{1,6}\s+Individual Parts\b/im.test(text) && /\bMilo[ -]*v?1\.5\b/i.test(text)) throw error;
+      return false;
+    }
+    onChange({ ...workspace, milo: withMiloBom(workspace.milo ?? initialMiloWorkspace, bom, origin) });
+    navigate("?view=milo");
+    return true;
+  }
+
   async function readFile(file: File) {
     invalidate();
     const request = version.current;
@@ -74,6 +90,7 @@ export default function ImportCenterMaterials({ workspace, onChange, onOpenDevic
       if (!pdf && (!ext || !["csv", "tsv", "txt", "md", "markdown"].includes(ext))) throw new Error("请选择物料清单或手册文件。");
       const text = pdf ? await fetchSourceText("pdf", file, "application/pdf", controller.signal) : await file.text();
       if (version.current !== request) return;
+      if (kind === "bom" && (ext === "md" || ext === "markdown") && openMiloBom(text, file.name)) return;
       setKind(ext === "csv" || ext === "tsv" ? "bom" : "manual");
       setName(file.name.replace(/\.[^./]+$/, ""));
       if (content && content !== text) setSource("");
@@ -85,6 +102,7 @@ export default function ImportCenterMaterials({ workspace, onChange, onOpenDevic
   function preview() {
     invalidate();
     try {
+      if (kind === "bom" && content.trimStart().startsWith("#") && openMiloBom(content, source.trim() || "粘贴的 Milo BOM")) return;
       const imported = kind === "bom" ? parseMaterialTable(content, source.trim() || undefined)
         : [createDocumentMaterial(name, content, source.trim() || undefined)];
       setDraft(matchMaterials(imported, workspace));
@@ -138,13 +156,16 @@ export default function ImportCenterMaterials({ workspace, onChange, onOpenDevic
             onClick={() => { if (kind !== mode) { invalidate(); setKind(mode); } }}>{mode === "bom" ? "物料清单" : "设备手册"}</Button>)}
         </div>
       </div>
-      <p className="text-sm leading-6 text-muted-foreground">{kind === "bom" ? "CSV、TSV 需有名称和数量列，可附单位、制造商、型号及来源。" : IS_PAGES
+      <p className="text-sm leading-6 text-muted-foreground">{kind === "bom" ? "CSV、TSV 需有名称和数量列，可附单位、制造商、型号及来源。选择 Milo v1.5 官方 Markdown 清单可直接进入装轴。" : IS_PAGES
         ? "可导入 TXT、Markdown，或粘贴 PDF 的相关章节。原文随资料记录保存。"
         : "可导入 PDF、TXT、Markdown，或粘贴规格原文。核对提取的章节后保存。"}</p>
       <input ref={fileInput} className="hidden" aria-label="选择 BOM 或手册文件" type="file" accept={IS_PAGES ? ".csv,.tsv,.txt,.md,.markdown" : ".csv,.tsv,.txt,.md,.markdown,.pdf"} onChange={(event) => {
         const file = event.target.files?.[0]; event.target.value = ""; if (file) void readFile(file);
       }} />
-      <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}><Upload />选择资料文件</Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}><Upload />选择资料文件</Button>
+        {kind === "bom" && <Link to="?view=milo" className="text-sm text-primary underline-offset-4 hover:underline">从官网导入 Milo v1.5 BOM</Link>}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {kind === "manual" && <label><span className="field-label">手册名称</span><Input value={name} onChange={(event) => { invalidate(); setName(event.target.value); }} /></label>}
         <label className={kind === "bom" ? "sm:col-span-2" : ""}><span className="field-label">资料来源</span>

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { assembleServoAxis, servoAxisConfigSchema, type ServoAxisConfig } from "./servo-axis";
 import { parseSo101Assembly, type So101Assembly } from "./so101";
+import { parseMiloWorkspace, type MiloWorkspaceState } from "./milo-workspace";
 import { parseImportCatalog, type ImportCatalog } from "./import-catalog";
 import { packageKey, parseDevicePackage, readTwinData, signalIdSchema, type DevicePackage, type SignalPort } from "./twin-device";
 
@@ -19,6 +20,7 @@ const workspaceSchema = z.strictObject({
   instances: z.array(instanceSchema).max(maxInstances), connections: z.array(connectionSchema).max(maxConnections),
   servoAxis: servoAxisConfigSchema.optional(),
   so101: z.unknown().optional(),
+  milo: z.unknown().optional(),
   catalog: z.unknown().optional(),
 });
 
@@ -31,6 +33,7 @@ export interface TwinWorkspace {
   connections: TwinConnection[];
   servoAxis?: ServoAxisConfig;
   so101?: So101Assembly;
+  milo?: MiloWorkspaceState;
   catalog?: ImportCatalog;
 }
 export interface SimulationState {
@@ -97,9 +100,10 @@ function evaluationOrder(ws: TwinWorkspace): NodePlan[] {
 }
 
 export function parseWorkspace(value: unknown): TwinWorkspace {
-  const { so101, catalog, ...data } = readTwinData(workspaceSchema, value, "仿真场景");
+  const { so101, milo, catalog, ...data } = readTwinData(workspaceSchema, value, "仿真场景");
   const ws: TwinWorkspace = { ...data, packages: data.packages.map(parseDevicePackage) };
   if (so101 !== undefined) ws.so101 = parseSo101Assembly(so101);
+  if (milo !== undefined) ws.milo = parseMiloWorkspace(milo);
   if (catalog !== undefined) ws.catalog = parseImportCatalog(catalog, ws.packages);
   evaluationOrder(ws);
   return ws.servoAxis ? assembleServoAxis(ws, ws.servoAxis) : ws;

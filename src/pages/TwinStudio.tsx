@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Activity, ArrowLeft, Bot, ChevronDown, CircuitBoard, Download, FileInput, FilePlus2, FolderOpen, Github, Link2, Monitor, Package, Upload, Workflow } from "lucide-react";
+import { Activity, ArrowLeft, Bot, ChevronDown, CircuitBoard, Download, Drill, FileInput, FilePlus2, FolderOpen, Github, Link2, Monitor, Package, Upload, Workflow } from "lucide-react";
 import { IS_PAGES } from "@/const";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import { MAX_PROJECT_JSON_BYTES, parseImportCatalog, type MaterialRow } from "@contracts/import-catalog";
 import { matchMaterials } from "@contracts/material-import";
+import { initialMiloWorkspace } from "@contracts/milo-workspace";
 import { suggestSourceMetadata, type DeviceSourceInput } from "@contracts/twin-extract";
 import { createServoDemo, createTwinDemo } from "@contracts/twin-demo";
 import { addInstance, emptyWorkspace, installPackage, nextInstanceName, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
@@ -21,6 +22,7 @@ const defaultTab = "import";
 const ImportCenter = lazy(() => import("@/components/ImportCenter"));
 const ServoAxisBench = lazy(() => import("@/components/ServoAxisBench"));
 const So101Workbench = lazy(() => import("@/components/So101Workbench"));
+const MiloWorkbench = lazy(() => import("@/components/MiloWorkbench"));
 
 function readLocalWorkspace() {
   let raw: string | null = null;
@@ -42,7 +44,7 @@ export default function TwinStudio() {
   const [session, setSession] = useState(readLocalWorkspace);
   const [search, setSearch] = useSearchParams();
   const view = search.get("view");
-  const tab = view === "servo" || view === "simulation" || view === "so101" || view === "library" ? view : defaultTab;
+  const tab = view === "servo" || view === "simulation" || view === "so101" || view === "milo" || view === "library" ? view : defaultTab;
   const [showSources, setShowSources] = useState(!session.workspace.servoAxis);
   const [selection, setSelection] = useState<{ driveKey?: string; motorKey?: string; version: number }>({ version: 0 });
   const [generation, setGeneration] = useState(0);
@@ -110,7 +112,7 @@ export default function TwinStudio() {
   }
 
   function confirmOpen(label: string) {
-    const occupied = workspace.packages.length || workspace.so101 || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
+    const occupied = workspace.packages.length || workspace.so101 || workspace.milo || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
     return !occupied || window.confirm(`用“${label}”替换当前本机工程？如需保留当前工程，请先取消并导出备份。`);
   }
 
@@ -120,7 +122,7 @@ export default function TwinStudio() {
     setGeneration((value) => value + 1);
     setSelection({ version: 0 });
     setShowSources(!next.servoAxis);
-    setTab(next.catalog?.models.length || next.catalog?.materials.length ? "import" : next.so101 ? "so101" : next.servoAxis ? "servo" : next.instances.length ? "simulation" : next.packages.length ? "library" : "import");
+    setTab(next.milo ? "milo" : next.catalog?.models.length || next.catalog?.materials.length ? "import" : next.so101 ? "so101" : next.servoAxis ? "servo" : next.instances.length ? "simulation" : next.packages.length ? "library" : "import");
     setNotice(message);
   }
 
@@ -223,7 +225,7 @@ export default function TwinStudio() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="display-title text-2xl font-semibold sm:text-3xl">设备仿真工作台</h1>
-            <p className="mt-2 text-[13px] text-muted-foreground">{tab === "import" ? "导入自己的物理模型、设备包或物料清单，在浏览器中建模和仿真。" : tab === "so101" ? "从官方物料清单装配机械臂，在浏览器中运行 MuJoCo 物理仿真。" : "从厂商资料生成设备包，连接设备端口，逐步观察信号。"}</p>
+            <p className="mt-2 text-[13px] text-muted-foreground">{tab === "import" ? "导入自己的物理模型、设备包或物料清单，在浏览器中建模和仿真。" : tab === "so101" ? "从官方物料清单装配机械臂，在浏览器中运行 MuJoCo 物理仿真。" : tab === "milo" ? "从官方 BOM 装配铣床三轴，在工件坐标系中回放 G 代码。" : "从厂商资料生成设备包，连接设备端口，逐步观察信号。"}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {tab === "servo"
@@ -256,6 +258,7 @@ export default function TwinStudio() {
               <TabsTrigger value="simulation"><Workflow />仿真装配<span className="mono text-xs text-muted-foreground">{workspace.instances.length}</span></TabsTrigger>
               <TabsTrigger value="servo"><Activity />伺服轴</TabsTrigger>
               <TabsTrigger value="so101"><Bot />SO-101</TabsTrigger>
+              <TabsTrigger value="milo"><Drill />Milo v1.5 铣床</TabsTrigger>
             </TabsList>
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Monitor className="h-3.5 w-3.5" />{session.warning ? "会话工作区" : "工程保存在此浏览器"}</span>
           </div>
@@ -290,6 +293,11 @@ export default function TwinStudio() {
           <TabsContent value="so101">
             <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">正在打开 SO-101 从臂…</p>}>
               <So101Workbench key={generation} workspace={workspace} onChange={save} />
+            </Suspense>
+          </TabsContent>
+          <TabsContent value="milo">
+            <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">正在打开 Milo 三轴铣床…</p>}>
+              <MiloWorkbench key={generation} state={workspace.milo ?? initialMiloWorkspace} onChange={milo => save({ ...workspace, milo })} />
             </Suspense>
           </TabsContent>
         </Tabs>
