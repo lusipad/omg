@@ -16,7 +16,57 @@ export interface RobotExample {
   trial?: ImportedRunSettings;
 }
 
+export const PICK_PLACE_EXAMPLE = {
+  id: "ur5e-pick-place",
+  name: "UR5e 取放工位",
+  description: "把六轴臂、平行夹爪和自由方块装在同一场景，观察工件被夹起、横移和放下。",
+  modelId: "ee3c25defaf29d16aba708d8150fb535a9bcef2a52b03317df91f703d8fee3e2",
+};
+
 export const ROBOT_EXAMPLES: readonly RobotExample[] = [
+  {
+    id: "robotiq-2f85",
+    name: "Robotiq 2F-85",
+    category: "自适应平行夹爪",
+    description: "在带悬挂方块的上游场景中改变开合指令，观察联动指垫的位置。",
+    author: "Robotiq · MuJoCo Menagerie",
+    license: "BSD-2-Clause",
+    sourceUrl: "https://github.com/google-deepmind/mujoco_menagerie/tree/71f066ad0be9cd271f7ed58c030243ef157af9f4/robotiq_2f85",
+    entry: "scene.xml",
+    modelId: "185ac97d1ae141911c2eda97b8951d71b12a2f14003652a982023cc713cc2ed9",
+    bytes: 961311,
+    sha256: "d5e85f776526b7fd626afe53b9a121c35599bdcd654d88c64eb8c90139c213d5",
+    trial: { durationS: 1, controls: [255], pointId: "body:13" },
+  },
+  {
+    id: "turtlebot3-burger",
+    name: "TurtleBot3 Burger",
+    category: "差速移动底盘",
+    description: "左右轮同速可直行，反向可转弯。通过车身轨迹观察轮速和地面接触的作用。",
+    author: "Hakoniwa Lab · ROBOTIS",
+    license: "MIT / Apache-2.0",
+    sourceUrl: "https://github.com/hakoniwalab/hakoniwa-mujoco-robots/tree/e541c09e6de1aa9e3b5cf83e19b42cc613038b18/models/tb3",
+    entry: "turtlebot3_burger_world.xml",
+    modelId: "2f096952a86fafc6dfe75a3978f46c16da1194a84ee1b1d6ad1f3657452593e6",
+    bytes: 8469,
+    sha256: "5b6c9a0d20e1dd8df0d0b0e8fe8d15187b95fcbb977b912dbad325f2226a8449",
+    trial: { durationS: 1, controls: [3, 3], pointId: "body:16" },
+  },
+  {
+    id: "ur5e",
+    name: "UR5e",
+    category: "六轴工业机械臂",
+    description: "从 home 姿态转动肩部，观察工具法兰轨迹。可作为取放工位的机械臂组件。",
+    author: "Universal Robots · MuJoCo Menagerie",
+    license: "BSD-3-Clause",
+    sourceUrl: "https://github.com/google-deepmind/mujoco_menagerie/tree/71f066ad0be9cd271f7ed58c030243ef157af9f4/universal_robots_ur5e",
+    entry: "scene.xml",
+    modelId: "bf70f5db43ed25262a77efd72d1c8fd467fa0200eb859178b96094991b64e6fa",
+    bytes: 4399916,
+    sha256: "a5ba3c3fedb7d08ec230b53f04800a7054396638c6d5659e6030a8ed260d05d1",
+    preferredKeyframe: "home",
+    trial: { keyframe: "home", durationS: 1, controls: [-1.3708, -1.5708, 1.5708, -1.5708, -1.5708, 0], pointId: "site:0" },
+  },
   {
     id: "open-duck-mini-v2",
     name: "Open Duck Mini v2",

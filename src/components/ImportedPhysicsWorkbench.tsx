@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Pause, Play, RotateCcw } from "lucide-react";
 import type { ModelBundle } from "@contracts/import-catalog";
-import { IMPORTED_PHYSICS_LIMITS, type ImportedInitialPose, type ImportedModelInfo, type ImportedPhysics, type ImportedRunSettings, type ImportedSample } from "@contracts/imported-physics";
+import { controlSequenceIssue, IMPORTED_PHYSICS_LIMITS, type ImportedControlStage, type ImportedInitialPose, type ImportedModelInfo, type ImportedPhysics, type ImportedRunSettings, type ImportedSample } from "@contracts/imported-physics";
 import { loadImportedPhysics } from "@/lib/imported-physics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ImportedStateTrace from "./ImportedStateTrace";
+import { ImportedControlEditor, ReferenceReadout, SequencePlayback, type StageDraft } from "./ImportedControlSequence";
 import PhysicsScene from "./PhysicsScene";
 
-type RunProps = { initialSettings?: ImportedRunSettings; preferredKeyframe?: string; onRun?: (settings: ImportedRunSettings) => void };
+type RunProps = {
+  initialSettings?: ImportedRunSettings; preferredKeyframe?: string; createInitialSettings?: (info: ImportedModelInfo) => ImportedRunSettings;
+  onRun?: (settings: ImportedRunSettings) => void;
+};
 type Props = RunProps & { bundle: ModelBundle; onReady?: (ready: boolean) => void };
 type LoadingResult = { bundle: ModelBundle; attempt: number; signal: AbortSignal; engine?: ImportedPhysics; error?: string };
-const emptySamples: ImportedSample[] = [];
+const emptyRun: { samples: ImportedSample[]; sequence?: ImportedControlStage[] } = { samples: [] };
 const numberText = (value: number) => String(Number(value.toPrecision(6)));
 const selectStyle = "h-9 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm";
 const jointLabels = { hinge: "转动", slide: "移动", ball: "球形", free: "自由" };
@@ -43,10 +47,12 @@ function checkSettings(settings: ImportedRunSettings, info: ImportedModelInfo, m
     if (!Number.isFinite(value)) return `请填写执行器“${name}”的有限数值。`;
     if (range && (value < range[0] || value > range[1])) return `执行器“${name}”的控制范围为 ${numberText(range[0])} 至 ${numberText(range[1])} ${unit}。`;
   }
-  return info.points.some((point) => point.id === settings.pointId) ? "" : "模型中没有该观察点。";
+  if (!info.points.some((point) => point.id === settings.pointId)) return "模型中没有该观察点。";
+  if (settings.referencePointId !== undefined && !info.points.some((point) => point.id === settings.referencePointId)) return "模型中没有该参考点。";
+  return controlSequenceIssue(settings, info.actuators);
 }
 
-function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, onRun }: RunProps & { engine: ImportedPhysics; reload: (keyframe?: string) => void }) {
+function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, createInitialSettings, onRun }: RunProps & { engine: ImportedPhysics; reload: (keyframe?: string, settings?: ImportedRunSettings) => void }) {
   const { info } = engine;
   const maxDuration = Math.min(IMPORTED_PHYSICS_LIMITS.maxDurationS, info.timestepS * IMPORTED_PHYSICS_LIMITS.maxSteps);
   const defaultDuration = Math.min(maxDuration, Math.max(1, info.timestepS));
@@ -54,11 +60,16 @@ function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, onRu
     initial: info.initial, controls: info.actuators.map((item) => item.initial), pointsM: info.points.map((point) => point.initialM),
   }), [info]);
   const [restored] = useState(() => {
-    const issue = initialSettings === undefined ? "" : checkSettings(initialSettings, info, maxDuration);
-    if (issue) return { error: `已保存的运行工况无法恢复。${issue} 已采用模型初值。` };
-    const name = initialSettings === undefined ? preferredKeyframe : initialSettings.keyframe;
+    let settings = initialSettings;
+    if (settings === undefined && createInitialSettings) {
+      try { settings = createInitialSettings(info); }
+      catch (cause) { return { error: `推荐工况无法加载。${cause instanceof Error ? cause.message : ""} 已采用模型初值。` }; }
+    }
+    const issue = settings === undefined ? "" : checkSettings(settings, info, maxDuration);
+    if (issue) return { error: `${initialSettings === undefined ? "推荐工况无法加载" : "已保存的运行工况无法恢复"}。${issue} 已采用模型初值。` };
+    const name = settings === undefined ? preferredKeyframe : settings.keyframe;
     if (name !== undefined && !info.keyframes.includes(name)) return { error: `模型中找不到推荐的初始关键帧“${name}”。已采用模型初值。` };
-    return { settings: initialSettings, name, error: "" };
+    return { settings, name, error: "" };
   });
   const [request, setRequest] = useState<PoseRequest>(() => ({ name: restored.name }));
   const [loaded, setLoaded] = useState<PoseResult>(() => ({ request, pose: request.name === undefined ? nativePose : undefined }));
@@ -81,15 +92,21 @@ function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, onRu
   const poseError = loaded.request === request ? loaded.error : undefined;
   const [duration, setDuration] = useState(String(restored.settings?.durationS ?? defaultDuration));
   const [edited, setEdited] = useState<string[] | null>(() => restored.settings?.controls.map(String) ?? null);
+  const [stages, setStages] = useState<StageDraft[]>(() => restored.settings?.sequence?.map((stage) => ({
+    time: String(stage.timeS), label: stage.label ?? "", values: stage.controls.map(String),
+  })) ?? []);
   const controls = edited ?? pose?.controls.map(String) ?? [];
   const [pointId, setPointId] = useState(restored.settings?.pointId ?? info.points[0]?.id ?? "");
+  const [referenceId, setReferenceId] = useState(restored.settings?.referencePointId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(restored.error);
-  const [samples, setSamples] = useState(emptySamples);
+  const [result, setResult] = useState(emptyRun);
+  const { samples } = result;
   const [index, setIndex] = useState(0);
   const [playFrom, setPlayFrom] = useState<number | null>(null);
   const pointIndex = info.points.findIndex((item) => item.id === pointId);
   const point = info.points[pointIndex];
+  const reference = referenceId ? info.points.find((item) => item.id === referenceId) : undefined;
   const sample = samples[index] ?? (pose && { ...pose.initial, pointM: pose.pointsM[pointIndex] ?? pose.initial.pointM });
   const alive = useRef(true);
   const recordRun = useRef(onRun);
@@ -114,19 +131,33 @@ function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, onRu
   }, [playFrom, samples]);
 
   function clearRun() {
-    setSamples(emptySamples); setPlayFrom(null); setIndex(0); setError("");
+    setResult(emptyRun); setPlayFrom(null); setIndex(0); setError("");
+  }
+  function currentSettings(): ImportedRunSettings {
+    const settings: ImportedRunSettings = { durationS: Number(duration), controls: controls.map((raw) => raw.trim() ? Number(raw) : NaN), pointId };
+    if (referenceId) settings.referencePointId = referenceId;
+    if (request.name !== undefined) settings.keyframe = request.name;
+    if (stages.length) settings.sequence = stages.map((stage) => ({
+      timeS: stage.time.trim() ? Number(stage.time) : NaN, controls: stage.values.map((raw) => raw.trim() ? Number(raw) : NaN),
+      ...(stage.label.trim() ? { label: stage.label.trim() } : {}),
+    }));
+    return settings;
   }
   function reset() {
-    if (busy || poseError || reloadOnReset.current) { reload(request.name); return; }
+    if (busy || poseError || reloadOnReset.current) {
+      const draft = stages.length ? currentSettings() : undefined;
+      reload(request.name, draft && !checkSettings(draft, info, maxDuration) ? draft : undefined);
+      return;
+    }
     clearRun();
-    setDuration(String(defaultDuration));
-    setEdited(null);
+    if (!stages.length) {
+      setDuration(String(defaultDuration)); setEdited(null);
+    }
   }
   async function run() {
     if (!point || !pose || busy) return;
     clearRun();
-    const settings: ImportedRunSettings = { durationS: Number(duration), controls: controls.map((raw) => raw.trim() ? Number(raw) : NaN), pointId: point.id };
-    if (request.name !== undefined) settings.keyframe = request.name;
+    const settings = currentSettings();
     const issue = checkSettings(settings, info, maxDuration);
     if (issue) { setError(issue); return; }
     setBusy(true);
@@ -135,8 +166,11 @@ function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, onRu
       if (!alive.current) return;
       if (!next.length) throw new Error("物理引擎没有返回采样。");
       reloadOnReset.current = false;
-      setSamples(next);
-      setIndex(next.length - 1);
+      setResult({ samples: next, sequence: settings.sequence });
+      if (settings.sequence?.length) {
+        setIndex(0);
+        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) setPlayFrom(0);
+      } else setIndex(next.length - 1);
       try {
         await recordRun.current?.(settings);
       } catch (cause) {
@@ -162,10 +196,11 @@ function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, onRu
         <h4 className="text-sm font-semibold">运行设置</h4>
         {info.keyframes.length > 0 && <label className="block"><span className="field-label">初始关键帧</span>
           <select className={selectStyle} aria-label="初始关键帧" disabled={busy} value={request.name ?? ""} onChange={(event) => {
-            clearRun(); setEdited(null); setRequest({ name: event.target.value || undefined });
+            clearRun(); setEdited(null); setStages([]); setRequest({ name: event.target.value || undefined });
           }}>
             <option value="">模型默认初值</option>{info.keyframes.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
+          {stages.length > 0 && <span className="mt-1 block text-[11px] text-muted-foreground">切换初始姿态会改用该姿态的恒定控制。</span>}
         </label>}
         <fieldset disabled={busy || !pose} className="min-w-0 space-y-3">
           <label className="block"><span className="field-label">运行时长（s）</span>
@@ -177,21 +212,21 @@ function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, onRu
               {info.points.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.kind === "site" ? "标记点" : "刚体"}</option>)}
             </select>
           </label>
-          {info.actuators.length > 0 ? <div className="thin-scrollbar max-h-72 space-y-3 overflow-y-auto border-t pt-3">
-            {info.actuators.map((item, i) => <label key={i} className="block">
-              <span className="field-label"><span className="break-all">{item.name}</span><span className="shrink-0 text-muted-foreground">{item.unit}</span></span>
-              <Input aria-label={`执行器 ${item.name}`} className="mono" type="number" step="any" min={item.range?.[0]} max={item.range?.[1]} value={controls[i] ?? ""}
-                onChange={(event) => { clearRun(); setEdited(controls.map((value, j) => j === i ? event.target.value : value)); }} />
-              {item.range && <span className="mt-1 block text-[11px] text-muted-foreground">范围 {numberText(item.range[0])} 至 {numberText(item.range[1])}</span>}
-            </label>)}
-          </div> : <p className="border-t pt-3 text-xs leading-5 text-muted-foreground">
+          {(stages.length > 0 || referenceId) && <label className="block"><span className="field-label">参考点</span>
+            <select className={selectStyle} aria-label="参考点" value={referenceId} onChange={(event) => { clearRun(); setReferenceId(event.target.value); }}>
+              <option value="">不作对照</option>{info.points.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.kind === "site" ? "标记点" : "刚体"}</option>)}
+            </select>
+          </label>}
+          {info.actuators.length || stages.length ? <ImportedControlEditor actuators={info.actuators} values={controls} stages={stages} duration={duration}
+            onValues={(values) => { clearRun(); setEdited(values); }} onStages={(next) => { clearRun(); setStages(next); }} /> :
+            <p className="border-t pt-3 text-xs leading-5 text-muted-foreground">
             {info.joints.length ? "模型没有执行器，使用重力、接触和关节约束运行。" : "模型为固定几何，运行可核对各时刻的世界坐标。"}
           </p>}
         </fieldset>
         <p className="text-xs text-muted-foreground">重力 {info.gravity.map(numberText).join("，")} m/s²</p>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" type="submit" disabled={busy || !point || !pose}>{busy ? <Loader2 className="animate-spin" /> : <Play />}{busy ? "正在计算" : "运行仿真"}</Button>
-          <Button size="sm" type="button" variant="outline" onClick={reset}><RotateCcw />复位</Button>
+          <Button size="sm" type="button" variant="outline" title={stages.length ? "回到 0 秒并保留当前动作" : "恢复模型初值"} onClick={reset}><RotateCcw />复位</Button>
         </div>
         {(error || poseError) && <p className="text-xs text-destructive" role="alert">{error || poseError}</p>}
       </form>
@@ -210,6 +245,9 @@ function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, onRu
           </div>
           <input className="block h-4 w-full accent-primary" type="range" aria-label="仿真采样点" aria-valuetext={`${numberText(sample.timeS)} s`}
             min={0} max={samples.length - 1} step={1} value={index} onChange={(event) => { setPlayFrom(null); setIndex(event.currentTarget.valueAsNumber); }} />
+          {result.sequence?.length ? <SequencePlayback stages={result.sequence} samples={samples} sample={sample} pointName={point?.name ?? pointId}
+            referenceName={reference?.name} onSeek={(next) => { setPlayFrom(null); setIndex(next); }} /> :
+            <ReferenceReadout sample={sample} first={samples[0]} name={reference?.name} />}
         </div>}
       </div>
     </div>
@@ -230,8 +268,8 @@ function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, onRu
   </section>;
 }
 
-export default function ImportedPhysicsWorkbench({ bundle, onReady, initialSettings, preferredKeyframe, onRun }: Props) {
-  const [{ attempt, reset }, setRequest] = useState<{ attempt: number; reset?: { bundle: ModelBundle; keyframe?: string } }>({ attempt: 0 });
+export default function ImportedPhysicsWorkbench({ bundle, onReady, initialSettings, preferredKeyframe, createInitialSettings, onRun }: Props) {
+  const [{ attempt, reset }, setRequest] = useState<{ attempt: number; reset?: { bundle: ModelBundle; keyframe?: string; settings?: ImportedRunSettings } }>({ attempt: 0 });
   const [load, setLoad] = useState<LoadingResult | null>(null);
   const ready = useRef(onReady);
   useEffect(() => { ready.current = onReady; }, [onReady]);
@@ -252,9 +290,10 @@ export default function ImportedPhysicsWorkbench({ bundle, onReady, initialSetti
     return () => { controller.abort(); runtime?.dispose(); };
   }, [bundle, attempt]);
   const result = load?.bundle === bundle && load.attempt === attempt && !load.signal.aborted ? load : undefined;
-  const retry = (defaults?: { bundle: ModelBundle; keyframe?: string }) => setRequest((previous) => ({ attempt: previous.attempt + 1, reset: defaults }));
-  if (result?.engine) return <RuntimePanel engine={result.engine} reload={(keyframe) => retry({ bundle, keyframe })}
-    initialSettings={reset?.bundle === bundle ? undefined : initialSettings}
+  const retry = (defaults?: typeof reset) => setRequest((previous) => ({ attempt: previous.attempt + 1, reset: defaults }));
+  if (result?.engine) return <RuntimePanel engine={result.engine} reload={(keyframe, settings) => retry({ bundle, keyframe, settings })}
+    initialSettings={reset?.bundle === bundle ? reset.settings : initialSettings}
+    createInitialSettings={reset?.bundle === bundle ? undefined : createInitialSettings}
     preferredKeyframe={reset?.bundle === bundle ? reset.keyframe : preferredKeyframe} onRun={onRun} />;
   if (result?.error) return <div className="surface space-y-3 p-4">
     <p role="alert" className="break-words text-sm text-destructive">模型编译失败。{result.error}</p>

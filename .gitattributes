@@ -3,3 +3,5 @@ public/models/so101/*.xml -text
 public/models/so101/*.urdf -text
 public/models/so101/LICENSE -text
 public/models/so101/assets/*.stl binary
+# The downloadable workpiece and its in-code default are the same assembly input.
+public/workcells/ur5e-pick-place/workpiece.xml text eol=lf

@@ -4,6 +4,8 @@
 
 在首页的 **开源机器人** 中可以直接试跑[双足机器鸭 Open Duck Mini v2](https://lusipad.com/omg/?view=import&robot=open-duck-mini-v2)、[三轮机械臂 LeKiwi](https://lusipad.com/omg/?view=import&robot=lekiwi)和[四足机器人 Barkour v0](https://lusipad.com/omg/?view=import&robot=barkour-v0)。打开卡片会加载对应模型包，点击 **运行仿真** 可观察关节和指定部位的反馈。每个模型都能单独下载、重新导入。
 
+[组装 UR5e 取放工位](https://lusipad.com/omg/?view=import&robot=ur5e-pick-place)可以把[UR5e 六轴臂](https://lusipad.com/omg/?view=import&robot=ur5e)、[Robotiq 2F-85 夹爪](https://lusipad.com/omg/?view=import&robot=robotiq-2f85)和独立的 30 mm 方块装成一个场景。点击 **组装取放工位 → 运行仿真**，在 **阶段观测记录** 中比较夹爪与工件的抬升、横移和释放结果。另有 [TurtleBot3 Burger](https://lusipad.com/omg/?view=import&robot=turtlebot3-burger) 可通过左右轮速度试验直行和转向。
+
 公开站点在浏览器内运行模型。轻量工程可导出 JSON，包含用户物理模型的工程可导出带原始资源的 ZIP。[汇川伺服轴](https://lusipad.com/omg/?view=servo)和 [SO-101 从臂](https://lusipad.com/omg/?view=so101)是两个带专用操作界面的示例。客户项目、数据库、官网资料读取、PDF 转换和在线 AI 生成使用下文的完整服务部署。`npm run build:pages` 生成 `dist/pages`，推送到 `main` 后 GitHub Actions 会构建并发布这个目录。
 
 ## 从底层设备搭建仿真

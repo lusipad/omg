@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import loadMujoco, { type MainModule, type MjModel } from "@mujoco/mujoco";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { parseImportCatalog, type ModelBundle } from "../contracts/import-catalog";
+import { IMPORTED_PHYSICS_LIMITS, type ImportedControlStage } from "../contracts/imported-physics";
 import { createImportedPhysics } from "../src/lib/imported-physics-core";
 import { compileImportedModel } from "../src/lib/imported-physics-model";
 
@@ -22,6 +23,70 @@ beforeAll(async () => {
   mj = await loadMujoco({ wasmBinary: wasm });
 }, 20_000);
 afterEach(() => { for (const model of models.splice(0)) model.delete(); });
+
+const stagedProbe = `<mujoco><option gravity="0 0 0" timestep=".02"/><worldbody><body><joint name="lift" type="slide" axis="0 0 1"/>
+  <geom type="box" size=".1 .1 .1" mass="1"/><site name="centre"/><site name="tool_tip" pos="0 0 .035"/></body>
+  <body name="fixture" pos="0 0 .4"><site name="fixed_datum"/></body></worldbody>
+  <actuator><motor joint="lift" ctrlrange="-10 10"/></actuator><keyframe><key name="raised" qpos=".3" ctrl="2"/></keyframe></mujoco>`;
+const stageSettings = { durationS: .22, controls: [0], pointId: "site:0",
+  sequence: [{ timeS: .08, controls: [8], label: "抬升" }, { timeS: .16, controls: [0], label: "释放" }] };
+
+describe("实际积分的多阶段控制", () => {
+  it("每个物理步按起始时刻计算平滑控制，在路标后保持末值", async () => {
+    const engine = await open(bundle(stagedProbe));
+    const frames = engine.run(stageSettings);
+    const expectedForce = [0, 1.25, 4, 6.75, 8, 6.75, 4, 1.25, 0, 0, 0];
+    expect(frames).toHaveLength(expectedForce.length + 1);
+    // 无重力或阻尼的 1 kg 滑块，独立从速度增量还原 MuJoCo 实际施加的力。
+    expectedForce.forEach((force, i) => expect((frames[i + 1].qvel[0] - frames[i].qvel[0]) / .02).toBeCloseTo(force, 9));
+    expect(frames.at(-1)!.pointM[2]).toBeCloseTo(frames.at(-1)!.qpos[0], 12);
+    expect(frames.at(-1)!.pointM[2]).toBeGreaterThan(.05);
+    expect(engine.run(stageSettings)).toEqual(frames);
+  });
+  it("保持旧恒值行为，空序列等价；关键帧控制可由新工况起始值覆盖", async () => {
+    const engine = await open(bundle(stagedProbe));
+    const settings = { durationS: .08, controls: [-2], pointId: "site:0", keyframe: "raised" };
+    const constant = engine.run(settings);
+    expect(engine.run({ ...settings, sequence: [] })).toEqual(constant);
+    expect(constant[0].qpos).toEqual([.3]);
+    expect(constant.at(-1)!.qvel[0]).toBeCloseTo(-.16, 10);
+    const moving = engine.run({ ...settings, sequence: [{ timeS: .08, controls: [4] }] });
+    expect(moving[0].qpos).toEqual([.3]);
+    expect(moving[1].qvel[0]).toBeCloseTo(-.04, 10);
+    expect(moving.at(-1)!.qvel[0]).not.toBeCloseTo(constant.at(-1)!.qvel[0], 6);
+  });
+  it("在同一物理步读取可选参考坐标，可对比随动与固定物体，高度差不由指令推算", async () => {
+    const engine = await open(bundle(stagedProbe));
+    const tool = engine.info.points.find((point) => point.name === "tool_tip")!.id;
+    const fixed = engine.info.points.find((point) => point.name === "fixed_datum")!.id;
+    const paired = engine.run({ ...stageSettings, referencePointId: tool });
+    for (const sample of paired) expect(sample.referenceM![2] - sample.pointM[2]).toBeCloseTo(.035, 12);
+    const pair = engine.run({ ...stageSettings, pointId: fixed, referencePointId: stageSettings.pointId }).at(-1)!;
+    expect(pair.pointM).toEqual([0, 0, .4]);
+    expect(pair.referenceM![2]).toBeCloseTo(paired.at(-1)!.pointM[2], 12);
+    expect(engine.run(stageSettings).every((sample) => !Object.hasOwn(sample, "referenceM"))).toBe(true);
+    expect(() => engine.run({ ...stageSettings, referencePointId: "site:99999" })).toThrow(/参考点/);
+  });
+  it("拒绝越界时间、乱序、错误控制维数、非有限值和越量程序列", async () => {
+    const engine = await open(bundle(stagedProbe));
+    const run = (sequence: ImportedControlStage[]) => engine.run({ ...stageSettings, sequence });
+    for (const t of [0, NaN, Infinity, -.01, .24]) expect(() => run([{ timeS: t, controls: [0] }])).toThrow(/到达时间/);
+    for (const t of [.08, .03]) expect(() => run([stageSettings.sequence[0], { timeS: t, controls: [0] }])).toThrow(/第 2 阶段/);
+    expect(() => run([{ timeS: .04, controls: [] }])).toThrow(/数量/);
+    for (const c of [NaN, Infinity]) expect(() => run([{ timeS: .04, controls: [c] }])).toThrow(/有限/);
+    expect(() => run([{ timeS: .04, controls: [11] }])).toThrow(/范围/);
+    expect(() => run([{ timeS: .04, controls: [0], label: " ".repeat(2) }])).toThrow(/名称/);
+    expect(() => run(Array(IMPORTED_PHYSICS_LIMITS.maxStages + 1).fill(stageSettings.sequence[0]))).toThrow(/最多/);
+  });
+  it("同一份工程记录往返保留全部阶段和名称，导入时拒绝损坏的阶段顺序或维数", () => {
+    const parse = (sequence: ImportedControlStage[]) => parseImportCatalog(JSON.parse(JSON.stringify({
+      models: [{ id: "b".repeat(64), name: "Lift", entry: "lift.xml", run: { ...stageSettings, referencePointId: "site:1", sequence } }], materials: [],
+    })), []);
+    expect(parse(stageSettings.sequence).models[0].run).toEqual({ ...stageSettings, referencePointId: "site:1" });
+    expect(() => parse([...stageSettings.sequence].reverse())).toThrow(/到达时间/);
+    expect(() => parse([{ timeS: .05, controls: [1, 2] }])).toThrow(/数量/);
+  });
+});
 
 const framedSlide = `<mujoco><option gravity="0 0 0" timestep=".01"/><worldbody><body>
   <joint name="travel" type="slide" axis="1 0 0"/><geom type="box" size=".1 .1 .1" mass="1"/>

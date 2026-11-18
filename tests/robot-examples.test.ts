@@ -43,8 +43,16 @@ describe("开源机器人目录的可下载模型", () => {
 
     const { files, entries } = await readModelFiles([new File([new Uint8Array(zip)], `${example.id}.zip`)]);
     expect(entries).toContain(example.entry);
-    const license = files.find(file => /(?:^|\/)LICENSE(?:\.txt)?$/i.test(file.path));
-    expect(new TextDecoder().decode(license?.data)).toMatch(/Apache License\s+Version 2\.0/);
+    const licenses = files.filter(file => /(?:^|\/)LICENSE(?:[-.][^/]*)?$/i.test(file.path))
+      .map(file => new TextDecoder().decode(file.data)).join("\n");
+    for (const spdx of example.license.split(" / ")) {
+      if (spdx === "Apache-2.0") expect(licenses).toMatch(/Apache License\s+Version 2\.0/);
+      else if (spdx === "MIT") expect(licenses).toContain("Permission is hereby granted, free of charge");
+      else if (spdx === "BSD-2-Clause" || spdx === "BSD-3-Clause") {
+        expect(licenses).toContain("Redistribution and use in source and binary forms");
+        if (spdx === "BSD-3-Clause") expect(licenses).toMatch(/neither the name/i);
+      } else throw new Error(`请核对新增模型的许可证 ${spdx}。`);
+    }
 
     const bundle = { entry: example.entry, files };
     expect(await describeModel(bundle)).toMatchObject({ id: example.modelId, entry: example.entry });
@@ -74,6 +82,26 @@ describe("开源机器人目录的可下载模型", () => {
         expect(engine.previewKeyframe("standing").controls).toEqual(trial.controls);
         expect(first.pointM[2]).toBeCloseTo(0.21, 6);
         expect(last.pointM[2]).toBeCloseTo(0.174825, 4);
+      } else if (example.id === "robotiq-2f85") {
+        const padAt = (name: string, ctrl: number) => {
+          const point = engine.info.points.find(p => p.name === name && p.kind === "body")!;
+          return engine.run({ ...trial, pointId: point.id, controls: [ctrl] }).at(-1)!.pointM;
+        };
+        const spacing = (ctrl: number) => {
+          const left = padAt("left_pad", ctrl), right = padAt("right_pad", ctrl);
+          return 1000 * Math.hypot(...left.map((v, i) => v - right[i]));
+        };
+        expect(spacing(0) - spacing(255)).toBeCloseTo(37.9122, 2);
+      } else if (example.id === "turtlebot3-burger") {
+        expect(last.pointM[0] - first.pointM[0]).toBeCloseTo(0.097917, 4);
+        const turn = engine.run({ ...trial, controls: [3, -3] }).at(-1)!;
+        const [w, x, y, z] = turn.qpos.slice(3, 7);
+        const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+        expect(yaw * 180 / Math.PI).toBeCloseTo(-69.374, 1);
+      } else if (example.id === "ur5e") {
+        expect(engine.info.actuators).toHaveLength(6);
+        const held = engine.run({ ...trial, controls: engine.previewKeyframe("home").controls }).at(-1)!;
+        expect(1000 * Math.hypot(...last.pointM.map((v, i) => v - held.pointM[i]))).toBeCloseTo(101.46, 1);
       }
     } finally {
       model.delete();

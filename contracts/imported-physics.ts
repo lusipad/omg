@@ -1,6 +1,6 @@
 import type { ModelBundle } from "./import-catalog";
 
-export const IMPORTED_PHYSICS_LIMITS = { maxDurationS: 20, maxSteps: 20_000 } as const;
+export const IMPORTED_PHYSICS_LIMITS = { maxDurationS: 20, maxSteps: 20_000, maxStages: 256, maxStageLabel: 160 } as const;
 export type ImportedVector = [number, number, number];
 export type ImportedRange = [number, number] | null;
 export type ImportedGeomKind = "mesh" | "plane" | "box" | "sphere" | "capsule" | "cylinder" | "ellipsoid";
@@ -16,6 +16,7 @@ export interface ImportedSample {
   qpos: number[];
   qvel: number[];
   pointM: ImportedVector;
+  referenceM?: ImportedVector;
   // 每个 geom 的世界位姿为米制 xyz 和 xyzw 四元数。
   geomPoses: Float32Array;
 }
@@ -37,7 +38,33 @@ export interface ImportedModelInfo {
   warnings: string[];
   initial: ImportedSample;
 }
-export interface ImportedRunSettings { durationS: number; controls: number[]; pointId: string; keyframe?: string }
+export interface ImportedControlStage { timeS: number; controls: number[]; label?: string }
+export interface ImportedRunSettings { durationS: number; controls: number[]; pointId: string; referencePointId?: string; keyframe?: string; sequence?: ImportedControlStage[] }
+
+export function controlSequenceIssue(settings: Pick<ImportedRunSettings, "sequence" | "durationS" | "controls">, actuators?: ImportedModelInfo["actuators"]): string {
+  const { sequence, controls, durationS } = settings;
+  if (sequence === undefined) return "";
+  if (!Array.isArray(sequence)) return "动作序列须为阶段列表。";
+  if (sequence.length > IMPORTED_PHYSICS_LIMITS.maxStages) return `动作序列最多支持 ${IMPORTED_PHYSICS_LIMITS.maxStages} 个阶段。`;
+  let previousTime = 0;
+  for (const [index, stage] of sequence.entries()) {
+    const at = `第 ${index + 1} 阶段`;
+    if (!stage || !Number.isFinite(stage.timeS) || stage.timeS <= previousTime || stage.timeS > durationS) {
+      return `${at}的到达时间必须晚于 ${previousTime} s，并且不超过运行时长 ${durationS} s。`;
+    }
+    if (stage.label !== undefined && (typeof stage.label !== "string" || !stage.label.trim() || stage.label.length > IMPORTED_PHYSICS_LIMITS.maxStageLabel)) {
+      return `${at}的名称须为 1 到 ${IMPORTED_PHYSICS_LIMITS.maxStageLabel} 个字符。`;
+    }
+    if (!Array.isArray(stage.controls) || stage.controls.length !== controls.length) return `${at}的控制值数量与初始控制不符。`;
+    for (const [i, value] of stage.controls.entries()) {
+      const actuator = actuators?.[i], range = actuator?.range;
+      if (!Number.isFinite(value)) return `${at}的控制值必须是有限数值。`;
+      if (range && (value < range[0] || value > range[1])) return `${at}执行器“${actuator.name}”的控制范围为 ${range[0]} 至 ${range[1]} ${actuator.unit}。`;
+    }
+    previousTime = stage.timeS;
+  }
+  return "";
+}
 export interface ImportedPhysics {
   info: ImportedModelInfo;
   previewKeyframe(name: string): Promise<ImportedInitialPose>;

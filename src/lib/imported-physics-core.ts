@@ -1,5 +1,5 @@
 import type { MainModule, MjData, MjModel } from "@mujoco/mujoco";
-import { IMPORTED_PHYSICS_LIMITS, type ImportedInitialPose, type ImportedModelInfo, type ImportedRange, type ImportedRunSettings, type ImportedSample } from "@contracts/imported-physics";
+import { controlSequenceIssue, IMPORTED_PHYSICS_LIMITS, type ImportedInitialPose, type ImportedModelInfo, type ImportedRange, type ImportedRunSettings, type ImportedSample } from "@contracts/imported-physics";
 import { importedGeometry, vector } from "./imported-physics-geometry";
 
 function compiledName(mj: MainModule, model: MjModel, type: number, address: number, id: number, fallback: string) {
@@ -87,7 +87,7 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
       name: compiledName(mj, model, mj.mjtObj.mjOBJ_BODY.value, model.name_bodyadr[i], i, "刚体") });
   }
 
-  function readSample(d: MjData, point: typeof targets[number]): ImportedSample {
+  function readSample(d: MjData, point: typeof targets[number], reference?: typeof targets[number]): ImportedSample {
     // mj_step 积分后刷新派生运动学，观测点、几何与反馈处于同一仿真时刻。
     mj.mj_kinematics(model, d);
     const p: Float64Array = d.geom_xpos, q: Float64Array = d.geom_xquat, poses = new Float32Array(7 * ids.length);
@@ -97,7 +97,12 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
     });
     const qpos = Array.from(d.qpos as Float64Array), qvel = Array.from(d.qvel as Float64Array), pointM = observe(d, point);
     if (!qpos.every(Number.isFinite) || !qvel.every(Number.isFinite) || !pointM.every(Number.isFinite) || !poses.every(Number.isFinite)) throw new Error("积分产生了超出数值范围的反馈。");
-    return { timeS: d.time, qpos, qvel, pointM, geomPoses: poses };
+    const sample: ImportedSample = { timeS: d.time, qpos, qvel, pointM, geomPoses: poses };
+    if (reference) {
+      sample.referenceM = observe(d, reference);
+      if (!sample.referenceM.every(Number.isFinite)) throw new Error("参考点坐标超出数值范围。");
+    }
+    return sample;
   }
 
   let info: ImportedModelInfo;
@@ -127,9 +132,11 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
     } finally { data.delete(); }
   }
 
-  function run({ durationS, controls, pointId, keyframe }: ImportedRunSettings): ImportedSample[] {
+  function run({ durationS, controls, pointId, referencePointId, keyframe, sequence }: ImportedRunSettings): ImportedSample[] {
     const point = targets.find((p) => p.id === pointId);
     if (!point) throw new Error("模型中找不到指定的观测点。");
+    const reference = referencePointId === undefined ? undefined : targets.find((p) => p.id === referencePointId);
+    if (referencePointId !== undefined && !reference) throw new Error("模型中找不到指定的参考点。");
     if (!Number.isFinite(durationS) || durationS <= 0 || durationS > IMPORTED_PHYSICS_LIMITS.maxDurationS) throw new Error("仿真时长须大于零且最多 20 秒。");
     const steps = Math.max(1, Math.ceil(durationS / dt - 1e-10));
     if (steps > IMPORTED_PHYSICS_LIMITS.maxSteps) throw new Error("本次运行超过 20000 个物理步，请缩短时长。");
@@ -138,19 +145,36 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
       const value = controls[i], bounds = actuator.range;
       if (!Number.isFinite(value) || (bounds && (value < bounds[0] || value > bounds[1]))) throw new Error(`执行器「${actuator.name}」的控制值无效或超出范围。`);
     });
-    const width = 7 * ids.length + model.nq + model.nv + 4;
+    const issue = controlSequenceIssue({ durationS, controls, sequence }, info.actuators);
+    if (issue) throw new Error(issue);
+    const width = 7 * ids.length + model.nq + model.nv + 4 + (reference ? 3 : 0);
     const intervals = Math.min(500, Math.max(1, Math.floor(1_000_000 / width) - 1));
     const stride = Math.max(1, Math.round(0.02 / dt), Math.ceil(steps / intervals));
     const data = new mj.MjData(model);
     try {
       resetData(data, keyframe);
-      (data.ctrl as Float64Array).set(controls);
-      const samples = [readSample(data, point)];
+      const ctrl: Float64Array = data.ctrl;
+      ctrl.set(controls);
+      const samples = [readSample(data, point, reference)];
+      let stage = 0;
       for (let step = 1; step <= steps; step++) {
+        if (sequence?.length) {
+          const time = (step - 1) * dt;
+          while (stage < sequence.length && sequence[stage].timeS <= time) stage++;
+          const previous = sequence[stage - 1], next = sequence[stage];
+          const from = previous?.controls ?? controls;
+          if (next) {
+            const start = previous?.timeS ?? 0, u = (time - start) / (next.timeS - start);
+            const blend = u * u * (3 - 2 * u);
+            for (let i = 0; i < ctrl.length; i++) ctrl[i] = (1 - blend) * from[i] + blend * next.controls[i];
+          } else {
+            ctrl.set(from);
+          }
+        } else ctrl.set(controls);
         mj.mj_step(model, data);
         if (step % stride === 0 || step === steps) {
           if (Math.abs(data.time - step * dt) > 1e-7) throw new Error("MuJoCo 因数值异常复位，请检查模型或控制输入。");
-          samples.push(readSample(data, point));
+          samples.push(readSample(data, point, reference));
         }
       }
       return samples;

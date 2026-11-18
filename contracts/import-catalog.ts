@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { packageKey, readTwinData, type DevicePackage } from "./twin-device";
-import { IMPORTED_PHYSICS_LIMITS } from "./imported-physics";
+import { controlSequenceIssue, IMPORTED_PHYSICS_LIMITS } from "./imported-physics";
 
 export const MODEL_LIMITS = {
   maxFiles: 512,
@@ -18,11 +18,19 @@ const id = z.string().regex(/^[a-f0-9]{64}$/, "物理模型 ID 必须为内容�
 const entry = text(1024).refine(value => !value.includes("\\") && !Array.from(value).some(char => char.charCodeAt(0) < 32)
   && !/^[a-z][a-z\d+.-]*:/i.test(value)
   && !value.split("/").some(part => !part || part === "." || part === ".."), "模型入口必须是包内的相对路径");
+const controls = z.array(z.number().finite()).max(256);
 const runSettings = z.strictObject({
   durationS: z.number().finite().positive().max(IMPORTED_PHYSICS_LIMITS.maxDurationS),
-  controls: z.array(z.number().finite()).max(256),
+  controls,
   pointId: text(240),
+  referencePointId: text(240).optional(),
   keyframe: z.string().min(1).optional(),
+  sequence: z.array(z.strictObject({
+    timeS: z.number().finite().positive(), controls, label: text(IMPORTED_PHYSICS_LIMITS.maxStageLabel).optional(),
+  })).max(IMPORTED_PHYSICS_LIMITS.maxStages).optional(),
+}).superRefine((settings, ctx) => {
+  const issue = controlSequenceIssue(settings);
+  if (issue) ctx.addIssue({ code: "custom", path: ["sequence"], message: issue });
 });
 const modelRefSchema = z.strictObject({ id, name: text(300), entry, run: runSettings.optional() });
 const bindingSchema = z.discriminatedUnion("kind", [

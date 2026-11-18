@@ -1,0 +1,10 @@
+<mujoco model="30 mm pick block">
+  <worldbody>
+    <geom name="support" type="plane" size="0.12 0.12 0.01" rgba="0.28 0.35 0.38 1"/>
+    <body name="cube" pos="0 0 0.015">
+      <freejoint name="floating"/>
+      <geom name="block" type="box" size="0.015 0.015 0.015" mass="0.027" friction="0.8 0.005 0.0001" rgba="0.93 0.36 0.07 1"/>
+      <site name="center" size="0.0015" rgba="1 1 1 0"/>
+    </body>
+  </worldbody>
+</mujoco>
