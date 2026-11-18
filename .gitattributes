@@ -1,0 +1,5 @@
+# Preserve the upstream model files for byte-for-byte Git blob verification.
+public/models/so101/*.xml -text
+public/models/so101/*.urdf -text
+public/models/so101/LICENSE -text
+public/models/so101/assets/*.stl binary

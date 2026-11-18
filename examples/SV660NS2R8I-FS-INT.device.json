@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "汇川技术",
+  "model": "SV660NS2R8I-FS-INT",
+  "revision": "v0.6",
+  "source": {
+    "title": "SV660N – Single-Axis EtherCAT Servo",
+    "url": "https://www.inovance.eu/fileadmin/downloads/Brochures/EN/SV660N_FIyer_Spreads_Web_EN_v0.6.pdf",
+    "locator": "PDF 第 3 页 · SV660N Selection Chart · SV660NS2R8I-FS-INT · 额定/峰值电流",
+    "excerpt": "SV660NS2R8I-FS-INT 01052586 2.8 10.1",
+    "productUrl": "https://www.inovance.com/global/content/details_816_555207.html"
+  },
+  "ports": [],
+  "rules": [],
+  "servo": {
+    "kind": "drive",
+    "ratedCurrentA": 2.8,
+    "peakCurrentA": 10.1
+  }
+}

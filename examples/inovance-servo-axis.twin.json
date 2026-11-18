@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "schemaVersion": 1,
+      "manufacturer": "汇川技术",
+      "model": "SV660NS2R8I-FS-INT",
+      "revision": "v0.6",
+      "source": {
+        "title": "SV660N – Single-Axis EtherCAT Servo",
+        "url": "https://www.inovance.eu/fileadmin/downloads/Brochures/EN/SV660N_FIyer_Spreads_Web_EN_v0.6.pdf",
+        "locator": "PDF 第 3 页 · SV660N Selection Chart · SV660NS2R8I-FS-INT · 额定/峰值电流",
+        "excerpt": "SV660NS2R8I-FS-INT 01052586 2.8 10.1",
+        "productUrl": "https://www.inovance.com/global/content/details_816_555207.html"
+      },
+      "ports": [],
+      "rules": [],
+      "servo": {
+        "kind": "drive",
+        "ratedCurrentA": 2.8,
+        "peakCurrentA": 10.1
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "汇川技术",
+      "model": "MS1H1-40B30CB-A331R-INT",
+      "revision": "v0.6",
+      "source": {
+        "title": "SV660N – Single-Axis EtherCAT Servo",
+        "url": "https://www.inovance.eu/fileadmin/downloads/Brochures/EN/SV660N_FIyer_Spreads_Web_EN_v0.6.pdf",
+        "locator": "PDF 第 3 页 · SV660N Selection Chart · MS1H1-40B30CB-yn3zR-INT / SV660NS2R8I-FS-INT · yn=A3，z=1（无抱闸）",
+        "excerpt": "3000 7000 400 1.27 4.45 60X60 0.145 MS1H1-40B30CB-yn3zR-INT SV660NS2R8I-FS-INT 01052586 2.8 10.1 A 170X40X150 S6-C22",
+        "productUrl": "https://www.inovance.com/global/content/details_816_555691.html"
+      },
+      "ports": [],
+      "rules": [],
+      "servo": {
+        "kind": "motor",
+        "ratedPowerW": 400,
+        "ratedTorqueNm": 1.27,
+        "peakTorqueNm": 4.45,
+        "ratedSpeedRpm": 3000,
+        "maxSpeedRpm": 7000,
+        "rotorInertiaKgM2": 0.0000145,
+        "compatibleDriveModels": [
+          "SV660NS2R8I-FS-INT"
+        ]
+      }
+    }
+  ],
+  "instances": [],
+  "connections": [],
+  "servoAxis": {
+    "driveKey": "[\"汇川技术\",\"SV660NS2R8I-FS-INT\",\"v0.6\"]",
+    "motorKey": "[\"汇川技术\",\"MS1H1-40B30CB-A331R-INT\",\"v0.6\"]",
+    "targetDeg": 90,
+    "loadInertiaRatio": 1
+  }
+}

@@ -1,0 +1,352 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "汇川技术",
+  "model": "GL10-1600END",
+  "revision": "A03",
+  "source": {
+    "title": "GL10-1600END Digital Input Module User Guide",
+    "url": "https://portal-file.inovance.com/owfile/ProdDoc/SC/19011103-SC/A03/19011103-SC_A03_GL10-1600END%20Digital%20Input%20Module%20User%20Guide-EN.pdf",
+    "locator": "PDF 第 1 页 · General specifications",
+    "excerpt": "Number of input channels 16\nON voltage > 15 VDC\nOFF voltage < 5 VDC\nDI filter time 10ms"
+  },
+  "ports": [
+    {
+      "id": "v0",
+      "label": "通道 0 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di0",
+      "label": "DI 0",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v1",
+      "label": "通道 1 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di1",
+      "label": "DI 1",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v2",
+      "label": "通道 2 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di2",
+      "label": "DI 2",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v3",
+      "label": "通道 3 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di3",
+      "label": "DI 3",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v4",
+      "label": "通道 4 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di4",
+      "label": "DI 4",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v5",
+      "label": "通道 5 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di5",
+      "label": "DI 5",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v6",
+      "label": "通道 6 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di6",
+      "label": "DI 6",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v7",
+      "label": "通道 7 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di7",
+      "label": "DI 7",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v8",
+      "label": "通道 8 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di8",
+      "label": "DI 8",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v9",
+      "label": "通道 9 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di9",
+      "label": "DI 9",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v10",
+      "label": "通道 10 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di10",
+      "label": "DI 10",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v11",
+      "label": "通道 11 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di11",
+      "label": "DI 11",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v12",
+      "label": "通道 12 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di12",
+      "label": "DI 12",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v13",
+      "label": "通道 13 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di13",
+      "label": "DI 13",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v14",
+      "label": "通道 14 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di14",
+      "label": "DI 14",
+      "direction": "output",
+      "type": "boolean"
+    },
+    {
+      "id": "v15",
+      "label": "通道 15 电压",
+      "direction": "input",
+      "type": "number",
+      "unit": "V"
+    },
+    {
+      "id": "di15",
+      "label": "DI 15",
+      "direction": "output",
+      "type": "boolean"
+    }
+  ],
+  "rules": [
+    {
+      "op": "digitalInput",
+      "input": "v0",
+      "output": "di0",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v1",
+      "output": "di1",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v2",
+      "output": "di2",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v3",
+      "output": "di3",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v4",
+      "output": "di4",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v5",
+      "output": "di5",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v6",
+      "output": "di6",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v7",
+      "output": "di7",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v8",
+      "output": "di8",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v9",
+      "output": "di9",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v10",
+      "output": "di10",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v11",
+      "output": "di11",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v12",
+      "output": "di12",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v13",
+      "output": "di13",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v14",
+      "output": "di14",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    },
+    {
+      "op": "digitalInput",
+      "input": "v15",
+      "output": "di15",
+      "onAbove": 15,
+      "offBelow": 5,
+      "filterMs": 10
+    }
+  ]
+}

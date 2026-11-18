@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "packages": [],
+  "instances": [],
+  "connections": [],
+  "so101": {
+    "modelId": "so101-follower-new-calib@a758567c3978dfeefe282ede0500085a48fe8f78",
+    "bom": [
+      {
+        "part": "STS3215 Servo 7.4V, 1/345 gear (C001)",
+        "quantity": 6
+      },
+      {
+        "part": "Motor Control Board",
+        "quantity": 1
+      },
+      {
+        "part": "USB-C Cable 2 pcs",
+        "quantity": 1
+      },
+      {
+        "part": "Power Supply",
+        "quantity": 1
+      },
+      {
+        "part": "Table Clamp 2pcs",
+        "quantity": 1
+      },
+      {
+        "part": "Screwdriver Set",
+        "quantity": 1
+      }
+    ],
+    "waypoints": [
+      {
+        "timeS": 1.2,
+        "anglesDeg": [
+          25,
+          -18,
+          25,
+          -12,
+          15,
+          30
+        ]
+      },
+      {
+        "timeS": 2.6,
+        "anglesDeg": [
+          -20,
+          -30,
+          35,
+          10,
+          -20,
+          55
+        ]
+      },
+      {
+        "timeS": 4,
+        "anglesDeg": [
+          10,
+          -12,
+          15,
+          -5,
+          10,
+          12
+        ]
+      }
+    ]
+  }
+}

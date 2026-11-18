@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元 · 虚拟仪器",
+  "model": "可调电压源",
+  "revision": "1",
+  "source": {
+    "title": "Modelica Standard Library · Gain（算法参考）",
+    "url": "https://doc.modelica.org/om/Modelica.Blocks.Math.Gain.html",
+    "locator": "Information · y = k × u",
+    "excerpt": "输出等于增益与输入的乘积。本示例取增益 1，将电压设定值传给输出端口。"
+  },
+  "ports": [
+    { "id": "setting", "label": "设定电压", "direction": "input", "type": "number", "unit": "V" },
+    { "id": "out", "label": "输出电压", "direction": "output", "type": "number", "unit": "V" }
+  ],
+  "rules": [
+    { "op": "linear", "input": "setting", "output": "out", "gain": 1, "offset": 0 }
+  ]
+}
