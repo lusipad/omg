@@ -1,6 +1,8 @@
 import { useId, useMemo, useState } from "react";
-import { MILO_MACHINE, type MiloMotionPlan, type MiloMotionSample, type MiloVec3 } from "@contracts/milo-motion";
-import { miloAxes, miloAxisColors, miloNumber, tickStep } from "./milo-plot";
+import { MILO_MACHINE, miloSegmentFractionAtTime, type MiloMotionSample, type MiloVec3 } from "@contracts/milo-motion";
+import { MILO_STOCK, MILO_TOOL_DIAMETER_MM, type MiloStockState } from "@contracts/milo-stock";
+import MiloStockView, { MiloStockFootprint } from "./MiloStockView";
+import { miloAxes, miloAxisColors, miloNumber, tickStep, type MiloSpatialPath } from "./milo-plot";
 
 type Point = [number, number];
 type View = "iso" | "xy" | "xz" | "yz";
@@ -46,10 +48,10 @@ const bracket = { top: "#4c7a68", front: "#325e4d", end: "#294c3e" };
 const tableWidth = 500;
 const tableDepth = MILO_MACHINE.maxMm[1] - MILO_MACHINE.minMm[1] + 20;
 const columnY = 245;
-const stock = { width: 75, depth: 60, height: 10 };
+const stock = { width: MILO_STOCK.widthMm, depth: MILO_STOCK.heightMm, height: MILO_STOCK.thicknessMm };
 const midX = (MILO_MACHINE.maxMm[0] + MILO_MACHINE.minMm[0]) / 2;
 const midY = (MILO_MACHINE.maxMm[1] + MILO_MACHINE.minMm[1]) / 2;
-function machineBounds(plan: MiloMotionPlan) {
+function machineBounds(path: MiloSpatialPath) {
   let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
   function box(x: number, y: number, w: number, d: number, fromZ: number, toZ: number) {
     for (const xx of [x-w/2, x+w/2]) for (const yy of [y-d/2, y+d/2]) for (const zz of [fromZ, toZ]) {
@@ -59,22 +61,28 @@ function machineBounds(plan: MiloMotionPlan) {
   }
   box(0, 65, 290, 435, -66, -44);
   box(0, columnY, 82, 60, -50, 157);
-  for (const p of [MILO_MACHINE.initialWorkMm, ...plan.segments.map((s) => s.endMm)]) {
-    const x = midX - MILO_MACHINE.workOriginMachineMm[0] - p[0], y = midY - MILO_MACHINE.workOriginMachineMm[1] - p[1];
-    box(x, y, tableWidth, tableDepth, -14, stock.height);
-    const tip = stock.height + p[2];
-    box(0, (columnY - 38) / 2, 68, columnY + 12, tip, tip + 116);
-  }
+  const x = midX - MILO_MACHINE.workOriginMachineMm[0] - (path.min[0] + path.max[0]) / 2;
+  const y = midY - MILO_MACHINE.workOriginMachineMm[1] - (path.min[1] + path.max[1]) / 2;
+  box(x, y, tableWidth + path.max[0] - path.min[0], tableDepth + path.max[1] - path.min[1], -14, stock.height);
+  box(0, (columnY - 38) / 2, 68, columnY + 12, stock.height + path.min[2], stock.height + path.max[2] + 116);
   return { x: left - 20, y: top - 18, width: right - left + 40, height: bottom - top + 48 };
 }
-function Machine({ plan, sample }: { plan: MiloMotionPlan; sample: MiloMotionSample }) {
+type SceneProps = { path: MiloSpatialPath; sample: MiloMotionSample; frame: MiloStockState };
+function MiloMachine({ path, sample, frame }: SceneProps) {
   const [mx, my, mz] = sample.machineMm;
   const tx = midX - mx, ty = midY - my, tipHeight = stock.height + sample.positionMm[2];
   const saddle = iso(0, ty, 0), table = iso(tx, ty, 0), spindle = iso(0, 0, tipHeight);
   const wx = MILO_MACHINE.workOriginMachineMm[0] - midX, wy = MILO_MACHINE.workOriginMachineMm[1] - midY;
   const [workX, workY] = sample.positionMm;
   const aboveStock = workX >= 0 && workX <= stock.width && workY >= 0 && workY <= stock.depth;
-  const view = useMemo(() => machineBounds(plan), [plan]);
+  const view = useMemo(() => machineBounds(path), [path]);
+  const stockTransform = [...iso(1, 0, 0), ...iso(0, 1, 0), ...iso(wx, wy, stock.height)].join(" ");
+  let surface = 0;
+  if (aboveStock) {
+    const column = Math.min(frame.columns - 1, Math.floor(workX / frame.cellSizeMm));
+    const row = Math.min(frame.rows - 1, Math.floor(workY / frame.cellSizeMm));
+    surface = stock.height + frame.heights[row * frame.columns + column];
+  }
   return <figure className="surface min-w-0 overflow-hidden">
     <figcaption className="border-b px-4 py-3 text-sm font-semibold">铣床运动简图</figcaption>
     <svg viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`} role="img" aria-label="Milo 铣床运动简图" className="engineering-grid block h-56 w-full sm:h-64">
@@ -96,25 +104,28 @@ function Machine({ plan, sample }: { plan: MiloMotionPlan; sample: MiloMotionSam
         <g data-part="work-stock" data-origin-world-x-mm={-workX} data-origin-world-y-mm={-workY} data-top-z-mm={stock.height}>
           <Block x={wx + stock.width / 2} y={wy + stock.depth / 2} z={0} width={stock.width} depth={stock.depth} height={stock.height}
             top="#c2a57a" front="#887053" end="#725b42" />
+          <g data-part="machine-stock-footprint" data-max-depth-mm={frame.maxDepthMm} transform={`matrix(${stockTransform})`}>
+            <MiloStockFootprint frame={frame} />
+          </g>
         </g>
         <g data-part="work-xy-datum">
           <Edge from={[wx, wy, stock.height]} to={[wx + 15, wy, stock.height]} color="#356452" width={3} />
           <Edge from={[wx, wy, stock.height]} to={[wx, wy + 15, stock.height]} color="#3c6280" width={3} />
         </g>
       </g>
-      <line x1="0" x2="0" y1={iso(0, 0, aboveStock ? stock.height : 0)[1]} y2={spindle[1]} stroke={traces.tool} strokeWidth="1.7" strokeDasharray="3 4" opacity="0.8" />
+      <line x1="0" x2="0" y1={iso(0, 0, surface)[1]} y2={spindle[1]} stroke={traces.tool} strokeWidth="1.7" strokeDasharray="3 4" opacity="0.8" />
       <g transform={`translate(${spindle.join(" ")})`} data-part="z-spindle" data-z-mm={mz}>
         <Block x={0} y={columnY - 43} z={38} width={68} depth={18} height={78} {...bracket} />
         <Block x={0} y={(columnY - 40) / 2} z={61} width={53} depth={columnY - 27} height={21} {...bracket} />
         <Cylinder z={32} height={75} radius={24} color="#94a8a0" cap="#c1d2c9" />
         <Cylinder z={24} height={15} radius={17} color="#4f625a" cap="#788b82" />
         <Cylinder z={11} height={13} radius={8.5} color="#52675d" cap="#778b80" />
-        <path d={`M-3.6,${iso(0,0,11)[1]}H3.6L2.1,0H-2.1Z`} fill="#dfb776" />
+        <Cylinder z={0} height={11} radius={MILO_TOOL_DIAMETER_MM / 2} color="#c9a365" cap="#ead5a6" />
         <circle data-part="machine-tool-tip" data-height-over-stock-mm={sample.positionMm[2]} cx="0" cy="0" r="3.2" fill={traces.tool} stroke="#6e4732" strokeWidth="0.8" />
       </g>
       <AxisKey x={view.x + 22} y={view.y + view.height - 28} view="iso" />
     </svg>
-    <p className="border-t px-4 py-2 text-xs leading-5 text-muted-foreground">工作台沿 X、Y 反向移动，主轴沿 Z 升降。示意毛坯顶面对应工件 Z0。</p>
+    <p className="border-t px-4 py-2 text-xs leading-5 text-muted-foreground">工作台沿 X、Y 反向移动，主轴沿 Z 升降。毛坯原顶面为工件 Z0，着色随去料更新。</p>
   </figure>;
 }
 
@@ -133,10 +144,8 @@ function AxisKey({x, y, view}: {x:number; y:number; view:View}) {
   </g>;
 }
 
-function toolDrawing(plan: MiloMotionPlan, view: View) {
-  const segments = plan.segments;
-  const vertices = [segments[0]?.startMm ?? MILO_MACHINE.initialWorkMm, ...segments.map((s) => s.endMm)];
-  const projected = vertices.map((vertex) => project(vertex, view));
+function toolDrawing(path: MiloSpatialPath, view: View) {
+  const projected = path.vertices.map((vertex) => project(vertex, view));
   let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
   for (const [x, y] of projected) {
     left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
@@ -148,20 +157,30 @@ function toolDrawing(plan: MiloMotionPlan, view: View) {
   const plot = ([x, y]: Point): Point => [250 + (x - cx) * scale, 105 + (y - cy) * scale];
   const points = projected.map(plot), cumulative = [0];
   for (let i = 1; i < points.length; i++) cumulative.push(cumulative[i-1] + Math.hypot(points[i][0]-points[i-1][0], points[i][1]-points[i-1][1]));
-  const byLine = new Map(segments.map((segment, index) => [segment.line, index]));
-  return { points, cumulative, scale, byLine, locate: (p:MiloVec3) => plot(project(p, view)),
+  return { points, cumulative, scale, locate: (p:MiloVec3) => plot(project(p, view)),
     path: points.map(([x,y], i) => `${i ? "L" : "M"}${x.toFixed(4)} ${y.toFixed(4)}`).join(" ") };
 }
 
-function Toolpath({plan, sample}: {plan:MiloMotionPlan; sample:MiloMotionSample}) {
+function Toolpath({path, sample}: Pick<SceneProps, "path" | "sample">) {
   const [view, setView] = useState<View>("iso");
   const grid = useId();
-  const chart = useMemo(() => toolDrawing(plan, view), [plan, view]);
+  const chart = useMemo(() => toolDrawing(path, view), [path, view]);
   const tip = chart.locate(sample.positionMm);
-  const slot = sample.line === null ? 0 : chart.byLine.get(sample.line) ?? 0;
-  const start = chart.points[slot];
   const length = chart.cumulative[chart.cumulative.length - 1];
-  const drawn = Math.min(length, chart.cumulative[slot] + Math.hypot(tip[0] - start[0], tip[1] - start[1]));
+  const span = sample.line === null ? undefined : path.spans.get(sample.line);
+  let drawn = 0;
+  if (span) {
+    const f = miloSegmentFractionAtTime(span.segment, sample.timeS);
+    const fractions = span.fractions;
+    let first = 0, last = fractions.length - 1;
+    while (last - first > 1) {
+      const mid = (first + last) >>> 1;
+      if (fractions[mid] <= f) first = mid; else last = mid;
+    }
+    const start = span.first + first;
+    const part = Math.max(0, Math.min(1, (f - fractions[first]) / (fractions[last] - fractions[first])));
+    drawn = chart.cumulative[start] + part * (chart.cumulative[start + 1] - chart.cumulative[start]);
+  }
   const barMm = tickStep(48 / chart.scale), spacing = barMm * chart.scale;
   const zero = chart.locate([0, 0, 0]);
   return <figure className="surface min-w-0 overflow-hidden">
@@ -178,7 +197,7 @@ function Toolpath({plan, sample}: {plan:MiloMotionPlan; sample:MiloMotionSample}
         </pattern></defs>
         <rect width="500" height="242" fill={`url(#${grid})`} />
       </>}
-      <path d={chart.path} fill="none" stroke={traces.planned} strokeWidth="1.5" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />
+      <path data-path="planned" d={chart.path} fill="none" stroke={traces.planned} strokeWidth="1.5" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />
       {drawn > 0 && <path d={chart.path} data-path="travelled" fill="none" stroke={traces.travelled} strokeWidth="2.7" strokeLinecap="round"
         strokeDasharray={`${drawn} ${length + 2}`} />}
       <circle data-part="tool-tip" cx={tip[0]} cy={tip[1]} r="4.5" fill={traces.tool} stroke="#18241f" strokeWidth="1.5" />
@@ -192,13 +211,17 @@ function Toolpath({plan, sample}: {plan:MiloMotionPlan; sample:MiloMotionSample}
       <span className="flex items-center gap-1.5"><i className="w-4 border-t border-dashed" style={{borderColor:traces.planned}} />完整路径</span>
       <span className="flex items-center gap-1.5"><i className="h-0.5 w-4" style={{background:traces.travelled}} />已走路径</span>
       <span className="flex items-center gap-1.5"><i className="size-2 rounded-full" style={{background:traces.tool}} />当前刀尖</span>
-      {length === 0 && plan.totalLengthMm > 0 && <span>该视角的轨迹投影为一点</span>}
+      {length === 0 && path.spans.size > 0 && <span>该视角的轨迹投影为一点</span>}
     </div>
   </figure>;
 }
 
-export default function MiloScene({plan, sample}: {plan:MiloMotionPlan; sample:MiloMotionSample}) {
+export default function MiloScene({path, sample, frame}: SceneProps) {
   return <div className="grid min-w-0 items-start gap-4 lg:grid-cols-2">
-    <Machine plan={plan} sample={sample} /><Toolpath plan={plan} sample={sample} />
+    <MiloStockView frame={frame} sample={sample} />
+    <div className="min-w-0 space-y-4">
+      <Toolpath path={path} sample={sample} />
+      <MiloMachine path={path} sample={sample} frame={frame} />
+    </div>
   </div>;
 }

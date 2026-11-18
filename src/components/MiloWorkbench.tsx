@@ -14,6 +14,7 @@ const officialRaw = `https://raw.githubusercontent.com/${repository}/${revision}
 const officialDocs = `https://github.com/${repository}/blob/${revision}/docs/milo_1.5`;
 const localBase = `${import.meta.env.BASE_URL}machines/milo-v1-5/`;
 const factsUrl = localBase + "bom-facts.md";
+const pocketUrl = localBase + "circular-pocket.nc";
 const localSource = `本地核对表 · 官方版本 ${revision.slice(0, 10)}`;
 const manuals = { X: "50_x_axis_assembly.md", Y: "40_y_axis_assembly.md", Z: "60_z_axis_assembly.md" };
 const categories: Record<string, string> = {
@@ -22,6 +23,12 @@ const categories: Record<string, string> = {
 type Props = { state: MiloWorkspaceState; onChange: (state: MiloWorkspaceState) => void };
 type Issue = { message: string; line?: number; column?: number };
 const message = (cause: unknown) => cause instanceof Error ? cause.message : "操作失败，请重新尝试。";
+
+async function readTextResource(url: string, signal: AbortSignal) {
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error(`读取 ${url.split("/").at(-1)} 失败（HTTP ${response.status}）。`);
+  return response.text();
+}
 
 function Inventory({ bom, source }: { bom: MiloBom; source?: string }) {
   const [chosen, setChosen] = useState("");
@@ -95,13 +102,19 @@ export default function MiloWorkbench({ state, onChange }: Props) {
   const [readingProgram, setReadingProgram] = useState(false);
   const [programNotice, setProgramNotice] = useState("");
   const [run, setRun] = useState<{ source: string; plan: MiloMotionPlan; id: number } | null>(null);
+  const playback = useRef<HTMLDivElement>(null);
   const runId = useRef(0);
   const pendingAxes = miloAxisIds.filter((axis) => !state.assembled.includes(axis));
   const ready = !!state.bom && !pendingAxes.length;
   const currentRun = ready && run?.source === state.program ? run : null;
   useLayoutEffect(() => () => { bomRequest.current?.abort(); programRequest.current?.abort(); }, []);
+  useLayoutEffect(() => {
+    if (window.location.hash === "#milo-pocket") document.getElementById("milo-pocket")?.scrollIntoView();
+  }, []);
+  useLayoutEffect(() => { if (run) playback.current?.scrollIntoView({ block: "start" }); }, [run]);
 
   async function importBom(from: "official" | "local" | File) {
+    programRequest.current?.abort(); setReadingProgram(false);
     bomRequest.current?.abort();
     const controller = new AbortController();
     bomRequest.current = controller;
@@ -112,9 +125,8 @@ export default function MiloWorkbench({ state, onChange }: Props) {
     try {
       let text: string, source: string;
       if (typeof from === "string") {
-        const response = await fetch(from === "official" ? officialRaw : factsUrl, { signal: controller.signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        text = await response.text(); source = from === "official" ? officialRaw : localSource;
+        text = await readTextResource(from === "official" ? officialRaw : factsUrl, controller.signal);
+        source = from === "official" ? officialRaw : localSource;
       } else {
         if (from.size > 2 * 1024 * 1024) throw new Error("请选择 2 MiB 以内的 Milo 采购指南 Markdown 文件。");
         text = await from.text(); source = `上传文件 · ${from.name}`;
@@ -168,16 +180,35 @@ export default function MiloWorkbench({ state, onChange }: Props) {
     } catch (cause) { setProgramIssue({ message: message(cause) }); setProgramNotice(""); }
   }
 
-  async function loadProgram(file: File) {
+  async function loadProgram(from: File | "pocket") {
     programRequest.current?.abort();
     const controller = new AbortController();
     programRequest.current = controller;
     setReadingProgram(true); setProgramIssue(null); setProgramNotice("");
     try {
-      if (file.size > 4 * MILO_MAX_PROGRAM_CHARS + 3) throw new Error(`程序文件过大，请选择 ${MILO_MAX_PROGRAM_CHARS} 字符以内的文本程序。`);
-      const value = await file.text();
-      if (!value.trim()) throw new Error("所选程序文件为空，请选择含 G 代码的文本文件。");
-      if (!controller.signal.aborted) changeProgram(value.replace(/^\uFEFF/, ""), `已载入 ${file.name}。`);
+      if (from !== "pocket") {
+        if (from.size > 4 * MILO_MAX_PROGRAM_CHARS + 3) throw new Error(`程序文件过大，请选择 ${MILO_MAX_PROGRAM_CHARS} 字符以内的文本程序。`);
+        const value = await from.text();
+        if (!value.trim()) throw new Error("所选程序文件为空，请选择含 G 代码的文本文件。");
+        if (!controller.signal.aborted) changeProgram(value.replace(/^\uFEFF/, ""), `已载入 ${from.name}。`);
+        return;
+      }
+      const previous = latest.current.state;
+      const [program, facts] = await Promise.all([
+        readTextResource(pocketUrl, controller.signal),
+        previous.bom ? "" : readTextResource(factsUrl, controller.signal),
+      ]);
+      if (controller.signal.aborted) return;
+      if (previous !== latest.current.state) throw new Error("工程已更新，请重新打开圆槽示例。");
+      const bom = previous.bom ?? parseMiloBom(facts);
+      const base = previous.bom ? previous : withMiloBom(previous, bom, localSource);
+      const assembled = miloAxisIds.reduce((axes, axis) => assembleMiloAxis(bom, axes, axis), base.assembled);
+      const plan = planMiloProgram(program);
+      if (previous.program.trim() && previous.program !== miloDemoGcode && previous.program.trim() !== program.trim()
+        && !window.confirm("用圆形凹槽示例替换当前 G 代码？如需保留，请先取消并导出工程。")) return;
+      latest.current.onChange({ ...base, assembled, program });
+      setRun({ source: program, plan, id: ++runId.current }); setBomError("");
+      setProgramNotice("已载入 circular-pocket.nc。可修改程序后再次运行。");
     } catch (cause) {
       if (!controller.signal.aborted) { setProgramIssue({ message: message(cause) }); setProgramNotice(""); }
     } finally { if (programRequest.current === controller) { programRequest.current = null; setReadingProgram(false); } }
@@ -232,14 +263,22 @@ export default function MiloWorkbench({ state, onChange }: Props) {
       <div className="grid min-w-0 gap-3 lg:grid-cols-3">{miloAxisIds.map((axis) => <AxisCard key={axis} axis={axis} state={state} onAssemble={() => assemble(axis)} onRemove={() => removeAxis(axis)} />)}</div>
     </section>
 
-    <section className="surface min-w-0 space-y-3 p-4 sm:p-5" aria-label="G 代码控制">
-      <h3 className="text-base font-semibold">G 代码程序</h3>
-      {!ready ? <p className="text-sm text-muted-foreground">请先{state.bom ? "" : "载入 BOM 并"}完成 {pendingAxes.join("、")} 轴装配，即可编辑并运行程序。</p> : <>
-        <p className="text-xs leading-5 text-muted-foreground">使用毫米和每分钟进给量。程序从工件坐标 {miloAxisIds.map((axis, i) => axis + MILO_MACHINE.initialWorkMm[i]).join(" ")} 起步，支持 G0、G1、G90、G91、G21 和 G94。</p>
+    <section id="milo-pocket" className="surface min-w-0 space-y-3 p-4 sm:p-5" aria-label="G 代码控制">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-semibold">G 代码程序</h3>
+        <a className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline" href={pocketUrl} download="circular-pocket.nc"><Download className="size-3.5" />下载圆槽 G 代码</a>
+      </div>
+      <div className="surface-inset flex flex-wrap items-center justify-between gap-3 p-3">
+        <div><h4 className="text-sm font-medium">圆形平底凹槽</h4><p className="mt-1 text-xs text-muted-foreground">槽径 30 mm，深 3 mm。用 Ø6 mm 平底刀分三层铣削，每层下刀 1 mm。</p></div>
+        <Button variant="outline" disabled={!!reading || readingProgram} onClick={() => void loadProgram("pocket")}><Play />{ready ? "回放圆形凹槽" : "组装并回放圆形凹槽"}</Button>
+      </div>
+      {!ready ? <p className="text-sm text-muted-foreground">也可以先{state.bom ? "" : "载入 BOM 并"}手动装配 {pendingAxes.join("、")} 轴，再编辑自己的程序。</p> : <>
+        <p className="text-xs leading-5 text-muted-foreground">程序从工件坐标 {miloAxisIds.map((axis, i) => axis + MILO_MACHINE.initialWorkMm[i]).join(" ")} 起步。G17 选 XY 平面，G2 顺时针、G3 逆时针。I、J 为相对圆弧起点的圆心偏移，进给 F 以 mm/min 计。</p>
         <p className="text-xs leading-5 text-muted-foreground">曲线为理想开环步进规划值，按参考固件的轴限速与加速度计算，每个运动段起止时停稳。</p>
         <details className="text-xs leading-5 text-muted-foreground">
           <summary className="cursor-pointer text-foreground">工件零点与行程</summary>
           <p className="mt-1.5">示例装夹的工件零点位于机床坐标 {miloAxisIds.map((axis, i) => axis + MILO_MACHINE.workOriginMachineMm[i]).join(" ")} mm。</p>
+          <p>仿真假定平底刀已旋转，G0 只做定位，G1、G2、G3 进给时按刀刃扫过的体积去料。</p>
           <p>M208 机床坐标范围为 {miloAxisIds.map((axis, i) => `${axis} [${MILO_MACHINE.minMm[i]}, ${MILO_MACHINE.maxMm[i]}]`).join("，")} mm。</p>
           <p>换算后的工件可编程范围为 {miloAxisIds.map((axis, i) => `${axis} [${MILO_MACHINE.minMm[i] - MILO_MACHINE.workOriginMachineMm[i]}, ${MILO_MACHINE.maxMm[i] - MILO_MACHINE.workOriginMachineMm[i]}]`).join("，")} mm。</p>
         </details>
@@ -248,22 +287,22 @@ export default function MiloWorkbench({ state, onChange }: Props) {
         <div className="flex flex-wrap gap-2">
           <Button disabled={readingProgram || !state.program.trim()} onClick={execute}><Play />运行 G 代码</Button>
           <Button variant="outline" onClick={() => programFile.current?.click()}><FileUp />载入程序文件</Button>
-          <Button variant="ghost" onClick={() => changeProgram(miloDemoGcode, "已载入内置示例程序。")}>载入示例程序</Button>
+          <Button variant="ghost" onClick={() => changeProgram(miloDemoGcode, "已载入三轴直线示例。")}>载入直线示例</Button>
           <input ref={programFile} aria-label="载入 G 代码文件" type="file" accept=".gcode,.nc,.ngc,.cnc,.tap,.txt,text/plain" className="hidden" onChange={(event) => {
             const selected = event.target.files?.[0]; event.target.value = ""; if (selected) void loadProgram(selected);
           }} />
         </div>
-        {programIssue && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
-          <span className="whitespace-pre-line break-words">{programIssue.message}</span>
-          {programIssue.line && <Button size="sm" variant="outline" onClick={locateIssue}>定位到第 {programIssue.line} 行</Button>}
-        </div>}
-        {readingProgram && <p role="status" className="text-xs text-muted-foreground">正在读取程序文件…</p>}
-        {programNotice && <p role="status" className="text-xs text-primary">{programNotice}</p>}
         {run && !currentRun && <p role="status" className="text-xs text-amber-300">程序已修改，请重新运行以查看当前文本的轨迹。</p>}
       </>}
+      {programIssue && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+        <span className="whitespace-pre-line break-words">{programIssue.message}</span>
+        {ready && programIssue.line && <Button size="sm" variant="outline" onClick={locateIssue}>定位到第 {programIssue.line} 行</Button>}
+      </div>}
+      {readingProgram && <p role="status" className="text-xs text-muted-foreground">正在读取程序文件…</p>}
+      {programNotice && <p role="status" className="text-xs text-primary">{programNotice}</p>}
     </section>
-    {currentRun && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开三轴轨迹…</p>}>
+    {currentRun && <div ref={playback} className="scroll-mt-3"><Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开三轴轨迹…</p>}>
       <MotionBench key={currentRun.id} plan={currentRun.plan} />
-    </Suspense>}
+    </Suspense></div>}
   </section>;
 }

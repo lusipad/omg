@@ -6,7 +6,7 @@
 
 [组装 UR5e 取放工位](https://lusipad.com/omg/?view=import&robot=ur5e-pick-place)可以把[UR5e 六轴臂](https://lusipad.com/omg/?view=import&robot=ur5e)、[Robotiq 2F-85 夹爪](https://lusipad.com/omg/?view=import&robot=robotiq-2f85)和独立的 30 mm 方块装成一个场景。点击 **组装取放工位 → 运行仿真**，在 **阶段观测记录** 中比较夹爪与工件的抬升、横移和释放结果。另有 [TurtleBot3 Burger](https://lusipad.com/omg/?view=import&robot=turtlebot3-burger) 可通过左右轮速度试验直行和转向。
 
-[Milo v1.5 三轴铣床](https://lusipad.com/omg/?view=milo)可直接读取官方 BOM。逐个装配 X、Y、Z 后，运行示例或自己的直线插补 G 代码，可以同步回放三轴位置、速度和刀尖轨迹。[装轴步骤与刀路算例](docs/Milo-v1.5三轴铣床.md)
+[Milo v1.5 三轴铣床](https://lusipad.com/omg/?view=milo)可直接读取官方 BOM 并逐个装配 X、Y、Z。打开**[圆形凹槽示例](https://lusipad.com/omg/?view=milo#milo-pocket)**，用 Ø6 mm 平底刀通过 G2/G3 圆弧分三层铣出 Ø30 × 3 mm 的凹槽。拖动时间轴可同步查看剩余毛坯、刀尖轨迹与三轴位置和速度。[下载 G 代码](public/machines/milo-v1-5/circular-pocket.nc) · [装轴步骤与刀路算例](docs/Milo-v1.5三轴铣床.md)
 
 公开站点在浏览器内运行模型。轻量工程可导出 JSON，包含用户物理模型的工程可导出带原始资源的 ZIP。工作台也提供[汇川伺服轴](https://lusipad.com/omg/?view=servo)和 [SO-101 从臂](https://lusipad.com/omg/?view=so101)的专用界面。客户项目、数据库、通用官网资料提取、PDF 转换和在线 AI 生成使用下文的完整服务部署。`npm run build:pages` 生成 `dist/pages`，推送到 `main` 后 GitHub Actions 会构建并发布这个目录。
 

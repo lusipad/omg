@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MILO_MACHINE, MILO_MAX_PROGRAM_CHARS, MiloProgramError, miloDemoGcode, planMiloProgram, sampleMiloMotion } from "../contracts/milo-motion";
+import { MILO_MACHINE, MILO_MAX_PROGRAM_CHARS, MiloProgramError, miloDemoGcode, miloPointOnSegment,
+  miloSegmentFractionAtTime, planMiloProgram, sampleMiloMotion } from "../contracts/milo-motion";
 
 describe("Milo v1.5 的坐标和程序块", () => {
   it("采用参考 FLY-CDYv3 的三轴边界、驱动单位和独立的虚拟工件原点", () => {
@@ -108,6 +109,7 @@ describe("三轴同步的梯形和三角形速度规划", () => {
     expect(sampleMiloMotion(p, -1).timeS).toBe(0);
     expect(sampleMiloMotion(p, p.durationS + 1).positionMm).toEqual([15, 0, 5]);
     expect(sampleMiloMotion(p, p.durationS).pathSpeedMmS).toBe(0);
+    expect(sampleMiloMotion(p, p.durationS - 2 * Number.EPSILON * p.durationS).velocityMmS).toEqual([0, 0, 0]);
     expect(() => sampleMiloMotion(p, NaN)).toThrow();
   });
 
@@ -132,5 +134,127 @@ describe("三轴同步的梯形和三角形速度规划", () => {
     for (const s of p.segments) expect(p.samples.find((pt) => pt.timeS === s.endS)?.velocityMmS).toEqual([0, 0, 0]);
     expect(p.samples.at(-1)?.positionMm).toEqual([0, 0, 8]); expect(p.samples.at(-1)?.velocityMmS).toEqual([0, 0, 0]);
     expect(p.samples.every((point, i) => i === 0 || point.timeS > p.samples[i - 1].timeS)).toBe(true);
+  });
+});
+
+describe("G17 圆弧与螺旋插补", () => {
+  it.each([["G2", 20, 1], ["G3", 0, -1]] as const)("从 +Z 俯视 %s 半圆的中点和速度方向正确", (mode, y, signY) => {
+    const p = planMiloProgram(`G0 X0 Y10\nG17 ${mode} X20 Y10 I10 F720`);
+    const s = p.segments[1], t = (s.startS + s.endS) / 2;
+    expect(s.feedMmMin).toBe(720);
+    expect(s.arc?.centerMm).toEqual([10, 10]);
+    expect(s.arc?.sweepRad).toBeCloseTo(-signY * Math.PI, 12);
+    expect(s.lengthMm).toBeCloseTo(10 * Math.PI, 12);
+    expect(miloSegmentFractionAtTime(s, t)).toBeCloseTo(0.5, 12);
+    const mid = miloPointOnSegment(s, 0.5);
+    expect(mid[0]).toBeCloseTo(10, 11); expect(mid[1]).toBeCloseTo(y, 11);
+    expect(sampleMiloMotion(p, t).velocityMmS[0]).toBeCloseTo(12, 10);
+    expect(sampleMiloMotion(p, t).velocityMmS[1]).toBeCloseTo(0, 10);
+    expect(sampleMiloMotion(p, s.startS + .01).velocityMmS[1] * signY).toBeGreaterThan(0);
+  });
+
+  it("隐式端点和显式同端点都产生整圆，四分点与圆中位置进入图表", () => {
+    for (const end of ["", "X20Y10"]) {
+      const p = planMiloProgram(`G0X20Y10\nG3${end}I-10F600`);
+      const s = p.segments[1];
+      expect(s.arc?.sweepRad).toBe(2 * Math.PI); expect(s.lengthMm).toBeCloseTo(20 * Math.PI, 12);
+      const xs = [20, 10, 0, 10, 20], ys = [10, 20, 10, 0, 10];
+      for (let i = 0; i <= 4; i++) {
+        const xy = miloPointOnSegment(s, i / 4);
+        expect(xy[0]).toBeCloseTo(xs[i], 10); expect(xy[1]).toBeCloseTo(ys[i], 10);
+        expect(p.samples.some((pt) => Math.hypot(pt.positionMm[0] - xs[i], pt.positionMm[1] - ys[i]) < 1e-8)).toBe(true);
+      }
+      expect(miloPointOnSegment(s, -1)).toEqual(s.startMm);
+      expect(miloPointOnSegment(s, 2)).toEqual(s.endMm);
+      expect(sampleMiloMotion(p, s.endS).velocityMmS).toEqual([0, 0, 0]);
+    }
+  });
+
+  it.each([["G3", 10, 1], ["G2", 10, -1], ["G3", -10, 1], ["G2", -10, -1]] as const)(
+    "%s R=%d 在两个可能圆心中选取指定的短弧或长弧", (mode, r, sign) => {
+      const p = planMiloProgram(`G0 X20 Y20\n${mode} X30 R${r} F300`);
+      const s = p.segments[1], arc = s.arc!;
+      const magnitude = r > 0 ? Math.PI / 3 : 5 * Math.PI / 3;
+      expect(arc.sweepRad).toBeCloseTo(sign * magnitude, 10);
+      expect(arc.centerMm[0]).toBeCloseTo(25, 11);
+      expect(arc.centerMm[1]).toBeCloseTo(20 + sign * Math.sign(r) * Math.sqrt(75), 11);
+      expect(s.lengthMm).toBeCloseTo(10 * magnitude, 10);
+      expect(miloPointOnSegment(s, 0.5)[1]).toBeCloseTo(arc.centerMm[1] - sign * 10, 10);
+    });
+
+  it("G91 只改变端点，I/J 非模态，螺旋同步 Z 且使用三维路径进给", () => {
+    const p = planMiloProgram("G0 X20 Y10 Z2\nG91 G91.1 G3 Z-6 I-10 F600\nX-10 Y10 I-10");
+    const helix = p.segments[1], next = p.segments[2], length = Math.hypot(20 * Math.PI, 6);
+    const mid = sampleMiloMotion(p, (helix.startS + helix.endS) / 2);
+    expect(helix.endMm).toEqual([20, 10, -4]);
+    expect(helix.lengthMm).toBeCloseTo(length, 11);
+    expect(mid.positionMm[0]).toBeCloseTo(0, 10); expect(mid.positionMm[2]).toBeCloseTo(-1, 11);
+    expect(mid.velocityMmS[2]).toBeCloseTo(-60 / length, 11);
+    expect(Math.hypot(...mid.velocityMmS)).toBeCloseTo(10, 10);
+    expect(next.mode).toBe("G3"); expect(next.endMm).toEqual([10, 20, -4]);
+    expect(next.arc!.sweepRad).toBeCloseTo(Math.PI / 2, 10); expect(next.feedMmMin).toBe(600);
+    expect(() => planMiloProgram("G0 X20 Y10\nG2 I-10 F100\nX30Y20")).toThrow(/第 3 行.*圆弧/);
+  });
+
+  it("校验实际扫过的极值，圆心在行程外本身不导致误报", () => {
+    expect(() => planMiloProgram("G0 X0 Y-9\nG3 X10 Y-9 I5 F120")).toThrow(/第 2 行.*圆弧.*Y.*行程/);
+    expect(() => planMiloProgram("G0 X0 Y-9\nG2 X10 Y-9 I5 F120")).not.toThrow();
+    expect(() => planMiloProgram("G0 X2 Y0\nG3 X2 Y2 R300 F120")).not.toThrow();
+    expect(() => planMiloProgram("G0 X0 Y0\nG2 I-6 F200")).toThrow(/第 2 行.*X.*行程/);
+  });
+
+  it.each([1e9, 1e10])("接近直线的 R=%d 弧沿端点边界向外鼓出时拒绝，向内时保留", (radius) => {
+    for (const [edge, outward, inward] of [[-10, "G3", "G2"], [198, "G2", "G3"]] as const) {
+      const code = (mode: string, y: number) => `G0 X10 Y${y} Z0\n${mode} X60 Y${y} R${radius} F600`;
+      expect(() => planMiloProgram(code(outward, edge))).toThrow(/第 2 行.*Y.*行程/);
+      expect(() => planMiloProgram(code(inward, edge))).not.toThrow();
+      const halfChord = 25, sagitta = halfChord ** 2 / (radius + Math.sqrt((radius - halfChord) * (radius + halfChord)));
+      const touchHeight = edge + (edge < 0 ? sagitta : -sagitta);
+      const tangent = planMiloProgram(code(outward, touchHeight)).segments[1];
+      expect(miloPointOnSegment(tangent, .5)[1]).toBeCloseTo(edge, 12);
+      expect(() => planMiloProgram(code(outward, (edge + touchHeight) / 2))).toThrow(/第 2 行.*Y.*行程/);
+    }
+    for (const [x, outward, inward] of [[-10, "G2", "G3"], [325, "G3", "G2"]] as const) {
+      const code = (mode: string) => `G0 X${x} Y10\n${mode} Y60 R${radius} F600`;
+      expect(() => planMiloProgram(code(outward))).toThrow(/第 2 行.*X.*行程/);
+      expect(() => planMiloProgram(code(inward))).not.toThrow();
+    }
+  });
+
+  it("高进给小圆按向心和切向加速度联合限速，无中间停顿", () => {
+    const p = planMiloProgram("G0 X30.6 Y30\nG3 I-.6 F60000"), s = p.segments[1];
+    expect(s.peakSpeedMmS).toBeLessThan(Math.sqrt(200 * .6));
+    let maximumXYAcceleration = 0;
+    for (let i = 1; i < 100; i++) {
+      const t = s.startS + (s.endS - s.startS) * i / 100, h = 1e-6;
+      const before = sampleMiloMotion(p, t - h), now = sampleMiloMotion(p, t), after = sampleMiloMotion(p, t + h);
+      expect(now.pathSpeedMmS).toBeGreaterThan(0);
+      expect(Math.hypot(now.positionMm[0] - 30, now.positionMm[1] - 30)).toBeCloseTo(.6, 10);
+      const acceleration = now.velocityMmS.map((actual, axis) => {
+        expect((after.positionMm[axis] - before.positionMm[axis]) / (2 * h)).toBeCloseTo(actual, 6);
+        return (after.velocityMmS[axis] - before.velocityMmS[axis]) / (2 * h);
+      });
+      maximumXYAcceleration = Math.max(maximumXYAcceleration, Math.hypot(acceleration[0], acceleration[1]));
+    }
+    expect(maximumXYAcceleration).toBeGreaterThan(140);
+    expect(maximumXYAcceleration).toBeLessThanOrEqual(200.0001);
+  });
+
+  it("仅对微小坐标舍入作有记录的最小圆心修正，仍严格通过两个端点", () => {
+    const s = planMiloProgram("G0X20Y20\nG3X30.0003Y30I0J10F300").segments[1];
+    expect(s.arc!.requestedCenterMm).toEqual([20, 30]);
+    expect(s.arc!.centerAdjustmentMm).toBeGreaterThan(0); expect(s.arc!.centerAdjustmentMm).toBeLessThan(.001);
+    const [cx, cy] = s.arc!.centerMm;
+    expect(Math.hypot(s.startMm[0] - cx, s.startMm[1] - cy)).toBeCloseTo(Math.hypot(s.endMm[0] - cx, s.endMm[1] - cy), 11);
+    expect(miloPointOnSegment(s, 1)).toEqual([30.0003, 30, 5]);
+  });
+
+  it.each([
+    ["G2 X30 Y30 I0 J9", "半径不一致"], ["G3 I0 J0", "半径"], ["G3 X30 R4", "直径"],
+    ["G3 R10", "端点重合"], ["G3 X20Y20R-10", "端点重合"], ["G2 X30 R10 I5", "同时"],
+    ["G2 X30 R0", "半径"], ["G18", "平面"], ["G19", "平面"], ["G1 X30 I5", "仅适用于"],
+    ["G2 X30 K1", "K"], ["G2 I5 P2", "P"], ["G3 I5 J1 J2", "重复"],
+  ])("错误圆弧按实际行列报告：%s", (code, pattern) => {
+    expect(() => planMiloProgram("G0 X20 Y20 F300\n" + code)).toThrow(new RegExp("第 2 行.*" + pattern));
   });
 });
