@@ -2,19 +2,24 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { Box, Check, Download, FileUp, FolderOpen, Play } from "lucide-react";
 import { parseImportCatalog, type ModelBundle, type ModelFile, type ModelRef } from "@contracts/import-catalog";
 import type { ImportedRunSettings } from "@contracts/imported-physics";
+import { ROBOT_EXAMPLES, type RobotExample } from "@contracts/robot-examples";
 import { makeStaticMeshBundle } from "@contracts/mesh-model";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { describeModel, exportModelBundle, getModelBundle, ProjectArchiveFileError, putModelBundle, readModelFiles } from "@/lib/model-files";
 import { downloadFile } from "@/lib/download";
+import { fetchRobotExample } from "@/lib/robot-example-files";
 import { Button } from "@/components/ui/button";
+import RobotExamples from "./RobotExamples";
 
 const ImportedPhysicsWorkbench = lazy(() => import("./ImportedPhysicsWorkbench"));
 type Selection = { files: ModelFile[]; entries: string[] };
-type Candidate = { ref: ModelRef; bundle: ModelBundle; version: number; stored: boolean };
+type Candidate = { ref: ModelRef; bundle: ModelBundle; version: number; stored: boolean; example?: RobotExample };
 type Props = {
   workspace: TwinWorkspace;
   onChange: (workspace: TwinWorkspace) => void;
   requested: ModelRef | null;
+  robotId: string | null;
+  onLocalChoice: () => void;
   onOpenProject: (file: File) => Promise<void>;
 };
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : "模型操作失败，请重新选择文件。";
@@ -25,7 +30,7 @@ function withModel(current: TwinWorkspace, ref: ModelRef): TwinWorkspace {
   return { ...current, catalog: parseImportCatalog({ ...catalog, models: [...catalog.models, ref] }, current.packages) };
 }
 
-export default function ImportCenterPhysics({ workspace, onChange, requested, onOpenProject }: Props) {
+export default function ImportCenterPhysics({ workspace, onChange, requested, onOpenProject, robotId, onLocalChoice }: Props) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [entry, setEntry] = useState("");
@@ -34,22 +39,42 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const file = useRef<HTMLInputElement>(null), folder = useRef<HTMLInputElement>(null);
+  const preview = useRef<HTMLElement>(null);
+  const gallery = useRef<HTMLDivElement>(null);
+  const positioned = useRef(0);
+  const activeRobot = useRef<string | null>(null);
+  const reading = useRef<AbortController | null>(null);
   const version = useRef(0);
   const lastRun = useRef<{ version: number; settings: ImportedRunSettings } | null>(null);
-  const latest = useRef({ workspace, onChange });
-  useEffect(() => { latest.current = { workspace, onChange }; }, [workspace, onChange]);
+  const latest = useRef({ workspace, onChange, onOpenProject });
+  useEffect(() => { latest.current = { workspace, onChange, onOpenProject }; }, [workspace, onChange, onOpenProject]);
   const models = workspace.catalog?.models ?? [];
   const installed = models.find((model) => model.id === candidate?.ref.id);
+  const robot = ROBOT_EXAMPLES.find((example) => example.id === robotId);
+  const recommendation = candidate?.example ?? (candidate?.stored && installed ? ROBOT_EXAMPLES.find((example) => example.modelId === installed.id) : undefined);
+  const showCandidate = candidate?.example ? candidate.example.id === robotId : robotId === null;
 
-  function start(label: string) {
+  const start = useCallback((label: string) => {
+    reading.current?.abort(); reading.current = null;
     setCandidate(null); setReady(false); setBusy(label); setError(""); setNotice("");
     return ++version.current;
+  }, []);
+
+  function localChoice() {
+    activeRobot.current = null;
+    onLocalChoice();
+  }
+
+  function focusPreview() {
+    preview.current?.focus({ preventScroll: true });
+    preview.current?.scrollIntoView({ block: "start" });
   }
 
   const openStored = useCallback(async (ref: ModelRef) => {
-    const request = ++version.current;
-    setSelection(null); setEntry(ref.entry); setCandidate(null); setReady(false); setError(""); setNotice(""); setBusy("正在打开已安装模型…");
+    const request = start("正在打开已安装模型…");
+    setSelection(null); setEntry(ref.entry);
     try {
       const bundle = await getModelBundle(ref.id);
       if (!bundle) throw new Error("缺少本地模型文件，请重新导入原始模型或工程 ZIP。");
@@ -57,37 +82,59 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
     } catch (cause) {
       if (version.current === request) setError(errorText(cause));
     } finally { if (version.current === request) setBusy(""); }
-  }, []);
+  }, [start]);
 
   useEffect(() => {
     if (requested) void openStored(requested);
   }, [requested, openStored]);
-  useEffect(() => () => { version.current++; }, []);
+  useEffect(() => () => { version.current++; reading.current?.abort(); }, []);
 
-  async function prepare(bundle: ModelBundle, request: number) {
+  const prepare = useCallback(async (bundle: ModelBundle, request: number, example?: RobotExample) => {
     if (version.current !== request) return;
     const ref = await describeModel(bundle);
-    if (version.current === request) setCandidate({ ref, bundle, version: request, stored: false });
-  }
+    if (example && ref.id !== example.modelId) throw new Error("模型的入口或文件内容与机器人目录不一致，请刷新页面后重试。");
+    if (version.current === request) setCandidate({ ref: example ? { ...ref, name: example.name } : ref, bundle, version: request, stored: false, example });
+  }, []);
 
-  async function selectFiles(files: File[] | "sample") {
-    const request = start("正在读取模型文件…");
+  const selectFiles = useCallback(async (input: File[] | "sample" | RobotExample) => {
+    const example = input !== "sample" && !Array.isArray(input) ? input : undefined;
+    const localRef = example && latest.current.workspace.catalog?.models.find((model) => model.id === example.modelId);
+    const request = start(localRef ? "正在校验本机模型文件…" : example ? `正在下载并校验 ${example.name}…` : "正在读取模型文件…");
+    const controller = new AbortController();
+    reading.current = controller;
     setSelection(null); setEntry(""); setUnit("");
     try {
-      if (files === "sample") {
-        const response = await fetch(`${import.meta.env.BASE_URL}examples/spring-carriage.xml`);
+      if (example && localRef) {
+        const cached = await getModelBundle(localRef.id).catch(() => null);
+        if (controller.signal.aborted || version.current !== request) return;
+        if (cached?.entry === example.entry) {
+          setEntry(cached.entry);
+          setCandidate({ ref: localRef, bundle: cached, version: request, stored: true, example });
+          return;
+        }
+        setBusy(`正在下载并校验 ${example.name}…`);
+      }
+      let files: File[];
+      if (input === "sample") {
+        const response = await fetch(`${import.meta.env.BASE_URL}examples/spring-carriage.xml`, { signal: controller.signal });
         if (!response.ok) throw new Error("未能读取弹簧滑台示例文件，请重试。");
         files = [new File([await response.blob()], "spring-carriage.xml", { type: "application/xml" })];
-      }
+      } else if (Array.isArray(input)) files = input;
+      else files = [await fetchRobotExample(input, controller.signal)];
       if (version.current !== request) return;
       let source: Selection;
       try { source = await readModelFiles(files); }
       catch (cause) {
-        if (!(cause instanceof ProjectArchiveFileError) || files.length !== 1) throw cause;
-        if (version.current === request) await onOpenProject(files[0]);
+        if (example || !(cause instanceof ProjectArchiveFileError) || files.length !== 1) throw cause;
+        if (version.current === request) await latest.current.onOpenProject(files[0]);
         return;
       }
       if (version.current !== request) return;
+      if (example) {
+        if (!source.entries.includes(example.entry)) throw new Error(`模型包中缺少目录指定的入口 ${example.entry}。`);
+        setEntry(example.entry); await prepare({ entry: example.entry, files: source.files }, request, example);
+        return;
+      }
       setSelection(source);
       if (!source.entries.length) {
         const meshes = source.files.filter((item) => /\.(stl|obj)$/i.test(item.path));
@@ -96,8 +143,35 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
       } else if (source.entries.length === 1) {
         setEntry(source.entries[0]); await prepare({ entry: source.entries[0], files: source.files }, request);
       }
-    } catch (cause) { if (version.current === request) setError(errorText(cause)); }
-    finally { if (version.current === request) setBusy(""); }
+    } catch (cause) { if (!controller.signal.aborted && version.current === request) setError(errorText(cause)); }
+    finally { if (version.current === request) { setBusy(""); reading.current = null; } }
+  }, [start, prepare]);
+
+  useEffect(() => {
+    let current = true;
+    // 延迟到本轮挂载稳定，避免 StrictMode 的探测挂载也下载一份 ZIP。
+    queueMicrotask(() => {
+      if (!current) return;
+      if (robotId === null) {
+        if (activeRobot.current !== null) { activeRobot.current = null; start(""); setSelection(null); setEntry(""); }
+        return;
+      }
+      activeRobot.current = robotId;
+      if (robot) void selectFiles(robot);
+      else { start(""); setSelection(null); setEntry(""); setError("目录中没有这个机器人，请从下方选择。"); }
+      focusPreview();
+    });
+    return () => { current = false; if (robotId !== null && activeRobot.current === robotId) reading.current?.abort(); };
+  }, [robotId, robot, attempt, start, selectFiles]);
+
+  function chooseLocal(input: File[] | "sample") {
+    localChoice();
+    void selectFiles(input);
+  }
+
+  function closeExample() {
+    localChoice(); start(""); setSelection(null); setEntry("");
+    requestAnimationFrame(() => gallery.current?.scrollIntoView({ block: "start" }));
   }
 
   async function selectEntry(path: string) {
@@ -118,7 +192,14 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
   }
 
   const compiled = useCallback((ok: boolean) => {
-    if (candidate && version.current === candidate.version) setReady(ok);
+    if (!candidate || version.current !== candidate.version) return;
+    setReady(ok);
+    if (ok && candidate.example && positioned.current !== candidate.version) {
+      positioned.current = candidate.version;
+      requestAnimationFrame(() => {
+        if (version.current === candidate.version && document.activeElement === preview.current) preview.current?.scrollIntoView({ block: "start" });
+      });
+    }
   }, [candidate]);
 
   function recordRun(settings: ImportedRunSettings) {
@@ -169,15 +250,15 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
         <h3 className="text-base font-semibold">导入物理模型</h3>
         <p className="text-sm leading-6 text-muted-foreground">支持 MJCF、URDF，以及 STL、OBJ 网格。引用网格、纹理或其他 XML 时，请选择保留原目录结构的 ZIP 或文件夹。</p>
         <input ref={file} type="file" multiple accept=".xml,.mjcf,.urdf,.zip,.mjz,.stl,.obj,.msh,.mtl,.png,.jpg,.jpeg,.bmp,.bin,.ply" aria-label="选择物理模型文件" className="hidden" onChange={(event) => {
-          const chosen = Array.from(event.target.files ?? []); event.target.value = ""; if (chosen.length) void selectFiles(chosen);
+          const chosen = Array.from(event.target.files ?? []); event.target.value = ""; if (chosen.length) chooseLocal(chosen);
         }} />
         <input ref={folder} type="file" multiple {...{ webkitdirectory: "" }} aria-label="选择模型目录" className="hidden" onChange={(event) => {
-          const chosen = Array.from(event.target.files ?? []); event.target.value = ""; if (chosen.length) void selectFiles(chosen);
+          const chosen = Array.from(event.target.files ?? []); event.target.value = ""; if (chosen.length) chooseLocal(chosen);
         }} />
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => file.current?.click()}><FileUp />选择模型文件或 ZIP</Button>
           <Button variant="outline" onClick={() => folder.current?.click()}><FolderOpen />选择模型目录</Button>
-          <Button variant="ghost" onClick={() => void selectFiles("sample")}>试用弹簧滑台文件</Button>
+          <Button variant="ghost" onClick={() => chooseLocal("sample")}>试用弹簧滑台文件</Button>
         </div>
         {selection && selection.entries.length > 1 && <label className="block"><span className="field-label">模型入口文件</span>
           <select aria-label="模型入口文件" className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={entry} onChange={(event) => void selectEntry(event.target.value)}>
@@ -196,9 +277,11 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
           </div>
           <Button size="sm" variant="outline" disabled={!entry || !unit || Boolean(busy)} onClick={() => void previewMesh()}>预览固定几何</Button>
         </div>}
-        {busy && <p role="status" className="text-xs text-muted-foreground">{busy}</p>}
-        {notice && <p role="status" className="text-sm text-primary">{notice}</p>}
-        {error && <p role="alert" className="whitespace-pre-line break-words text-sm text-destructive">{error}</p>}
+        {robotId === null && <>
+          {busy && <p role="status" className="text-xs text-muted-foreground">{busy}</p>}
+          {notice && <p role="status" className="text-sm text-primary">{notice}</p>}
+          {error && <p role="alert" className="whitespace-pre-line break-words text-sm text-destructive">{error}</p>}
+        </>}
       </section>
       <section className="surface min-w-0 p-4 sm:p-5">
         <h3 className="text-base font-semibold">已安装物理模型 <span className="mono text-sm text-muted-foreground">{models.length}</span></h3>
@@ -206,23 +289,39 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
         <ul className="mt-2 max-h-64 divide-y overflow-y-auto">{models.map((model) => <li key={model.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
           <div className="min-w-0"><p className="break-all text-sm font-medium">{model.name}</p><p className="break-all text-xs text-muted-foreground" title={model.id}>{model.entry} · {model.id.slice(0, 10)}</p></div>
           <div className="flex flex-wrap gap-1">
-            <Button variant="outline" size="sm" onClick={() => void openStored(model)}><Play />打开模型</Button>
+            <Button variant="outline" size="sm" onClick={() => { localChoice(); void openStored(model); }}><Play />打开模型</Button>
             <Button variant="ghost" size="sm" onClick={() => void download(model)}><Download />下载模型 ZIP</Button>
           </div>
         </li>)}</ul>
       </section>
     </div>
-    {candidate && <section className="surface min-w-0 space-y-4 p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0"><h3 className="flex items-center gap-2 break-all text-base font-semibold"><Box className="size-4 shrink-0 text-primary" />{installed?.name ?? candidate.ref.name}</h3>
+    {(robotId !== null || candidate) && <section ref={preview} tabIndex={-1} aria-label="所选模型预览" className="surface min-w-0 scroll-mt-4 space-y-4 p-4 outline-none sm:p-5">
+      {candidate && showCandidate ? <><div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0"><h3 className="flex items-center gap-2 break-all text-base font-semibold"><Box className="size-4 shrink-0 text-primary" />{candidate.example?.name ?? installed?.name ?? candidate.ref.name}</h3>
           <p className="mt-1 break-all text-xs text-muted-foreground">{candidate.bundle.entry} · {candidate.bundle.files.length} 个文件</p>
         </div>
-        {installed && candidate.stored ? <span className="inline-flex items-center gap-1 text-xs text-primary"><Check className="size-4" />已安装</span> :
-          <Button disabled={!ready || Boolean(busy)} onClick={() => void install()}>安装物理模型</Button>}
+        <div className="flex flex-wrap items-center gap-2">
+          {candidate.example && <Button size="sm" variant="ghost" onClick={closeExample}>返回机器人目录</Button>}
+          {installed && candidate.stored ? <span className="inline-flex items-center gap-1 text-xs text-primary"><Check className="size-4" />已安装</span> :
+            <Button disabled={!ready || Boolean(busy)} onClick={() => void install()}>安装物理模型</Button>}
+        </div>
       </div>
       <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">正在加载模型预览…</p>}>
-        <ImportedPhysicsWorkbench key={candidate.version} bundle={candidate.bundle} onReady={compiled} initialSettings={installed?.run ?? candidate.ref.run} onRun={recordRun} />
-      </Suspense>
+        <ImportedPhysicsWorkbench key={candidate.version} bundle={candidate.bundle} onReady={compiled} initialSettings={installed?.run ?? candidate.ref.run ?? recommendation?.trial}
+          preferredKeyframe={recommendation?.preferredKeyframe} onRun={recordRun} />
+      </Suspense></> : <h3 className="text-base font-semibold">{robot?.name ?? "机器人目录"}</h3>}
+      {robotId !== null && <>
+        {busy && <p role="status" className="text-sm text-muted-foreground">{busy}</p>}
+        {notice && <p role="status" className="text-sm text-primary">{notice}</p>}
+        {error && <p role="alert" className="whitespace-pre-line break-words text-sm text-destructive">{error}</p>}
+        {(!candidate || !showCandidate) && <div className="flex flex-wrap gap-2">
+          {error && robot && <Button size="sm" variant="outline" onClick={() => setAttempt((value) => value + 1)}>重试下载</Button>}
+          <Button size="sm" variant="ghost" onClick={closeExample}>返回机器人目录</Button>
+        </div>}
+      </>}
     </section>}
+    <div ref={gallery} className="scroll-mt-4">
+      <RobotExamples selectedId={robotId} onReselect={() => { if (error && !candidate) setAttempt((value) => value + 1); focusPreview(); }} />
+    </div>
   </div>;
 }

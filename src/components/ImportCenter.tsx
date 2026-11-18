@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { Boxes, FileJson, FileText, FolderInput, Package, Upload } from "lucide-react";
 import { packageKey, parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
 import { installPackage, type TwinWorkspace } from "@contracts/twin-simulation";
@@ -91,22 +92,30 @@ const modes = [
 export default function ImportCenter({ workspace, onChange, onOpenDevice, onUseSource, onOpenProject }: Props) {
   const [mode, setMode] = useState<(typeof modes)[number]["key"]>("physics");
   const [requested, setRequested] = useState<ModelRef | null>(null);
+  const [search, setSearch] = useSearchParams();
+  const robotId = search.get("robot");
+  const visibleMode = robotId === null ? mode : "physics";
+  function clearRobot() {
+    if (robotId === null) return;
+    setSearch((previous) => { const next = new URLSearchParams(previous); next.delete("robot"); return next; }, { preventScrollReset: true });
+  }
   return <section className="min-w-0 space-y-4" aria-label="导入中心">
     <div className="surface flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5">
       <div className="min-w-0">
         <h2 className="flex items-center gap-2 text-lg font-semibold"><FolderInput className="size-5 text-primary" />导入自己的模型和资料</h2>
       </div>
       <div className="flex flex-wrap gap-1.5" aria-label="导入类型">
-        {modes.map(({ key, title, icon: Icon }) => <Button key={key} size="sm" variant={mode === key ? "default" : "outline"} aria-pressed={mode === key} onClick={() => {
-          if (mode !== key) { setRequested(null); setMode(key); }
+        {modes.map(({ key, title, icon: Icon }) => <Button key={key} size="sm" variant={visibleMode === key ? "default" : "outline"} aria-pressed={visibleMode === key} onClick={() => {
+          if (visibleMode !== key) { setRequested(null); setMode(key); clearRobot(); }
         }}><Icon />{title}</Button>)}
       </div>
     </div>
-    {mode === "physics" && <Suspense fallback={<p role="status" className="p-4 text-sm">正在打开模型库…</p>}>
-      <ImportCenterPhysics workspace={workspace} onChange={onChange} requested={requested} onOpenProject={onOpenProject} />
+    {visibleMode === "physics" && <Suspense fallback={<p role="status" className="p-4 text-sm">正在打开模型库…</p>}>
+      <ImportCenterPhysics workspace={workspace} onChange={onChange} requested={requested} onOpenProject={onOpenProject} robotId={robotId}
+        onLocalChoice={() => { setMode("physics"); clearRobot(); }} />
     </Suspense>}
-    {mode === "device" && <DeviceImport workspace={workspace} onChange={onChange} onOpenDevice={onOpenDevice} onOpenProject={onOpenProject} />}
-    {mode === "material" && <ImportCenterMaterials workspace={workspace} onChange={onChange} onOpenDevice={onOpenDevice} onUseSource={onUseSource}
+    {visibleMode === "device" && <DeviceImport workspace={workspace} onChange={onChange} onOpenDevice={onOpenDevice} onOpenProject={onOpenProject} />}
+    {visibleMode === "material" && <ImportCenterMaterials workspace={workspace} onChange={onChange} onOpenDevice={onOpenDevice} onUseSource={onUseSource}
       onOpenPhysics={(ref) => { setRequested(ref); setMode("physics"); }} />}
   </section>;
 }

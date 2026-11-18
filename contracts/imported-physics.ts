@@ -19,6 +19,11 @@ export interface ImportedSample {
   // 每个 geom 的世界位姿为米制 xyz 和 xyzw 四元数。
   geomPoses: Float32Array;
 }
+export interface ImportedInitialPose {
+  initial: ImportedSample;
+  controls: number[];
+  pointsM: ImportedVector[];
+}
 export interface ImportedModelInfo {
   timestepS: number;
   gravity: ImportedVector;
@@ -27,15 +32,17 @@ export interface ImportedModelInfo {
   positions: { name: string; unit: string }[];
   velocities: { name: string; unit: string }[];
   points: { id: string; name: string; kind: "site" | "body"; initialM: ImportedVector }[];
+  keyframes: string[];
   geometry: ImportedGeometry;
   warnings: string[];
   initial: ImportedSample;
 }
-export interface ImportedRunSettings { durationS: number; controls: number[]; pointId: string }
+export interface ImportedRunSettings { durationS: number; controls: number[]; pointId: string; keyframe?: string }
 export interface ImportedPhysics {
   info: ImportedModelInfo;
+  previewKeyframe(name: string): Promise<ImportedInitialPose>;
   run(settings: ImportedRunSettings): Promise<ImportedSample[]>;
   dispose(): void;
 }
-export type ImportedWorkerRequest = { type: "open"; bundle: ModelBundle } | { type: "run"; settings: ImportedRunSettings };
-export type ImportedWorkerResponse = { type: "loaded"; info: ImportedModelInfo } | { type: "ran"; samples: ImportedSample[] } | { type: "error"; message: string };
+export type ImportedWorkerRequest = { type: "open"; bundle: ModelBundle } | { type: "pose"; name: string } | { type: "run"; settings: ImportedRunSettings };
+export type ImportedWorkerResponse = { type: "loaded"; info: ImportedModelInfo } | { type: "pose"; state: ImportedInitialPose } | { type: "ran"; samples: ImportedSample[] } | { type: "error"; message: string };

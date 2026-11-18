@@ -350,7 +350,7 @@ export async function inspectModelSources(bundle: ModelBundle, assetPaths?: Set<
   return (await inspectModel(bundle, assetPaths)).sources;
 }
 
-async function digest(data: Uint8Array) {
+export async function sha256Hex(data: Uint8Array) {
   const buffer = data.buffer instanceof ArrayBuffer ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : data.slice();
   const hash = await crypto.subtle.digest("SHA-256", buffer);
   return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -362,8 +362,8 @@ export async function describeModel(bundle: ModelBundle): Promise<ModelRef> {
   const { name } = await inspectModel(bundle);
   const manifest = [];
   const files = [...bundle.files].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-  for (const f of files) manifest.push([f.path, await digest(f.data)]);
-  return { id: await digest(encode.encode(JSON.stringify([bundle.entry, manifest]))), name, entry: bundle.entry };
+  for (const f of files) manifest.push([f.path, await sha256Hex(f.data)]);
+  return { id: await sha256Hex(encode.encode(JSON.stringify([bundle.entry, manifest]))), name, entry: bundle.entry };
 }
 
 async function verifyModel(ref: ModelRef, bundle: ModelBundle) {

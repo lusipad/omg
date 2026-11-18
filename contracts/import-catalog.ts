@@ -22,6 +22,7 @@ const runSettings = z.strictObject({
   durationS: z.number().finite().positive().max(IMPORTED_PHYSICS_LIMITS.maxDurationS),
   controls: z.array(z.number().finite()).max(256),
   pointId: text(240),
+  keyframe: z.string().min(1).optional(),
 });
 const modelRefSchema = z.strictObject({ id, name: text(300), entry, run: runSettings.optional() });
 const bindingSchema = z.discriminatedUnion("kind", [

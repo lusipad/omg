@@ -54,6 +54,7 @@ export default function TwinStudio() {
   function setTab(value: string) {
     setSearch((previous) => {
       const next = new URLSearchParams(previous);
+      next.delete("robot");
       if (value === defaultTab) next.delete("view");
       else next.set("view", value);
       return next;

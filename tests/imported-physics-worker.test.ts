@@ -12,7 +12,7 @@ class WorkerDouble {
 const bundle = { entry: "a.xml", files: [{ path: "a.xml", data: new Uint8Array() }] };
 const settings = { durationS: 1, controls: [], pointId: "body:0" };
 const initial = { timeS: 0, qpos: [], qvel: [], pointM: [0, 0, 0] as [number, number, number], geomPoses: new Float32Array() };
-const info = { timestepS: 0.002, gravity: initial.pointM, joints: [], actuators: [], positions: [], velocities: [], points: [], warnings: [],
+const info = { timestepS: 0.002, gravity: initial.pointM, joints: [], actuators: [], positions: [], velocities: [], points: [], keyframes: [], warnings: [],
   geometry: { geoms: [], meshes: [], centerM: initial.pointM, extentM: 1 }, initial };
 
 beforeEach(() => {
@@ -23,6 +23,22 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("独立计算线程的生命周期", () => {
+  it("按需取选中的命名姿态，后续运行共享同一编译模型", async () => {
+    const opening = loadImportedPhysics(bundle);
+    const worker = WorkerDouble.last;
+    worker.onmessage!({ data: { type: "loaded", info: { ...info, keyframes: ["pose A"] } } });
+    const engine = await opening;
+    const first = engine.previewKeyframe("pose A");
+    expect(worker.postMessage).toHaveBeenLastCalledWith({ type: "pose", name: "pose A" });
+    const state = { initial, controls: [2], pointsM: [initial.pointM] };
+    worker.onmessage!({ data: { type: "pose", state } });
+    await expect(first).resolves.toBe(state);
+    const request = { ...settings, keyframe: "pose A" }, next = engine.run(request);
+    expect(worker.postMessage).toHaveBeenLastCalledWith({ type: "run", settings: request });
+    worker.onmessage!({ data: { type: "ran", samples: [initial] } });
+    await expect(next).resolves.toEqual([initial]);
+    engine.dispose();
+  });
   it("编译中取消会回收线程并拒绝未完成的加载", async () => {
     const controller = new AbortController();
     const pending = loadImportedPhysics(bundle, controller.signal);

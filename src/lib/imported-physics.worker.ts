@@ -20,6 +20,10 @@ port.onmessage = async ({ data }) => {
       const { info } = physics;
       const buffers = info.geometry.meshes.flatMap((mesh) => [mesh.vertices.buffer, mesh.indices.buffer] as ArrayBuffer[]);
       port.postMessage({ type: "loaded", info }, buffers);
+    } else if (data.type === "pose") {
+      if (!physics) throw new Error("请先编译模型。");
+      const state = physics.previewKeyframe(data.name);
+      port.postMessage({ type: "pose", state }, [state.initial.geomPoses.buffer as ArrayBuffer]);
     } else {
       if (!physics) throw new Error("请先编译模型。");
       const samples = physics.run(data.settings);

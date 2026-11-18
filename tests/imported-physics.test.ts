@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import loadMujoco, { type MainModule, type MjModel } from "@mujoco/mujoco";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import type { ModelBundle } from "../contracts/import-catalog";
+import { parseImportCatalog, type ModelBundle } from "../contracts/import-catalog";
 import { createImportedPhysics } from "../src/lib/imported-physics-core";
 import { compileImportedModel } from "../src/lib/imported-physics-model";
 
@@ -22,6 +22,49 @@ beforeAll(async () => {
   mj = await loadMujoco({ wasmBinary: wasm });
 }, 20_000);
 afterEach(() => { for (const model of models.splice(0)) model.delete(); });
+
+const framedSlide = `<mujoco><option gravity="0 0 0" timestep=".01"/><worldbody><body>
+  <joint name="travel" type="slide" axis="1 0 0"/><geom type="box" size=".1 .1 .1" mass="1"/>
+  <site name="probe" pos=".2 0 0"/><site name="back" pos="-.3 0 0"/></body></worldbody>
+  <actuator><motor joint="travel" name="force" ctrlrange="-10 10"/></actuator>
+  <keyframe><key/><key name="offset" time="7" qpos="1.5" qvel=".4" ctrl="3"/>
+  <key name="reverse" time="9" qpos="-.5" qvel="-.2" ctrl="-2"/></keyframe></mujoco>`;
+
+describe("模型命名关键帧", () => {
+  it("按名称载入原始关节、控制和各观测点，保留模型默认状态", async () => {
+    const engine = await open(bundle(framedSlide));
+    expect(engine.info.keyframes).toEqual(["offset", "reverse"]);
+    const offset = engine.previewKeyframe("offset");
+    expect(offset.initial).toMatchObject({ timeS: 0, qpos: [1.5], qvel: [.4] });
+    expect(offset.controls).toEqual([3]);
+    expect(offset.pointsM.slice(0, 2)).toEqual([[1.7, 0, 0], [1.2, 0, 0]]);
+    expect(engine.previewKeyframe("reverse").controls).toEqual([-2]);
+    expect(engine.info.initial.qpos).toEqual([0]);
+    expect(engine.info.actuators[0].initial).toBe(0);
+    expect(() => engine.previewKeyframe("missing")).toThrow(/找不到初始关键帧/);
+  });
+  it("从同一上游姿态零时刻起步，恒定控制可覆盖 key_ctrl，旧工况仍从 qpos0 运行", async () => {
+    const engine = await open(bundle(framedSlide));
+    const settings = { durationS: .1, controls: [3], pointId: "site:1", keyframe: "offset" };
+    const frames = engine.run(settings);
+    expect(frames[0]).toMatchObject({ timeS: 0, qpos: [1.5], qvel: [.4], pointM: [1.2, 0, 0] });
+    expect(frames.at(-1)!.timeS).toBeCloseTo(.1, 12);
+    expect(frames.at(-1)!.qvel[0]).toBeCloseTo(.7, 10);
+    const overridden = engine.run({ ...settings, controls: [0] });
+    expect(overridden.at(-1)!.qvel[0]).toBeCloseTo(.4, 10);
+    expect(overridden.at(-1)!.qpos[0]).toBeCloseTo(1.54, 10);
+    expect(engine.run({ durationS: .1, controls: [0], pointId: "site:0" })[0].qpos).toEqual([0]);
+    expect(() => engine.run({ ...settings, keyframe: "missing" })).toThrow(/找不到初始关键帧/);
+  });
+  it("工程记录按原名往返，旧版本没有关键帧字段时不补入推荐站姿", () => {
+    const run = { durationS: .1, controls: [3], pointId: "site:0" };
+    const model = { id: "a".repeat(64), name: "slide", entry: "slide.xml" };
+    for (const settings of [run, { ...run, keyframe: "offset" }]) {
+      const exported = JSON.stringify({ models: [{ ...model, run: settings }], materials: [] });
+      expect(parseImportCatalog(JSON.parse(exported), []).models[0].run).toEqual(settings);
+    }
+  });
+});
 
 const falling = '<mujoco><worldbody><body name="落体" pos="0 0 2"><freejoint name="浮动"/><geom type="sphere" size=".04"/><site name="偏置标记" pos=".1 0 .02"/></body></worldbody></mujoco>';
 const slider = '<mujoco><compiler angle="radian"/><option gravity="0 0 0"/><worldbody><body name="滑台"><joint type="slide" axis="1 0 0" name="行程" range="-.3 .3"/><geom type="box" size=".02 .03 .04" mass=".2"/><body><joint type="hinge" name="转轴" range="-1 1"/><geom type="sphere" size=".02" mass=".005"/></body></body></worldbody><actuator><position joint="行程" name="滑台指令" ctrlrange="-.2 .2" kp="100" kv="3"/><motor joint="转轴" name="转矩输入" ctrlrange="-1 1"/></actuator></mujoco>';

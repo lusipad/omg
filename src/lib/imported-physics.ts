@@ -47,6 +47,11 @@ export async function loadImportedPhysics(bundle: ModelBundle, signal?: AbortSig
     if (loaded.type !== "loaded") throw new Error("计算线程未返回模型信息。");
     return {
       info: loaded.info,
+      async previewKeyframe(name) {
+        const result = await request({ type: "pose", name }, 20_000);
+        if (result.type !== "pose") throw new Error("计算线程未返回初始关键帧。");
+        return result.state;
+      },
       async run(settings) {
         const result = await request({ type: "run", settings }, 20_000);
         if (result.type !== "ran") throw new Error("计算线程未返回仿真结果。");

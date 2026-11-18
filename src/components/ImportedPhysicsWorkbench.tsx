@@ -1,20 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Pause, Play, RotateCcw } from "lucide-react";
 import type { ModelBundle } from "@contracts/import-catalog";
-import { IMPORTED_PHYSICS_LIMITS, type ImportedModelInfo, type ImportedPhysics, type ImportedRunSettings, type ImportedSample } from "@contracts/imported-physics";
+import { IMPORTED_PHYSICS_LIMITS, type ImportedInitialPose, type ImportedModelInfo, type ImportedPhysics, type ImportedRunSettings, type ImportedSample } from "@contracts/imported-physics";
 import { loadImportedPhysics } from "@/lib/imported-physics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ImportedStateTrace from "./ImportedStateTrace";
 import PhysicsScene from "./PhysicsScene";
 
-type RunProps = { initialSettings?: ImportedRunSettings; onRun?: (settings: ImportedRunSettings) => void };
+type RunProps = { initialSettings?: ImportedRunSettings; preferredKeyframe?: string; onRun?: (settings: ImportedRunSettings) => void };
 type Props = RunProps & { bundle: ModelBundle; onReady?: (ready: boolean) => void };
 type LoadingResult = { bundle: ModelBundle; attempt: number; signal: AbortSignal; engine?: ImportedPhysics; error?: string };
 const emptySamples: ImportedSample[] = [];
 const numberText = (value: number) => String(Number(value.toPrecision(6)));
 const selectStyle = "h-9 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm";
 const jointLabels = { hinge: "转动", slide: "移动", ball: "球形", free: "自由" };
+type PoseRequest = { name?: string };
+type PoseResult = { request: PoseRequest; pose?: ImportedInitialPose; error?: string };
 
 function StateList({ label, channels, values }: {
   label: "位置" | "速度"; channels: { name: string; unit: string }[]; values: number[];
@@ -35,6 +37,7 @@ function checkSettings(settings: ImportedRunSettings, info: ImportedModelInfo, m
     return `运行时长须大于零且不超过 ${numberText(maxDuration)} s。`;
   }
   if (!Array.isArray(settings.controls) || settings.controls.length !== info.actuators.length) return "控制值数量与模型执行器不符。";
+  if (settings.keyframe !== undefined && !info.keyframes.includes(settings.keyframe)) return `模型中找不到初始关键帧“${settings.keyframe}”。`;
   for (const [i, { name, range, unit }] of info.actuators.entries()) {
     const value = settings.controls[i];
     if (!Number.isFinite(value)) return `请填写执行器“${name}”的有限数值。`;
@@ -43,24 +46,51 @@ function checkSettings(settings: ImportedRunSettings, info: ImportedModelInfo, m
   return info.points.some((point) => point.id === settings.pointId) ? "" : "模型中没有该观察点。";
 }
 
-function RuntimePanel({ engine, reload, initialSettings, onRun }: RunProps & { engine: ImportedPhysics; reload: () => void }) {
+function RuntimePanel({ engine, reload, initialSettings, preferredKeyframe, onRun }: RunProps & { engine: ImportedPhysics; reload: (keyframe?: string) => void }) {
   const { info } = engine;
   const maxDuration = Math.min(IMPORTED_PHYSICS_LIMITS.maxDurationS, info.timestepS * IMPORTED_PHYSICS_LIMITS.maxSteps);
   const defaultDuration = Math.min(maxDuration, Math.max(1, info.timestepS));
+  const nativePose = useMemo<ImportedInitialPose>(() => ({
+    initial: info.initial, controls: info.actuators.map((item) => item.initial), pointsM: info.points.map((point) => point.initialM),
+  }), [info]);
   const [restored] = useState(() => {
     const issue = initialSettings === undefined ? "" : checkSettings(initialSettings, info, maxDuration);
-    return { settings: issue ? undefined : initialSettings, error: issue ? `已保存的运行工况无法恢复。${issue} 已采用模型初值。` : "" };
+    if (issue) return { error: `已保存的运行工况无法恢复。${issue} 已采用模型初值。` };
+    const name = initialSettings === undefined ? preferredKeyframe : initialSettings.keyframe;
+    if (name !== undefined && !info.keyframes.includes(name)) return { error: `模型中找不到推荐的初始关键帧“${name}”。已采用模型初值。` };
+    return { settings: initialSettings, name, error: "" };
   });
+  const [request, setRequest] = useState<PoseRequest>(() => ({ name: restored.name }));
+  const [loaded, setLoaded] = useState<PoseResult>(() => ({ request, pose: request.name === undefined ? nativePose : undefined }));
+  const queue = useRef(Promise.resolve());
+  useEffect(() => {
+    let active = true;
+    // 一个 Worker 同时只接受一条命令。略过已切走的选择，等待上一条命令完成。
+    queue.current = queue.current.then(async () => {
+      if (!active) return;
+      try {
+        const pose = request.name === undefined ? nativePose : await engine.previewKeyframe(request.name);
+        if (active) setLoaded((old) => old.request === request && old.pose === pose ? old : { request, pose });
+      } catch (cause) {
+        if (active) setLoaded({ request, error: cause instanceof Error ? cause.message : "无法读取初始姿态。" });
+      }
+    });
+    return () => { active = false; };
+  }, [engine, nativePose, request]);
+  const pose = loaded.request === request ? loaded.pose : undefined;
+  const poseError = loaded.request === request ? loaded.error : undefined;
   const [duration, setDuration] = useState(String(restored.settings?.durationS ?? defaultDuration));
-  const [controls, setControls] = useState(() => (restored.settings?.controls ?? info.actuators.map((item) => item.initial)).map(String));
+  const [edited, setEdited] = useState<string[] | null>(() => restored.settings?.controls.map(String) ?? null);
+  const controls = edited ?? pose?.controls.map(String) ?? [];
   const [pointId, setPointId] = useState(restored.settings?.pointId ?? info.points[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(restored.error);
   const [samples, setSamples] = useState(emptySamples);
   const [index, setIndex] = useState(0);
   const [playFrom, setPlayFrom] = useState<number | null>(null);
-  const point = info.points.find((item) => item.id === pointId);
-  const sample = samples[index] ?? (point ? { ...info.initial, pointM: point.initialM } : info.initial);
+  const pointIndex = info.points.findIndex((item) => item.id === pointId);
+  const point = info.points[pointIndex];
+  const sample = samples[index] ?? (pose && { ...pose.initial, pointM: pose.pointsM[pointIndex] ?? pose.initial.pointM });
   const alive = useRef(true);
   const recordRun = useRef(onRun);
   useEffect(() => { recordRun.current = onRun; }, [onRun]);
@@ -87,15 +117,16 @@ function RuntimePanel({ engine, reload, initialSettings, onRun }: RunProps & { e
     setSamples(emptySamples); setPlayFrom(null); setIndex(0); setError("");
   }
   function reset() {
-    if (busy || reloadOnReset.current) { reload(); return; }
+    if (busy || poseError || reloadOnReset.current) { reload(request.name); return; }
     clearRun();
     setDuration(String(defaultDuration));
-    setControls(info.actuators.map((item) => String(item.initial)));
+    setEdited(null);
   }
   async function run() {
-    if (!point || busy) return;
+    if (!point || !pose || busy) return;
     clearRun();
-    const settings = { durationS: Number(duration), controls: controls.map((raw) => raw.trim() ? Number(raw) : NaN), pointId: point.id };
+    const settings: ImportedRunSettings = { durationS: Number(duration), controls: controls.map((raw) => raw.trim() ? Number(raw) : NaN), pointId: point.id };
+    if (request.name !== undefined) settings.keyframe = request.name;
     const issue = checkSettings(settings, info, maxDuration);
     if (issue) { setError(issue); return; }
     setBusy(true);
@@ -129,7 +160,14 @@ function RuntimePanel({ engine, reload, initialSettings, onRun }: RunProps & { e
     <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
       <form className="surface min-w-0 space-y-3 p-4" noValidate onSubmit={(event) => { event.preventDefault(); void run(); }}>
         <h4 className="text-sm font-semibold">运行设置</h4>
-        <fieldset disabled={busy} className="min-w-0 space-y-3">
+        {info.keyframes.length > 0 && <label className="block"><span className="field-label">初始关键帧</span>
+          <select className={selectStyle} aria-label="初始关键帧" disabled={busy} value={request.name ?? ""} onChange={(event) => {
+            clearRun(); setEdited(null); setRequest({ name: event.target.value || undefined });
+          }}>
+            <option value="">模型默认初值</option>{info.keyframes.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>}
+        <fieldset disabled={busy || !pose} className="min-w-0 space-y-3">
           <label className="block"><span className="field-label">运行时长（s）</span>
             <Input aria-label="运行时长（s）" className="mono" type="number" step="any" min={0} max={maxDuration} value={duration}
               onChange={(event) => { clearRun(); setDuration(event.target.value); }} />
@@ -142,8 +180,8 @@ function RuntimePanel({ engine, reload, initialSettings, onRun }: RunProps & { e
           {info.actuators.length > 0 ? <div className="thin-scrollbar max-h-72 space-y-3 overflow-y-auto border-t pt-3">
             {info.actuators.map((item, i) => <label key={i} className="block">
               <span className="field-label"><span className="break-all">{item.name}</span><span className="shrink-0 text-muted-foreground">{item.unit}</span></span>
-              <Input aria-label={`执行器 ${item.name}`} className="mono" type="number" step="any" min={item.range?.[0]} max={item.range?.[1]} value={controls[i]}
-                onChange={(event) => { clearRun(); setControls(controls.map((value, j) => j === i ? event.target.value : value)); }} />
+              <Input aria-label={`执行器 ${item.name}`} className="mono" type="number" step="any" min={item.range?.[0]} max={item.range?.[1]} value={controls[i] ?? ""}
+                onChange={(event) => { clearRun(); setEdited(controls.map((value, j) => j === i ? event.target.value : value)); }} />
               {item.range && <span className="mt-1 block text-[11px] text-muted-foreground">范围 {numberText(item.range[0])} 至 {numberText(item.range[1])}</span>}
             </label>)}
           </div> : <p className="border-t pt-3 text-xs leading-5 text-muted-foreground">
@@ -152,14 +190,16 @@ function RuntimePanel({ engine, reload, initialSettings, onRun }: RunProps & { e
         </fieldset>
         <p className="text-xs text-muted-foreground">重力 {info.gravity.map(numberText).join("，")} m/s²</p>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" type="submit" disabled={busy || !point}>{busy ? <Loader2 className="animate-spin" /> : <Play />}{busy ? "正在计算" : "运行仿真"}</Button>
+          <Button size="sm" type="submit" disabled={busy || !point || !pose}>{busy ? <Loader2 className="animate-spin" /> : <Play />}{busy ? "正在计算" : "运行仿真"}</Button>
           <Button size="sm" type="button" variant="outline" onClick={reset}><RotateCcw />复位</Button>
         </div>
-        {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+        {(error || poseError) && <p className="text-xs text-destructive" role="alert">{error || poseError}</p>}
       </form>
       <div className="min-w-0 space-y-3">
-        <PhysicsScene geometry={info.geometry} sample={sample} trail={samples} title="导入模型三维场景" pointName="观察点" coordinateLabel="观察点世界坐标" focus={pointId} />
-        {samples.length > 0 && <div className="surface space-y-2 p-3">
+        <div hidden={!sample}><PhysicsScene geometry={info.geometry} sample={sample ?? (loaded.pose ?? nativePose).initial} trail={samples}
+          title="导入模型三维场景" pointName="观察点" coordinateLabel="观察点世界坐标" focus={pose ? JSON.stringify([pointId, request.name]) : undefined} /></div>
+        {!sample && <p role="status" className="surface p-4 text-sm text-muted-foreground">{poseError ? "初始姿态未载入。" : "正在读取初始姿态…"}</p>}
+        {sample && samples.length > 0 && <div className="surface space-y-2 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Button size="sm" variant="outline" onClick={() => {
               if (playFrom !== null) { setPlayFrom(null); return; }
@@ -173,7 +213,7 @@ function RuntimePanel({ engine, reload, initialSettings, onRun }: RunProps & { e
         </div>}
       </div>
     </div>
-    {info.joints.length > 0 && <div className="surface min-w-0 space-y-3 p-4">
+    {sample && info.joints.length > 0 && <div className="surface min-w-0 space-y-3 p-4">
       <h4 className="text-sm font-semibold">关节状态</h4>
       {samples.length > 0 && <ImportedStateTrace info={info} samples={samples} sample={sample} />}
       <details className="text-xs text-muted-foreground">
@@ -190,8 +230,8 @@ function RuntimePanel({ engine, reload, initialSettings, onRun }: RunProps & { e
   </section>;
 }
 
-export default function ImportedPhysicsWorkbench({ bundle, onReady, initialSettings, onRun }: Props) {
-  const [{ attempt, resetBundle }, setRequest] = useState({ attempt: 0, resetBundle: null as ModelBundle | null });
+export default function ImportedPhysicsWorkbench({ bundle, onReady, initialSettings, preferredKeyframe, onRun }: Props) {
+  const [{ attempt, reset }, setRequest] = useState<{ attempt: number; reset?: { bundle: ModelBundle; keyframe?: string } }>({ attempt: 0 });
   const [load, setLoad] = useState<LoadingResult | null>(null);
   const ready = useRef(onReady);
   useEffect(() => { ready.current = onReady; }, [onReady]);
@@ -212,12 +252,13 @@ export default function ImportedPhysicsWorkbench({ bundle, onReady, initialSetti
     return () => { controller.abort(); runtime?.dispose(); };
   }, [bundle, attempt]);
   const result = load?.bundle === bundle && load.attempt === attempt && !load.signal.aborted ? load : undefined;
-  const retry = (defaults: ModelBundle | null) => setRequest((previous) => ({ attempt: previous.attempt + 1, resetBundle: defaults }));
-  if (result?.engine) return <RuntimePanel engine={result.engine} reload={() => retry(bundle)}
-    initialSettings={resetBundle === bundle ? undefined : initialSettings} onRun={onRun} />;
+  const retry = (defaults?: { bundle: ModelBundle; keyframe?: string }) => setRequest((previous) => ({ attempt: previous.attempt + 1, reset: defaults }));
+  if (result?.engine) return <RuntimePanel engine={result.engine} reload={(keyframe) => retry({ bundle, keyframe })}
+    initialSettings={reset?.bundle === bundle ? undefined : initialSettings}
+    preferredKeyframe={reset?.bundle === bundle ? reset.keyframe : preferredKeyframe} onRun={onRun} />;
   if (result?.error) return <div className="surface space-y-3 p-4">
     <p role="alert" className="break-words text-sm text-destructive">模型编译失败。{result.error}</p>
-    <Button size="sm" variant="outline" onClick={() => retry(null)}><RotateCcw />重新加载</Button>
+    <Button size="sm" variant="outline" onClick={() => retry()}><RotateCcw />重新加载</Button>
   </div>;
   return <p role="status" className="surface flex items-center gap-2 p-4 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在编译模型和资源…</p>;
 }

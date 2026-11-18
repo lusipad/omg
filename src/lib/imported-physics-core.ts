@@ -1,5 +1,5 @@
 import type { MainModule, MjData, MjModel } from "@mujoco/mujoco";
-import { IMPORTED_PHYSICS_LIMITS, type ImportedModelInfo, type ImportedRange, type ImportedRunSettings, type ImportedSample } from "@contracts/imported-physics";
+import { IMPORTED_PHYSICS_LIMITS, type ImportedInitialPose, type ImportedModelInfo, type ImportedRange, type ImportedRunSettings, type ImportedSample } from "@contracts/imported-physics";
 import { importedGeometry, vector } from "./imported-physics-geometry";
 
 function compiledName(mj: MainModule, model: MjModel, type: number, address: number, id: number, fallback: string) {
@@ -53,7 +53,7 @@ function observe(d: MjData, point: { kind: "body" | "site"; index: number }) {
   return vector(point.kind === "body" ? d.xpos : d.site_xpos, 3 * point.index);
 }
 
-// 调用方拥有 model；每次运行单独分配并释放 mjData，起点来自模型的 qpos0。
+// 调用方拥有 model，每次预览或运行使用独立的 mjData。
 export function createImportedPhysics(mj: MainModule, model: MjModel) {
   const warnings: string[] = [];
   const { geometry, ids } = importedGeometry(mj, model, warnings);
@@ -62,6 +62,22 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
   const dt = options.timestep, gravity = vector(options.gravity, 0);
   options.delete();
   if (!Number.isFinite(dt) || dt <= 0 || dt > IMPORTED_PHYSICS_LIMITS.maxDurationS) throw new Error("模型积分步长超出本地仿真的时间范围。");
+  const keyframes = new Map<string, number>();
+  for (let id = 0; id < model.nkey; id++) {
+    const address = model.name_keyadr[id];
+    if (address >= 0 && model.names[address]) keyframes.set(mj.mj_id2name(model, mj.mjtObj.mjOBJ_KEY.value, id), id);
+  }
+  function resetData(data: MjData, keyframe?: string) {
+    if (keyframe === undefined) {
+      mj.mj_resetData(model, data);
+      return;
+    }
+    const id = keyframes.get(keyframe);
+    if (id === undefined) throw new Error(`模型中找不到初始关键帧“${keyframe}”。`);
+    mj.mj_resetDataKeyframe(model, data, id);
+    // 动作用时从本次起点计，保留关键帧的 qpos、qvel、act、ctrl 和 mocap。
+    data.time = 0;
+  }
   const targets: { id: string; name: string; kind: "body" | "site"; index: number }[] = [];
   for (let i = 0; i < model.nsite; i++) targets.push({ id: `site:${i}`, kind: "site", index: i,
     name: compiledName(mj, model, mj.mjtObj.mjOBJ_SITE.value, model.name_siteadr[i], i, "标记点") });
@@ -87,6 +103,7 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
   let info: ImportedModelInfo;
   const start = new mj.MjData(model);
   try {
+    resetData(start);
     const initial = readSample(start, targets[0]);
     const actuators = Array.from({ length: model.nu }, (_, i) => {
       const limits = range(model.actuator_ctrllimited, model.actuator_ctrlrange, i), initialCtrl: number = start.ctrl[i];
@@ -95,11 +112,22 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
         range: limits, initial: limits ? Math.max(limits[0], Math.min(limits[1], initialCtrl)) : initialCtrl, unit: controlUnit(mj, model, i),
       };
     });
-    info = { timestepS: dt, gravity, joints, actuators, positions, velocities, geometry, warnings, initial,
+    info = { timestepS: dt, gravity, joints, actuators, positions, velocities, geometry, warnings, initial, keyframes: [...keyframes.keys()],
       points: targets.map(({ id, name, kind, index }) => ({ id, name, kind, initialM: observe(start, { kind, index }) })) };
   } finally { start.delete(); }
 
-  function run({ durationS, controls, pointId }: ImportedRunSettings): ImportedSample[] {
+  function previewKeyframe(name: string): ImportedInitialPose {
+    const data = new mj.MjData(model);
+    try {
+      resetData(data, name);
+      const initial = readSample(data, targets[0]);
+      const controls = Array.from(data.ctrl as Float64Array);
+      if (!controls.every(Number.isFinite)) throw new Error(`初始关键帧“${name}”包含非有限控制值。`);
+      return { initial, controls, pointsM: targets.map((point) => observe(data, point)) };
+    } finally { data.delete(); }
+  }
+
+  function run({ durationS, controls, pointId, keyframe }: ImportedRunSettings): ImportedSample[] {
     const point = targets.find((p) => p.id === pointId);
     if (!point) throw new Error("模型中找不到指定的观测点。");
     if (!Number.isFinite(durationS) || durationS <= 0 || durationS > IMPORTED_PHYSICS_LIMITS.maxDurationS) throw new Error("仿真时长须大于零且最多 20 秒。");
@@ -115,6 +143,7 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
     const stride = Math.max(1, Math.round(0.02 / dt), Math.ceil(steps / intervals));
     const data = new mj.MjData(model);
     try {
+      resetData(data, keyframe);
       (data.ctrl as Float64Array).set(controls);
       const samples = [readSample(data, point)];
       for (let step = 1; step <= steps; step++) {
@@ -127,5 +156,5 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
       return samples;
     } finally { data.delete(); }
   }
-  return { info, run };
+  return { info, previewKeyframe, run };
 }
