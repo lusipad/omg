@@ -9,7 +9,7 @@ import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <TRPCProvider>
         <App />
         <Toaster theme="dark" position="bottom-right" richColors />

@@ -3,6 +3,7 @@ import { ArrowRight, BookOpen, Copy, FileJson, FileUp, Layers3, Link2, Loader2, 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { IS_PAGES } from "@/const";
 import { trpc } from "@/providers/trpc";
 import TwinPackagePreview from "./TwinPackagePreview";
 import { packageKey, parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
@@ -75,7 +76,7 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble }: {
   const autofilled = useRef(new Set<SourceKey>());
   const sourceFile = useRef<HTMLInputElement>(null);
   const packageFile = useRef<HTMLInputElement>(null);
-  const aiStatus = trpc.twinAi.status.useQuery(undefined, { enabled: aiOpen, retry: false, staleTime: 60_000 });
+  const aiStatus = trpc.twinAi.status.useQuery(undefined, { enabled: !IS_PAGES && aiOpen, retry: false, staleTime: 60_000 });
   const ai = trpc.twinAi.generate.useMutation();
 
   useEffect(() => () => task.current?.abort(), []);
@@ -149,6 +150,12 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble }: {
   }
 
   async function readSource(file?: File) {
+    const isPdf = file && (file.type === "application/pdf" || /\.pdf$/i.test(file.name));
+    if (IS_PAGES && (!file || isPdf)) {
+      invalidate();
+      setError("请打开 UTF-8 编码的 TXT 文件，或粘贴规格表文字。");
+      return;
+    }
     const controller = start(file ? "file" : "url");
     const previousReadUrl = textSourceUrl.current;
     textSourceUrl.current = "";
@@ -158,11 +165,11 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble }: {
       if (!file) {
         if (!source.url.trim()) throw new Error("请先填写汇川官方资料链接。");
         result = await fetchText("url", JSON.stringify({ url: source.url }), "application/json", controller.signal);
-      } else if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+      } else if (isPdf) {
         if (file.size > 8 * 1024 * 1024) throw new Error("PDF 超过 8 MiB，请粘贴规格表原文。");
         result = await fetchText("pdf", file, "application/pdf", controller.signal);
       } else {
-        if (!/\.txt$/i.test(file.name) && file.type !== "text/plain") throw new Error("请选择 PDF 或 UTF-8 编码的 TXT 资料。");
+        if (!/\.txt$/i.test(file.name) && file.type !== "text/plain") throw new Error(IS_PAGES ? "请选择 UTF-8 编码的 TXT 资料。" : "请选择 PDF 或 UTF-8 编码的 TXT 资料。");
         if (file.size > 1024 * 1024) throw new Error("TXT 超过 1 MiB，请仅粘贴相关规格表原文。");
         result = await file.text();
       }
@@ -294,20 +301,21 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble }: {
               <label className="field-label" htmlFor="twin-source-url">制造商资料链接</label>
               <div className="flex flex-wrap gap-2 sm:flex-nowrap">
                 <Input id="twin-source-url" type="url" className="min-w-0 flex-1 basis-52" placeholder="https://…" value={source.url} onChange={(event) => updateSource("url", event.target.value)} />
-                <Button variant="outline" disabled={!source.url.trim() || busy !== null} onClick={() => void readSource()}>
+                {!IS_PAGES && <Button variant="outline" disabled={!source.url.trim() || busy !== null} onClick={() => void readSource()}>
                   {busy === "url" ? <Loader2 className="animate-spin" /> : <Link2 />}读取汇川官网
-                </Button>
+                </Button>}
               </div>
+              {IS_PAGES && <p className="mt-1.5 text-xs leading-5 text-muted-foreground">链接用于记录资料出处。粘贴规格表或选择 TXT 即可本地解析，官网读取、PDF 解析和在线模型提取需连接独立后端。</p>}
             </div>
             <div>
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                 <label className="text-xs font-medium" htmlFor="twin-source-text">规格原文</label>
-                <input ref={sourceFile} type="file" className="hidden" accept=".pdf,.txt,application/pdf,text/plain" aria-label="厂商资料文件" onChange={(event) => {
+                <input ref={sourceFile} type="file" className="hidden" accept={IS_PAGES ? ".txt,text/plain" : ".pdf,.txt,application/pdf,text/plain"} aria-label="厂商资料文件" onChange={(event) => {
                   const file = event.target.files?.[0];
                   event.target.value = "";
                   if (file) void readSource(file);
                 }} />
-                <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => sourceFile.current?.click()}><FileUp />上传 PDF / TXT</Button>
+                <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => sourceFile.current?.click()}><FileUp />{IS_PAGES ? "打开 TXT 文件" : "上传 PDF / TXT"}</Button>
               </div>
               <Textarea id="twin-source-text" className="h-36 resize-y text-xs leading-5" value={source.text} placeholder="粘贴任意厂商的中文或英文规格表，保留单位与大于、小于符号。" onChange={(event) => {
                 if ((event.nativeEvent as InputEvent).inputType === "insertFromPaste") {
@@ -333,7 +341,7 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble }: {
                 <p className="leading-5 text-muted-foreground">可复制当前资料及设备包格式给自己的 AI，再将返回的 JSON 导入并核对。</p>
                 <Button variant="outline" size="sm" disabled={busy !== null || !source.text.trim()} onClick={() => void copyPrompt()}><Copy />复制 AI 提取提示词</Button>
                 {manualPrompt && <label className="block"><span className="field-label">请选择并复制提示词</span><Textarea value={manualPrompt} readOnly onFocus={(event) => event.target.select()} /></label>}
-                {aiStatus.data?.available && aiStatus.data.authenticated && <div className="border-t pt-2">
+                {!IS_PAGES && aiStatus.data?.available && aiStatus.data.authenticated && <div className="border-t pt-2">
                   <p className="mb-2 leading-5 text-muted-foreground">点击后，型号、资料链接、定位和规格原文将发送给工作区配置的模型服务。</p>
                   <Button variant="outline" size="sm" disabled={busy !== null || !source.text.trim()} onClick={() => void generateWithAi()}>
                     {busy === "ai" ? <Loader2 className="animate-spin" /> : <Sparkles />}发送当前资料给 AI，生成草案

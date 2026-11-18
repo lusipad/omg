@@ -5,6 +5,7 @@ import { servoExampleDrive, servoExampleLinks, servoExampleMotor } from "@contra
 import { parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IS_PAGES } from "@/const";
 import { downloadJson } from "@/lib/download";
 import { trpc } from "@/providers/trpc";
 import { DeviceSourceEvidence, ServoRatings } from "./TwinPackagePreview";
@@ -44,9 +45,9 @@ export default function ServoPairImport({ onInstall }: { onInstall: (drive: Devi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [localAvailable, setLocalAvailable] = useState<boolean | null>(import.meta.env.DEV ? null : false);
+  const [localAvailable, setLocalAvailable] = useState<boolean | null>(import.meta.env.DEV && !IS_PAGES ? null : false);
   const pending = useRef<AbortController | null>(null);
-  const account = trpc.twinAi.status.useQuery(undefined, { retry: false, staleTime: 60_000 });
+  const account = trpc.twinAi.status.useQuery(undefined, { enabled: !IS_PAGES, retry: false, staleTime: 60_000 });
   const generateRemote = trpc.twinAi.generateServoPair.useMutation();
   const remote = Boolean(account.data?.available && account.data.authenticated);
   const available = remote || localAvailable === true;
@@ -55,7 +56,7 @@ export default function ServoPairImport({ onInstall }: { onInstall: (drive: Devi
 
   useEffect(() => {
     const controller = new AbortController();
-    if (import.meta.env.DEV) {
+    if (import.meta.env.DEV && !IS_PAGES) {
       fetch("/api/local-servo/status", { signal: controller.signal })
         .then((response) => response.ok && response.headers.get("content-type")?.includes("application/json") ? response.json() : null)
         .then((data) => { if (!controller.signal.aborted) setLocalAvailable(data?.available === true); })
@@ -126,16 +127,18 @@ export default function ServoPairImport({ onInstall }: { onInstall: (drive: Devi
   }
 
   return <div className="min-w-0 space-y-4">
-    <p className="text-sm text-muted-foreground">输入汇川 SV660N 驱动器和 MS1 无抱闸电机的产品页，按官方配套选型表生成两个独立设备包。</p>
+    <p className="text-sm text-muted-foreground">{IS_PAGES
+      ? "打开汇川伺服驱动器和电机的示例包，核对选型表后即可安装。其他设备包可从设备库导入 JSON。"
+      : "输入汇川 SV660N 驱动器和 MS1 无抱闸电机的产品页，按官方配套选型表生成两个独立设备包。"}</p>
     <div className="flex flex-wrap gap-2">
-      <Button variant="outline" size="sm" onClick={() => {
+      {!IS_PAGES && <Button variant="outline" size="sm" onClick={() => {
         reset(); setFields({ ...emptyFields, driveUrl: servoExampleLinks.driveUrl, motorUrl: servoExampleLinks.motorUrl });
-      }}><Link2 />填入汇川链接</Button>
+      }}><Link2 />填入汇川链接</Button>}
       <Button variant="outline" size="sm" onClick={() => {
         reset(); setDraft({ drive: servoExampleDrive, motor: servoExampleMotor, example: true });
       }}><BookOpen />打开已核对的示例包</Button>
     </div>
-    <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void generate(); }}>
+    {!IS_PAGES && <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void generate(); }}>
       <div className="grid gap-3 md:grid-cols-2">
         <label><span className="field-label">驱动器官网链接</span>
           <Input value={fields.driveUrl} type="url" required placeholder="驱动器产品页或规格资料" onChange={(event) => update("driveUrl", event.target.value)} />
@@ -164,7 +167,7 @@ export default function ServoPairImport({ onInstall }: { onInstall: (drive: Devi
       <Button type="submit" disabled={!available || busy || !fields.driveUrl.trim() || !fields.motorUrl.trim()}>
         {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}AI 生成两个设备包
       </Button>
-    </form>
+    </form>}
     {busy && <p role="status" className="text-sm text-muted-foreground">正在读取官网资料并提取驱动器、电机参数…</p>}
     {error && <p role="alert" className="whitespace-pre-line break-words rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
     {notice && <p role="status" className="text-sm text-primary">{notice}</p>}

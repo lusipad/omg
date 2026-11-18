@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Activity, ArrowLeft, Bot, ChevronDown, CircuitBoard, Download, FilePlus2, FolderOpen, Link2, Monitor, Package, Upload, Workflow } from "lucide-react";
+import { Activity, ArrowLeft, Bot, ChevronDown, CircuitBoard, Download, FilePlus2, FolderOpen, Github, Link2, Monitor, Package, Upload, Workflow } from "lucide-react";
+import { IS_PAGES } from "@/const";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import { createServoDemo, createTwinDemo } from "@contracts/twin-demo";
 import { addInstance, emptyWorkspace, installPackage, nextInstanceName, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
@@ -13,6 +14,7 @@ import ServoPairImport from "@/components/ServoPairImport";
 import { downloadBlob, downloadJson } from "@/lib/download";
 
 const storageKey = "gouyuan.twin.workspace.v1";
+const defaultTab = IS_PAGES ? "so101" : "library";
 const ServoAxisBench = lazy(() => import("@/components/ServoAxisBench"));
 const So101Workbench = lazy(() => import("@/components/So101Workbench"));
 
@@ -36,7 +38,7 @@ export default function TwinStudio() {
   const [session, setSession] = useState(readLocalWorkspace);
   const [search, setSearch] = useSearchParams();
   const view = search.get("view");
-  const tab = view === "servo" || view === "simulation" || view === "so101" ? view : "library";
+  const tab = view === "servo" || view === "simulation" || view === "so101" || view === "library" ? view : defaultTab;
   const [showSources, setShowSources] = useState(!session.workspace.servoAxis);
   const [selection, setSelection] = useState<{ driveKey?: string; motorKey?: string; version: number }>({ version: 0 });
   const [generation, setGeneration] = useState(0);
@@ -47,7 +49,7 @@ export default function TwinStudio() {
   function setTab(value: string) {
     setSearch((previous) => {
       const next = new URLSearchParams(previous);
-      if (value === "library") next.delete("view");
+      if (value === defaultTab) next.delete("view");
       else next.set("view", value);
       return next;
     }, { replace: true });
@@ -145,7 +147,9 @@ export default function TwinStudio() {
       <header className="border-b bg-card/65">
         <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-8">
           <div className="flex items-center gap-3"><CircuitBoard className="h-6 w-6 text-primary" strokeWidth={1.7} /><span className="text-base font-semibold tracking-wide">构元</span><span className="border-l pl-3 text-xs text-muted-foreground">本机工作区</span></div>
-          <Link to="/" className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-3.5 w-3.5" />客户项目</Link>
+          {IS_PAGES
+            ? <a href="https://github.com/lusipad/omg" className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"><Github className="h-3.5 w-3.5" />项目源码</a>
+            : <Link to="/" className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-3.5 w-3.5" />客户项目</Link>}
         </div>
       </header>
       <main className="page-enter mx-auto max-w-[1440px] px-4 pb-12 pt-6 sm:px-8 sm:pt-9">
@@ -199,7 +203,7 @@ export default function TwinStudio() {
           <TabsContent value="servo" className="space-y-4">
             <section className="surface">
               <button type="button" className="flex w-full items-center gap-2 px-4 py-3.5 text-left text-sm font-medium" aria-expanded={showSources} aria-controls="servo-sources" onClick={() => setShowSources(!showSources)}>
-                <Link2 className="size-4 text-primary" />从官网生成伺服设备包<ChevronDown className={`ml-auto size-4 ${showSources ? "rotate-180" : ""}`} />
+                <Link2 className="size-4 text-primary" />{IS_PAGES ? "导入伺服设备示例" : "从官网生成伺服设备包"}<ChevronDown className={`ml-auto size-4 ${showSources ? "rotate-180" : ""}`} />
               </button>
               {showSources && <div id="servo-sources" className="border-t p-4"><ServoPairImport onInstall={installServoPair} /></div>}
             </section>

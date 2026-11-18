@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:servo": "vite --mode servo --host 127.0.0.1",
+    "build:pages": "vite build --mode pages --base=/omg/ --outDir dist/pages",
     "build": "vite build && esbuild api/boot.ts --platform=node --bundle --format=esm --outdir=dist --banner:js=\"import { createRequire } from 'module';const require = createRequire(import.meta.url);\"",
     "lint": "eslint .",
     "preview": "vite preview",

@@ -8,6 +8,7 @@
 // project's own server, so "/api/log" needs no host config. When the backend is
 // absent (a pure-frontend build) the POST fails and we silently fall back to
 // console — logging must never break the app.
+import { IS_PAGES } from "@/const";
 type Level = "info" | "warn" | "error";
 
 const ENDPOINT = "/api/log";
@@ -64,7 +65,7 @@ function unambiguousRequestId(): string | undefined {
 // load, rather than at each call site: the injected frontend uses plain fetch /
 // tRPC / react-query, and none of them would thread a header read through by
 // hand.
-if (typeof window !== "undefined" && typeof window.fetch === "function") {
+if (!IS_PAGES && typeof window !== "undefined" && typeof window.fetch === "function") {
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (...args: Parameters<typeof fetch>) => {
     const response = await originalFetch(...args);
@@ -164,7 +165,7 @@ export const log = {
 
 // Capture the crashes a try/catch cannot: unhandled errors and rejections are
 // exactly what the agent needs to see when a preview comes up blank.
-if (typeof window !== "undefined") {
+if (!IS_PAGES && typeof window !== "undefined") {
   window.addEventListener("error", e => {
     emit("error", e.message || "window.onerror", {
       filename: e.filename,

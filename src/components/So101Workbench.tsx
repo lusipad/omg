@@ -6,7 +6,8 @@ import { isSo101ServoPart, parseSo101Bom, so101BomNotes } from "@contracts/so101
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 
 const MotionBench = lazy(() => import("./So101MotionBench"));
-const bomUrl = "/models/so101/follower-bom.md";
+const modelBase = `${import.meta.env.BASE_URL}models/so101/`;
+const bomUrl = `${modelBase}follower-bom.md`;
 const upstreamBom = `https://github.com/TheRobotStudio/SO-ARM100/blob/${SO101_REVISION}/README.md#parts-for-one-follower-arm`;
 
 export default function So101Workbench({ workspace, onChange }: { workspace: TwinWorkspace; onChange: (next: TwinWorkspace) => void }) {
@@ -93,7 +94,7 @@ export default function So101Workbench({ workspace, onChange }: { workspace: Twi
           <a href={SO101_UPSTREAM} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-primary">模型来源<ExternalLink className="size-3.5" /></a>
         </div>
       </div>
-      {!assembly && <img src="/models/so101/preview.png" width={1246} height={737} alt="SO-101 从臂在 MuJoCo 中运行时的姿态和夹爪末端轨迹" className="w-full rounded-md border bg-background" />}
+      {!assembly && <img src={`${modelBase}preview.png`} width={1246} height={737} alt="SO-101 从臂在 MuJoCo 中运行时的姿态和夹爪末端轨迹" className="w-full rounded-md border bg-background" />}
     </section>
     {assembly && <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">正在打开机械臂仿真…</p>}>
       <MotionBench waypoints={assembly.waypoints} onChange={(next) => onChange({ ...workspace, so101: { ...assembly, waypoints: parseSo101Motion(next) } })} />
