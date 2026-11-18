@@ -1,7 +1,9 @@
-import { useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { Box, ExternalLink, PanelsTopLeft } from "lucide-react";
 import { MILO_MACHINE, miloSegmentFractionAtTime, type MiloMotionSample, type MiloVec3 } from "@contracts/milo-motion";
 import { MILO_STOCK, MILO_TOOL_DIAMETER_MM, type MiloStockState } from "@contracts/milo-stock";
-import MiloStockView, { MiloStockFootprint } from "./MiloStockView";
+import { Button } from "@/components/ui/button";
+import MiloStockView, { MiloStockFootprint, MiloStockReadouts } from "./MiloStockView";
 import { miloAxes, miloAxisColors, miloNumber, tickStep, type MiloSpatialPath } from "./milo-plot";
 
 type Point = [number, number];
@@ -216,7 +218,7 @@ function Toolpath({path, sample}: Pick<SceneProps, "path" | "sample">) {
   </figure>;
 }
 
-export default function MiloScene({path, sample, frame}: SceneProps) {
+function MiloPlanarScene({path, sample, frame}: SceneProps) {
   return <div className="grid min-w-0 items-start gap-4 lg:grid-cols-2">
     <MiloStockView frame={frame} sample={sample} />
     <div className="min-w-0 space-y-4">
@@ -224,4 +226,49 @@ export default function MiloScene({path, sample, frame}: SceneProps) {
       <MiloMachine path={path} sample={sample} frame={frame} />
     </div>
   </div>;
+}
+
+export default function MiloScene(props: SceneProps) {
+  const [mode, setMode] = useState<"3d" | "2d">("3d");
+  const [failure, setFailure] = useState("");
+  const [ThreeView, setThreeView] = useState<typeof import("./MiloThreeView").default | null>(null);
+  const onUnavailable = useCallback((reason: string) => {
+    setFailure(reason);
+    setMode("2d");
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "3d" || ThreeView) return;
+    let active = true;
+    import("./MiloThreeView").then(
+      module => { if (active) setThreeView(() => module.default); },
+      () => { if (active) onUnavailable("三维视图资源加载失败。"); },
+    );
+    return () => { active = false; };
+  }, [mode, ThreeView, onUnavailable]);
+
+  return <section aria-label="Milo 加工视图" className="min-w-0 space-y-3">
+    <div className="surface min-w-0 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 p-3 sm:px-4">
+        <h3 className="text-base font-semibold">{mode === "3d" ? "三维加工视窗" : "二维加工分析"}</h3>
+        <div role="group" aria-label="加工视图模式" className="flex gap-1">
+          {failure && !ThreeView
+            ? <Button asChild size="sm" variant="ghost"><a href={window.location.href} target="_blank" rel="noreferrer"><ExternalLink />在新页重试三维</a></Button>
+            : <Button type="button" size="sm" variant={mode === "3d" ? "secondary" : "ghost"} aria-pressed={mode === "3d"} onClick={() => { setFailure(""); setMode("3d"); }}>
+              <Box />{failure ? "重试三维" : "三维视图"}
+            </Button>}
+          <Button type="button" size="sm" variant={mode === "2d" ? "secondary" : "ghost"} aria-pressed={mode === "2d"} onClick={() => setMode("2d")}>
+            <PanelsTopLeft />二维分析
+          </Button>
+        </div>
+      </div>
+      {failure && <p role="status" className="border-t px-4 py-2 text-sm text-muted-foreground">{failure} 当前使用二维分析。</p>}
+      {mode === "3d" && <>
+        {ThreeView ? <ThreeView {...props} onUnavailable={onUnavailable} /> :
+          <p role="status" className="grid h-72 place-items-center border-t text-sm text-muted-foreground">正在载入三维视窗…</p>}
+        <div className="px-3 pb-2 sm:px-4"><MiloStockReadouts frame={props.frame} /></div>
+      </>}
+    </div>
+    {mode === "2d" && <MiloPlanarScene {...props} />}
+  </section>;
 }

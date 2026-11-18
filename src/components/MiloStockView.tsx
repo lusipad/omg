@@ -116,6 +116,18 @@ function SurfaceProfile({ frame, row, col }: { frame: MiloStockState; row: numbe
   </svg>;
 }
 
+export function MiloStockReadouts({ frame }: { frame: MiloStockState }) {
+  const ratio = 100 * frame.removedVolumeMm3 / (width * height * thickness);
+  return <dl className="grid grid-cols-3 gap-2 border-y py-2.5">
+    {([
+      ["最大切深", frame.maxDepthMm, "mm"], ["去除体积", frame.removedVolumeMm3, "mm³"], ["材料去除比例", ratio, "%"],
+    ] as const).map(([label, value, unit]) => <div key={label} className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 flex flex-wrap items-baseline gap-1"><output aria-label={label} className="mono text-base font-semibold">{format(value)}</output><span className="text-[11px] text-muted-foreground">{unit}</span></dd>
+    </div>)}
+  </dl>;
+}
+
 export default function MiloStockView({ frame, sample }: { frame: MiloStockState; sample: MiloMotionSample }) {
   const [view, setView] = useState<View>("iso");
   const [query, setQuery] = useState({ x: String(width / 2), y: String(height / 2) });
@@ -132,7 +144,6 @@ export default function MiloStockView({ frame, sample }: { frame: MiloStockState
   const ry = radius * (view === "xy" ? planScale : Math.sqrt(0.5) * isoScale);
   const [probeX, probeY] = valid ? (view === "xy" ? top(cx, cy) : iso(cx, cy, z)) : [0, 0];
   const outside = tool[0] < -radius || tool[0] > width + radius || tool[1] < -radius || tool[1] > height + radius;
-  const ratio = 100 * frame.removedVolumeMm3 / (width * height * thickness);
 
   return <section className="surface min-w-0 overflow-hidden" aria-label="毛坯去料回放">
     <div className="flex flex-wrap items-center justify-between gap-2 p-3 sm:px-4">
@@ -165,14 +176,7 @@ export default function MiloStockView({ frame, sample }: { frame: MiloStockState
         <span className="inline-flex items-center gap-1.5"><i className="size-2.5 rounded-full border border-[#f3a15f]" />当前刀盘{outside && " · 毛坯外"}</span>
         <span>切深（mm）</span>{[0, 1, 2, 3, thickness].map((depth) => <span key={depth} className="inline-flex items-center gap-1"><i className="size-2.5 rounded-sm border border-white/15" style={{ backgroundColor: depthColor(depth) }} />{depth}</span>)}
       </div>
-      <dl className="grid grid-cols-3 gap-2 border-y py-2.5">
-        {([
-          ["最大切深", frame.maxDepthMm, "mm"], ["去除体积", frame.removedVolumeMm3, "mm³"], ["材料去除比例", ratio, "%"],
-        ] as const).map(([label, value, unit]) => <div key={label} className="min-w-0">
-          <dt className="text-xs text-muted-foreground">{label}</dt>
-          <dd className="mt-1 flex flex-wrap items-baseline gap-1"><output aria-label={label} className="mono text-base font-semibold">{format(value)}</output><span className="text-[11px] text-muted-foreground">{unit}</span></dd>
-        </div>)}
-      </dl>
+      <MiloStockReadouts frame={frame} />
       <p className="text-xs leading-5 text-muted-foreground">
         {width} × {height} × {thickness} mm 毛坯 · Ø{MILO_TOOL_DIAMETER_MM} mm 平底刀几何扫掠 · {cell} mm 网格。{view === "iso" ? `等轴测的 Z 方向放大 ${verticalScale} 倍。` : "俯视图按 XY 等比例显示，可点击毛坯检查切深。"}
       </p>

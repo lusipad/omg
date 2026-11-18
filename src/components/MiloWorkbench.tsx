@@ -269,7 +269,7 @@ export default function MiloWorkbench({ state, onChange }: Props) {
         <a className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline" href={pocketUrl} download="circular-pocket.nc"><Download className="size-3.5" />下载圆槽 G 代码</a>
       </div>
       <div className="surface-inset flex flex-wrap items-center justify-between gap-3 p-3">
-        <div><h4 className="text-sm font-medium">圆形平底凹槽</h4><p className="mt-1 text-xs text-muted-foreground">槽径 30 mm，深 3 mm。用 Ø6 mm 平底刀分三层铣削，每层下刀 1 mm。</p></div>
+        <div><h4 className="text-sm font-medium">圆形平底凹槽</h4><p className="mt-1 text-xs text-muted-foreground">Ø6 mm 平底刀分三层铣出直径 30 mm、深 3 mm 的凹槽。回放时可旋转视角，检查槽底或查看整机。</p></div>
         <Button variant="outline" disabled={!!reading || readingProgram} onClick={() => void loadProgram("pocket")}><Play />{ready ? "回放圆形凹槽" : "组装并回放圆形凹槽"}</Button>
       </div>
       {!ready ? <p className="text-sm text-muted-foreground">也可以先{state.bom ? "" : "载入 BOM 并"}手动装配 {pendingAxes.join("、")} 轴，再编辑自己的程序。</p> : <>

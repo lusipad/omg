@@ -18,6 +18,8 @@
 
 X、Y 共用一块 XY 滑台板。Y 轴装配章的前两张滑块安装图分别给出下表面的 4 个 Y 滑块和上表面的 4 个 X 滑块。Y 支座两侧各用 2 个 608ZZ 和 1 个 F608ZZ。Z 单独使用一块滑台板，底部支座用 1 个 608ZZ，顶部电机座用 2 个。三轴采购合计为 12 个滑块、8 个 608ZZ、4 个 F608ZZ、6 个黄铜螺母。Z 章在安装丝杠的下一工序再次列出已装在消隙块上的两个螺母。[Y 轴及共享滑台板](https://github.com/MillenniumMachines/millenniummachines.github.io/blob/2aaa0c55e6bc176e42592bdb27051e428413f516/docs/milo_1.5/manual/chapters/40_y_axis_assembly.md) · [X 轴](https://github.com/MillenniumMachines/millenniummachines.github.io/blob/2aaa0c55e6bc176e42592bdb27051e428413f516/docs/milo_1.5/manual/chapters/50_x_axis_assembly.md) · [Z 轴](https://github.com/MillenniumMachines/millenniummachines.github.io/blob/2aaa0c55e6bc176e42592bdb27051e428413f516/docs/milo_1.5/manual/chapters/60_z_axis_assembly.md)
 
+三维视窗中的整机按装配图建立了可动的简化几何。底部框架和后立柱固定，500 mm 横向工作台由 XY 滑台承载，立柱前方安装竖直主轴。工件特写采用实际毫米比例，轨迹与剩余材料都定位在同一工件坐标系。完整装配几何可查官方 STEP 文件。[立柱与底梁装配图](https://github.com/MillenniumMachines/millenniummachines.github.io/blob/2aaa0c55e6bc176e42592bdb27051e428413f516/docs/milo_1.5/manual/chapters/60_z_axis_assembly.md) · [Milo v1.5 官方 CAD](https://github.com/MillenniumMachines/Milo-v1.5/blob/cecc5a616a1b326f50f9dd881eaa79c9e7506039/CAD/Milo.zip)
+
 ## 标准参考板的运动参数
 
 以下为官方 RRF-Configs 发布 `v12.11.26-stable` 的 `milo-v1.5/reference-fly-cdyv3` 配置。提交为 `c670a5819af159816a007d66c60750dbe2a93de0`，发布清单指定 RepRapFirmware 3.6.1。该配置以标准 BOM 和采用打印连接件的 Z 柱为基准。不同套件使用各自的速度和加速度设置。[发行清单](https://github.com/MillenniumMachines/RRF-Configs/releases/tag/v12.11.26-stable) · [参考配置说明](https://github.com/MillenniumMachines/RRF-Configs/blob/c670a5819af159816a007d66c60750dbe2a93de0/milo-v1.5/reference-fly-cdyv3/README.md)
