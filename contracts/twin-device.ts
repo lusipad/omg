@@ -28,12 +28,17 @@ const servoSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 const sourceUrl = text(2048).pipe(z.url({ protocol: /^https?$/ }));
+const pointPair = z.tuple([z.number().finite(), z.number().finite()]);
+const calibrationSchema = z.strictObject({ inputPoints: pointPair, outputPoints: pointPair });
 const packageSchema = z.strictObject({
   schemaVersion: z.literal(1), manufacturer: text(160), model: text(160), revision: text(160),
   source: z.strictObject({
-    title: text(512), url: sourceUrl, locator: text(512), excerpt: text(16_000), productUrl: sourceUrl.optional(),
-  }),
+    title: text(512), url: z.union([sourceUrl, z.literal("")]), locator: text(512), excerpt: text(16_000),
+    productUrl: sourceUrl.optional(), kind: z.literal("local").optional(),
+  }).refine(source => source.kind === "local" ? !source.url && !source.productUrl : Boolean(source.url),
+    "本地资料请标为 local 并留空链接，在线资料须提供 HTTP 或 HTTPS 来源链接"),
   ports: z.array(portSchema).max(256), rules: z.array(ruleSchema).max(128), servo: servoSchema.optional(),
+  calibration: calibrationSchema.optional(),
 });
 
 export type SignalPort = z.infer<typeof portSchema>;
@@ -41,6 +46,14 @@ export type DeviceRule = z.infer<typeof ruleSchema>;
 export type DevicePackage = z.infer<typeof packageSchema>;
 export type ServoDrive = Extract<z.infer<typeof servoSchema>, { kind: "drive" }>;
 export type ServoMotor = Extract<z.infer<typeof servoSchema>, { kind: "motor" }>;
+
+export function linearCoefficients({ inputPoints: [x1, x2], outputPoints: [y1, y2] }: z.infer<typeof calibrationSchema>) {
+  if (x1 === x2) throw new Error("两组标定的输入值必须不同。");
+  const dx = x2 - x1, dy = y2 - y1;
+  const gain = dy / dx, offset = y1 - gain * x1;
+  if (![dx, dy, gain, offset].every(Number.isFinite) || (dy !== 0 && gain === 0)) throw new Error("标定值超出可计算范围。");
+  return { gain, offset };
+}
 
 export function readTwinData<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
   const result = schema.safeParse(value, { error: z.locales.zhCN().localeError });
@@ -55,6 +68,14 @@ export function packageKey(pkg: Pick<DevicePackage, "manufacturer" | "model" | "
 
 export function parseDevicePackage(value: unknown): DevicePackage {
   const pkg = readTwinData(packageSchema, value, "设备包");
+  if (pkg.calibration) {
+    const { gain, offset } = linearCoefficients(pkg.calibration);
+    const [rule] = pkg.rules;
+    const agrees = (actual: number, expected: number) => Math.abs(actual - expected) <= 8 * Number.EPSILON * Math.max(Math.abs(actual), Math.abs(expected));
+    if (pkg.rules.length !== 1 || rule?.op !== "linear" || !agrees(rule.gain, gain) || !agrees(rule.offset, offset)) {
+      throw new Error("设备包的线性规则与记录的两点标定不相符。");
+    }
+  }
   if (pkg.servo) {
     if (pkg.ports.length || pkg.rules.length) throw new Error("伺服设备使用轴装配模型，请将信号端口和规则留空");
     const servo = pkg.servo;

@@ -38,9 +38,9 @@ export function ServoRatings({ servo }: { servo: NonNullable<DevicePackage["serv
 export function DeviceSourceEvidence({ source }: { source: DevicePackage["source"] }) {
   return <section className="surface-inset min-w-0 p-3 sm:p-4">
     <h3 className="text-sm font-medium">资料依据</h3>
-    <a href={source.url} target="_blank" rel="noreferrer" className="mt-2 break-words text-sm text-primary hover:underline">
+    {source.url ? <a href={source.url} target="_blank" rel="noreferrer" className="mt-2 break-words text-sm text-primary hover:underline">
       {source.title} <ExternalLink className="inline size-3.5" />
-    </a>
+    </a> : <p className="mt-2 break-words text-sm">{source.title} · 本地资料</p>}
     {source.productUrl && source.productUrl !== source.url && <p className="mt-1">
       <a href={source.productUrl} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">产品官网 <ExternalLink className="inline size-3" /></a>
     </p>}
@@ -67,6 +67,9 @@ export default function TwinPackagePreview({ device, installed, error, onClose, 
           <DialogDescription>{device.manufacturer} · 设备包版本 {device.revision} · {device.servo ? (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机") : `${device.ports.length} 个端口 · ${device.rules.length} 条行为规则`}</DialogDescription>
         </DialogHeader>
         <DeviceSourceEvidence source={device.source} />
+        {device.calibration && <p className="surface-inset p-3 text-xs">
+          已记录的两组标定值为 {device.calibration.inputPoints[0]} → {device.calibration.outputPoints[0]} 和 {device.calibration.inputPoints[1]} → {device.calibration.outputPoints[1]}，范围外按同一条直线外推。
+        </p>}
         {device.servo ? <section aria-label="伺服参数" className="space-y-3">
           <h3 className="text-sm font-medium">型号参数</h3><ServoRatings servo={device.servo} />
         </section> : <><section aria-label="仿真行为">

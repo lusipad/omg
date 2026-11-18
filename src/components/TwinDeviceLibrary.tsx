@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { IS_PAGES } from "@/const";
+import { fetchSourceText } from "@/lib/twin-source-text";
 import { trpc } from "@/providers/trpc";
 import TwinPackagePreview from "./TwinPackagePreview";
 import { packageKey, parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
@@ -34,15 +35,6 @@ function isSampleUrl(value: string) {
   }
 }
 
-async function fetchText(path: string, body: BodyInit, contentType: string, signal: AbortSignal) {
-  const response = await fetch(`/api/twin-source/${path}`, { method: "POST", headers: { "Content-Type": contentType }, body, signal });
-  const data = await response.json().catch(() => null);
-  if (!response.ok || typeof data?.text !== "string") {
-    throw new Error(typeof data?.error === "string" ? data.error : "资料服务未能读取正文。可复制规格表文字后继续。");
-  }
-  return data.text as string;
-}
-
 function parseJson(text: string) {
   let raw: unknown;
   try {
@@ -57,13 +49,14 @@ function parseJson(text: string) {
   return parseDevicePackage(raw);
 }
 
-export default function TwinDeviceLibrary({ packages, onInstall, onAssemble }: {
+export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, initialSource }: {
   packages: DevicePackage[];
   onInstall: (pkg: DevicePackage) => void;
   onAssemble: (pkg: DevicePackage) => void;
+  initialSource?: Partial<DeviceSourceInput>;
 }) {
   const [mode, setMode] = useState<"source" | "package">("source");
-  const [source, setSource] = useState<DeviceSourceInput>({ ...emptySource });
+  const [source, setSource] = useState<DeviceSourceInput>(() => ({ ...emptySource, ...initialSource }));
   const [json, setJson] = useState("");
   const [preview, setPreview] = useState<{ device: DevicePackage; installed: boolean } | null>(null);
   const [error, setError] = useState("");
@@ -164,10 +157,10 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble }: {
       let result: string;
       if (!file) {
         if (!source.url.trim()) throw new Error("请先填写汇川官方资料链接。");
-        result = await fetchText("url", JSON.stringify({ url: source.url }), "application/json", controller.signal);
+        result = await fetchSourceText("url", JSON.stringify({ url: source.url }), "application/json", controller.signal);
       } else if (isPdf) {
         if (file.size > 8 * 1024 * 1024) throw new Error("PDF 超过 8 MiB，请粘贴规格表原文。");
-        result = await fetchText("pdf", file, "application/pdf", controller.signal);
+        result = await fetchSourceText("pdf", file, "application/pdf", controller.signal);
       } else {
         if (!/\.txt$/i.test(file.name) && file.type !== "text/plain") throw new Error(IS_PAGES ? "请选择 UTF-8 编码的 TXT 资料。" : "请选择 PDF 或 UTF-8 编码的 TXT 资料。");
         if (file.size > 1024 * 1024) throw new Error("TXT 超过 1 MiB，请仅粘贴相关规格表原文。");
@@ -213,7 +206,7 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble }: {
   function generate() {
     invalidate();
     try {
-      const device = mode === "source" ? generateDevicePackage(source) : parseJson(json);
+      const device = mode === "source" ? generateDevicePackage(source, !source.url.trim()) : parseJson(json);
       setPreview({ device, installed: false });
     } catch (cause) {
       setError(message(cause));
@@ -305,7 +298,7 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble }: {
                   {busy === "url" ? <Loader2 className="animate-spin" /> : <Link2 />}读取汇川官网
                 </Button>}
               </div>
-              {IS_PAGES && <p className="mt-1.5 text-xs leading-5 text-muted-foreground">链接用于记录资料出处。粘贴规格表或选择 TXT 即可本地解析，官网读取、PDF 解析和在线模型提取需连接独立后端。</p>}
+              <p className="mt-1.5 text-xs leading-5 text-muted-foreground">本地资料可留空链接，用标题、页码和原文记录出处。{IS_PAGES && "粘贴规格或选择 TXT 即可本地解析。"}</p>
             </div>
             <div>
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
@@ -341,7 +334,7 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble }: {
                 <p className="leading-5 text-muted-foreground">可复制当前资料及设备包格式给自己的 AI，再将返回的 JSON 导入并核对。</p>
                 <Button variant="outline" size="sm" disabled={busy !== null || !source.text.trim()} onClick={() => void copyPrompt()}><Copy />复制 AI 提取提示词</Button>
                 {manualPrompt && <label className="block"><span className="field-label">请选择并复制提示词</span><Textarea value={manualPrompt} readOnly onFocus={(event) => event.target.select()} /></label>}
-                {!IS_PAGES && aiStatus.data?.available && aiStatus.data.authenticated && <div className="border-t pt-2">
+                {!IS_PAGES && source.url.trim() && aiStatus.data?.available && aiStatus.data.authenticated && <div className="border-t pt-2">
                   <p className="mb-2 leading-5 text-muted-foreground">点击后，型号、资料链接、定位和规格原文将发送给工作区配置的模型服务。</p>
                   <Button variant="outline" size="sm" disabled={busy !== null || !source.text.trim()} onClick={() => void generateWithAi()}>
                     {busy === "ai" ? <Loader2 className="animate-spin" /> : <Sparkles />}发送当前资料给 AI，生成草案

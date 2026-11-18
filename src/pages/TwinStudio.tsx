@@ -1,8 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Activity, ArrowLeft, Bot, ChevronDown, CircuitBoard, Download, FilePlus2, FolderOpen, Github, Link2, Monitor, Package, Upload, Workflow } from "lucide-react";
+import { Activity, ArrowLeft, Bot, ChevronDown, CircuitBoard, Download, FileInput, FilePlus2, FolderOpen, Github, Link2, Monitor, Package, Upload, Workflow } from "lucide-react";
 import { IS_PAGES } from "@/const";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
+import { MAX_PROJECT_JSON_BYTES, parseImportCatalog, type MaterialRow } from "@contracts/import-catalog";
+import { matchMaterials } from "@contracts/material-import";
+import { suggestSourceMetadata, type DeviceSourceInput } from "@contracts/twin-extract";
 import { createServoDemo, createTwinDemo } from "@contracts/twin-demo";
 import { addInstance, emptyWorkspace, installPackage, nextInstanceName, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
 import { Button } from "@/components/ui/button";
@@ -11,10 +14,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import TwinDeviceLibrary from "@/components/TwinDeviceLibrary";
 import TwinSimulation from "@/components/TwinSimulation";
 import ServoPairImport from "@/components/ServoPairImport";
-import { downloadBlob, downloadJson } from "@/lib/download";
+import { downloadBlob, downloadFile, downloadJson } from "@/lib/download";
 
 const storageKey = "gouyuan.twin.workspace.v1";
-const defaultTab = IS_PAGES ? "so101" : "library";
+const defaultTab = "import";
+const ImportCenter = lazy(() => import("@/components/ImportCenter"));
 const ServoAxisBench = lazy(() => import("@/components/ServoAxisBench"));
 const So101Workbench = lazy(() => import("@/components/So101Workbench"));
 
@@ -42,6 +46,7 @@ export default function TwinStudio() {
   const [showSources, setShowSources] = useState(!session.workspace.servoAxis);
   const [selection, setSelection] = useState<{ driveKey?: string; motorKey?: string; version: number }>({ version: 0 });
   const [generation, setGeneration] = useState(0);
+  const [sourceDraft, setSourceDraft] = useState<{ value: Partial<DeviceSourceInput>; key: number }>();
   const [notice, setNotice] = useState("");
   const importInput = useRef<HTMLInputElement>(null);
   const { workspace } = session;
@@ -59,6 +64,7 @@ export default function TwinStudio() {
     const sync = (event: StorageEvent) => {
       if (event.storageArea !== localStorage || (event.key !== storageKey && event.key !== null)) return;
       setSession(readLocalWorkspace());
+      setSourceDraft(undefined);
       setGeneration((value) => value + 1);
       setSelection({ version: 0 });
       setNotice("已载入其他标签页保存的工程。");
@@ -69,7 +75,17 @@ export default function TwinStudio() {
 
   function save(next: TwinWorkspace, replaceDamaged = false) {
     if (session.damaged && !replaceDamaged) throw new Error("请先下载原存档，再新建工程或导入备份。");
+    if (next.catalog && (next.catalog !== workspace.catalog || next.packages !== workspace.packages)) {
+      let catalog = next.catalog;
+      const installed = next.packages.length > workspace.packages.length ||
+        catalog.models.some(ref => !workspace.catalog?.models.some(current => current.id === ref.id));
+      if (installed && !replaceDamaged) catalog = { ...catalog, materials: matchMaterials(catalog.materials, next) };
+      next = { ...next, catalog: parseImportCatalog(catalog, next.packages) };
+    }
     const raw = JSON.stringify(next);
+    if (next.catalog && new TextEncoder().encode(raw).byteLength > MAX_PROJECT_JSON_BYTES) {
+      throw new Error("工程文字资料超过 8 MiB，请将本次清单拆分到单独工程。");
+    }
     let current: string | null;
     try {
       current = localStorage.getItem(storageKey);
@@ -79,6 +95,7 @@ export default function TwinStudio() {
     }
     if (current !== session.raw) {
       setSession(readLocalWorkspace());
+      setSourceDraft(undefined);
       setGeneration((value) => value + 1);
       setSelection({ version: 0 });
       throw new Error("其他标签页已更新工程。已载入最新存档，请重试本次操作。");
@@ -87,18 +104,27 @@ export default function TwinStudio() {
       localStorage.setItem(storageKey, raw);
       setSession({ workspace: next, raw, damaged: false, warning: "" });
     } catch {
-      setSession({ workspace: next, raw: current, damaged: false, warning: "浏览器写入失败。当前工程仍可导出，请保存一份 JSON 备份。" });
+      setSession({ workspace: next, raw: current, damaged: false, warning: "浏览器写入失败。当前工程仍可导出，请保存备份。" });
     }
   }
 
-  function open(next: TwinWorkspace, label: string, message: string) {
-    if ((workspace.packages.length > 0 || workspace.so101 || session.damaged) && !window.confirm(`用“${label}”替换当前本机工程？如需保留当前工程，请先取消并导出备份。`)) return;
+  function confirmOpen(label: string) {
+    const occupied = workspace.packages.length || workspace.so101 || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
+    return !occupied || window.confirm(`用“${label}”替换当前本机工程？如需保留当前工程，请先取消并导出备份。`);
+  }
+
+  function showProject(next: TwinWorkspace, message: string) {
     save(next, true);
+    setSourceDraft(undefined);
     setGeneration((value) => value + 1);
     setSelection({ version: 0 });
     setShowSources(!next.servoAxis);
-    setTab(next.so101 ? "so101" : next.servoAxis ? "servo" : next.instances.length ? "simulation" : "library");
+    setTab(next.catalog?.models.length || next.catalog?.materials.length ? "import" : next.so101 ? "so101" : next.servoAxis ? "servo" : next.instances.length ? "simulation" : next.packages.length ? "library" : "import");
     setNotice(message);
+  }
+
+  function open(next: TwinWorkspace, label: string, message: string) {
+    if (confirmOpen(label)) showProject(next, message);
   }
 
   function run(action: () => void) {
@@ -110,13 +136,53 @@ export default function TwinStudio() {
   }
 
   async function importWorkspace(file: File) {
-    try {
-      if (file.size > 8 * 1024 * 1024) throw new Error("请选择 8 MiB 以内的工程 JSON。");
-      const next = parseWorkspace(JSON.parse(await file.text()));
-      open(next, file.name, `已导入 ${file.name}，可从零时刻重新运行。`);
-    } catch (error) {
-      setNotice(error instanceof SyntaxError ? "文件不是有效的工程 JSON。" : error instanceof Error ? error.message : "导入失败。");
+    if (/\.zip$/i.test(file.name)) {
+      const { readProjectArchive, putProjectModels } = await import("@/lib/model-files");
+      const { workspace: project, models } = await readProjectArchive(file);
+      if (!confirmOpen(file.name)) return;
+      await putProjectModels(models);
+      showProject(project, `已导入 ${file.name} 及 ${models.length} 个物理模型。`);
+      return;
     }
+    if (file.size > MAX_PROJECT_JSON_BYTES) throw new Error("请选择 8 MiB 以内的工程 JSON，含模型资源的工程请使用 ZIP。");
+    let raw: unknown;
+    try { raw = JSON.parse(await file.text()); }
+    catch { throw new Error("文件不是有效的工程 JSON。"); }
+    const next = parseWorkspace(raw);
+    if (next.catalog?.models.length) {
+      const { getModelBundle } = await import("@/lib/model-files");
+      for (const ref of next.catalog.models) {
+        try {
+          const bundle = await getModelBundle(ref.id);
+          if (bundle.entry !== ref.entry) throw new Error("模型入口不一致。");
+        }
+        catch { throw new Error(`本机缺少与“${ref.name}”入口匹配的资源。请选择包含资源的完整工程 ZIP。`); }
+      }
+    }
+    open(next, file.name, `已导入 ${file.name}，可从零时刻重新运行。`);
+  }
+
+  async function exportWorkspace() {
+    if (!workspace.catalog?.models.length) {
+      downloadJson(workspace, "构元_设备仿真工程.json");
+      return;
+    }
+    const { exportProjectArchive } = await import("@/lib/model-files");
+    downloadFile(await exportProjectArchive(workspace), "构元_完整仿真工程.zip");
+  }
+
+  function useMaterialSource(row: MaterialRow) {
+    const text = row.notes ?? "";
+    const suggested = suggestSourceMetadata(text);
+    const source = row.source ?? "";
+    const url = /^https?:\/\//i.test(source) ? source : "";
+    setSourceDraft(previous => ({
+      key: (previous?.key ?? 0) + 1,
+      value: { ...suggested, title: suggested.title ?? row.name, manufacturer: row.manufacturer ?? suggested.manufacturer ?? "",
+        model: row.model ?? suggested.model ?? "", url, locator: suggested.locator ?? (url ? "" : source), text },
+    }));
+    setTab("library");
+    setNotice(`已带入“${row.name}”的资料。请核对身份、定位和规格后生成草案。`);
   }
 
   function assemble(pkg: DevicePackage) {
@@ -156,24 +222,24 @@ export default function TwinStudio() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="display-title text-2xl font-semibold sm:text-3xl">设备仿真工作台</h1>
-            <p className="mt-2 text-[13px] text-muted-foreground">{tab === "so101" ? "从官方物料清单装配机械臂，在浏览器中运行 MuJoCo 物理仿真。" : "从厂商资料生成设备包，连接设备端口，逐步观察信号。"}</p>
+            <p className="mt-2 text-[13px] text-muted-foreground">{tab === "import" ? "导入自己的物理模型、设备包或物料清单，在浏览器中建模和仿真。" : tab === "so101" ? "从官方物料清单装配机械臂，在浏览器中运行 MuJoCo 物理仿真。" : "从厂商资料生成设备包，连接设备端口，逐步观察信号。"}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {tab === "servo"
               ? <Button variant="outline" onClick={() => run(() => open(createServoDemo(), "汇川伺服轴示例", "示例轴已装配，目标位置为 90°，负载惯量等于转子惯量。"))}><Activity />打开伺服轴示例</Button>
-              : tab !== "so101" && <Button variant="outline" onClick={() => run(() => open(createTwinDemo(), "汇川接线示例", "测试电压源已向第 1 路输入 24 V。步进 10 ms，观察该路数字量输出。"))}><Workflow />打开接线示例</Button>}
+              : (tab === "library" || tab === "simulation") && <Button variant="outline" onClick={() => run(() => open(createTwinDemo(), "汇川接线示例", "测试电压源已向第 1 路输入 24 V。步进 10 ms，观察该路数字量输出。"))}><Workflow />打开接线示例</Button>}
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button variant="secondary"><FolderOpen />工程文件<ChevronDown /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => importInput.current?.click()}><Upload />导入工程 JSON</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => downloadJson(workspace, "构元_设备仿真工程.json")}><Download />导出工程 JSON</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => importInput.current?.click()}><Upload />导入工程文件</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void exportWorkspace().catch(error => setNotice(error instanceof Error ? error.message : "工程导出失败。"))}><Download />{workspace.catalog?.models.length ? "导出完整工程 ZIP" : "导出工程 JSON"}</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => run(() => open(emptyWorkspace(), "空白工程", "已新建空白工程。"))}><FilePlus2 />新建空白工程</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <input ref={importInput} className="hidden" aria-label="选择工程 JSON 文件" type="file" accept=".json,application/json" onChange={(event) => {
+            <input ref={importInput} className="hidden" aria-label="选择工程 JSON 文件或完整 ZIP" type="file" accept=".json,.zip,application/json,application/zip" onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               event.currentTarget.value = "";
-              if (file) void importWorkspace(file);
+              if (file) void importWorkspace(file).catch(error => setNotice(error instanceof Error ? error.message : "工程导入失败。"));
             }} />
           </div>
         </div>
@@ -184,6 +250,7 @@ export default function TwinStudio() {
         <Tabs value={tab} onValueChange={setTab} className="mt-6 gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
             <TabsList aria-label="设备工作台" className="h-auto max-w-full flex-wrap justify-start">
+              <TabsTrigger value="import"><FileInput />导入中心</TabsTrigger>
               <TabsTrigger value="library"><Package />设备库<span className="mono text-xs text-muted-foreground">{workspace.packages.length}</span></TabsTrigger>
               <TabsTrigger value="simulation"><Workflow />仿真装配<span className="mono text-xs text-muted-foreground">{workspace.instances.length}</span></TabsTrigger>
               <TabsTrigger value="servo"><Activity />伺服轴</TabsTrigger>
@@ -194,8 +261,13 @@ export default function TwinStudio() {
           {notice && <div role="status" className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs">
             <span>{notice}</span><button type="button" className="shrink-0 text-muted-foreground hover:underline" onClick={() => setNotice("")}>关闭提示</button>
           </div>}
+          <TabsContent value="import">
+            <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">正在打开导入中心…</p>}>
+              <ImportCenter key={generation} workspace={workspace} onChange={save} onOpenDevice={assemble} onUseSource={useMaterialSource} onOpenProject={importWorkspace} />
+            </Suspense>
+          </TabsContent>
           <TabsContent forceMount value="library" className="data-[state=inactive]:hidden">
-            <TwinDeviceLibrary key={generation} packages={workspace.packages} onInstall={(pkg) => save(installPackage(workspace, pkg))} onAssemble={assemble} />
+            <TwinDeviceLibrary key={`${generation}-${sourceDraft?.key ?? 0}`} initialSource={sourceDraft?.value} packages={workspace.packages} onInstall={(pkg) => save(installPackage(workspace, pkg))} onAssemble={assemble} />
           </TabsContent>
           <TabsContent forceMount value="simulation" className="data-[state=inactive]:hidden">
             <TwinSimulation key={generation} workspace={workspace} onChange={save} />

@@ -169,7 +169,7 @@ export default function ServoAxisBench({ workspace, onChange, preferred }: Props
           </label>
           {drive?.servo?.kind === "drive" && <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
             {drive.manufacturer} · 额定输出电流 {formatValue(drive.servo.ratedCurrentA)} A
-            <a className="ml-2 inline-flex items-center gap-1 text-primary hover:underline" href={drive.source.url} target="_blank" rel="noreferrer">驱动器规格表<ExternalLink className="size-3" /></a>
+            {drive.source.url && <a className="ml-2 inline-flex items-center gap-1 text-primary hover:underline" href={drive.source.url} target="_blank" rel="noreferrer">驱动器规格表<ExternalLink className="size-3" /></a>}
           </p>}
         </div>
         <div>
@@ -181,7 +181,7 @@ export default function ServoAxisBench({ workspace, onChange, preferred }: Props
           </label>
           {motor?.servo?.kind === "motor" && <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
             {motor.manufacturer} · 额定 {formatValue(motor.servo.ratedTorqueNm)} N·m / {formatValue(motor.servo.ratedSpeedRpm)} rpm
-            <a className="ml-2 inline-flex items-center gap-1 text-primary hover:underline" href={motor.source.url} target="_blank" rel="noreferrer">电机规格表<ExternalLink className="size-3" /></a>
+            {motor.source.url && <a className="ml-2 inline-flex items-center gap-1 text-primary hover:underline" href={motor.source.url} target="_blank" rel="noreferrer">电机规格表<ExternalLink className="size-3" /></a>}
           </p>}
         </div>
         <div className="grid gap-3 border-t pt-4 sm:grid-cols-2 lg:grid-cols-1">

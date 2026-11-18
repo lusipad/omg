@@ -1,8 +1,8 @@
 # 构元 · 通用模块工程平台
 
-[打开在线仿真工作台](https://lusipad.github.io/omg/)。这个 GitHub Pages 地址会跳转到已绑定域名 `lusipad.com/omg/`。首页是 SO-101 从臂，点击 **载入官方 BOM 示例**，再点 **运行动作**，即可在浏览器里查看机械臂姿态和末端轨迹。也可直接进入[汇川伺服轴示例](https://lusipad.com/omg/?view=servo)。
+[打开在线导入中心](https://lusipad.github.io/omg/)。这个 GitHub Pages 地址会跳转到 `lusipad.com/omg/`。在首页可以导入自己的物理模型、几何网格、设备包、物料清单和手册。[导入格式与操作步骤](docs/通用模型与资料导入.md)
 
-公开站点支持浏览器内仿真、设备包与工程 JSON 的导入导出，工程保存在访问者的浏览器中。客户项目、数据库、官网资料读取、PDF 转换和在线 AI 生成使用下文的完整服务部署。`npm run build:pages` 生成 `dist/pages`，推送到 `main` 后 GitHub Actions 会构建并发布这个目录。
+公开站点在浏览器内运行模型。轻量工程可导出 JSON，包含用户物理模型的工程可导出带原始资源的 ZIP。[汇川伺服轴](https://lusipad.com/omg/?view=servo)和 [SO-101 从臂](https://lusipad.com/omg/?view=so101)是两个带专用操作界面的示例。客户项目、数据库、官网资料读取、PDF 转换和在线 AI 生成使用下文的完整服务部署。`npm run build:pages` 生成 `dist/pages`，推送到 `main` 后 GitHub Actions 会构建并发布这个目录。
 
 ## 从底层设备搭建仿真
 
