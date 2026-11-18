@@ -116,7 +116,12 @@ export default function MiloMotionBench({plan}: {plan:MiloMotionPlan}) {
       </div>
       <input aria-label="加工回放时间" aria-valuetext={`${miloNumber(time)} 秒`} className="block h-4 w-full accent-primary"
         type="range" min="0" max={duration || 1} step="any" disabled={!duration} value={time}
-        onChange={(event) => { setPlay(null); setTime(Math.min(duration, Math.max(0, event.target.valueAsNumber))); }} />
+        onChange={(event) => {
+          setPlay(null);
+          const seconds = event.currentTarget.valueAsNumber;
+          // Range inputs can round the maximum when serializing it to decimal.
+          setTime(duration - seconds <= 32 * Number.EPSILON * duration ? duration : seconds);
+        }} />
     </div>
     <MiloScene plan={plan} sample={sample} />
     <section className="surface min-w-0 p-4 sm:p-5" aria-label="三轴规划轨迹">
