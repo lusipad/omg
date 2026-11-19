@@ -2,7 +2,7 @@ import { parseImportCatalog, type MaterialRow } from "./import-catalog";
 import { matchMaterials } from "./material-import";
 import type { MiloBom } from "./milo-bom";
 import { initialMiloWorkspace, parseMiloWorkspace, withMiloBom, type MiloWorkspaceState } from "./milo-workspace";
-import { DEFAULT_SO101_MOTION, parseSo101Assembly, SO101_MODEL_ID, type So101Assembly } from "./so101";
+import { parseSo101Assembly, SO101_JOINTS, SO101_MODEL_ID, type So101Assembly } from "./so101";
 import type { So101BomRow } from "./so101-bom";
 import { isCompatibleServoPair } from "./servo-axis";
 import type { DevicePackage } from "./twin-device";
@@ -21,7 +21,7 @@ export function applyMiloBomImport(workspace: TwinWorkspace, bom: MiloBom, sourc
 }
 
 export function applySo101BomImport(workspace: TwinWorkspace, bom: So101BomRow[]): TwinWorkspace & { so101: So101Assembly } {
-  const waypoints = workspace.so101?.waypoints ?? DEFAULT_SO101_MOTION;
+  const waypoints = workspace.so101?.waypoints ?? [{ timeS: 1, anglesDeg: SO101_JOINTS.map(() => 0) }];
   return { ...workspace, so101: parseSo101Assembly({ modelId: SO101_MODEL_ID, bom, waypoints }) };
 }
 

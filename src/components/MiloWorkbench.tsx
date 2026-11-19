@@ -1,14 +1,12 @@
-import { lazy, Suspense, useCallback, useLayoutEffect, useRef, useState } from "react";
-import { Box, Check, Download, ExternalLink, FileUp, Layers3, Loader2, Play } from "lucide-react";
+import { lazy, Suspense, useLayoutEffect, useRef, useState } from "react";
+import { Box, Check, Download, ExternalLink, FileUp, Layers3, Play } from "lucide-react";
 import { assembleMiloAxis, getMiloAxisRequirements, miloAxisIds, type MiloAxisId, type MiloBom } from "@contracts/milo-bom";
 import { MILO_MACHINE, MILO_MAX_PROGRAM_CHARS, MiloProgramError, miloDemoGcode, planMiloProgram, type MiloMotionPlan } from "@contracts/milo-motion";
 import { initialMiloWorkspace, type MiloWorkspaceState } from "@contracts/milo-workspace";
-import { applyMiloBomImport } from "@contracts/import-apply";
-import { decodeImportUtf8, parseImportText } from "@contracts/workbench-import";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import type { WorkbenchImportOptions } from "@/lib/workbench-import";
 import { miloBomSource } from "@/lib/bom-sources";
-import { useCancelOnNewImport } from "@/hooks/useWorkbenchImport";
+import { miloPocketPath } from "@/lib/studio-example-workspace";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -16,8 +14,7 @@ const MotionBench = lazy(() => import("./MiloMotionBench"));
 const { revision, rawUrl: officialRaw, docsRoot: officialDocs } = miloBomSource;
 const localBase = `${import.meta.env.BASE_URL}machines/milo-v1-5/`;
 const factsUrl = import.meta.env.BASE_URL + miloBomSource.localPath;
-const pocketUrl = localBase + "circular-pocket.nc";
-const localSource = `本地核对表 · 官方版本 ${revision.slice(0, 10)}`;
+const pocketUrl = import.meta.env.BASE_URL + miloPocketPath;
 const manuals = { X: "50_x_axis_assembly.md", Y: "40_y_axis_assembly.md", Z: "60_z_axis_assembly.md" };
 const categories: Record<string, string> = {
   "Printed Parts": "打印件", Fasteners: "紧固件", Frame: "机架", Electronics: "电气件", Motion: "运动件", Cabling: "线缆", Misc: "其他物料",
@@ -25,28 +22,12 @@ const categories: Record<string, string> = {
 type Props = {
   workspace: TwinWorkspace;
   onChange: (workspace: TwinWorkspace) => void;
-  onImportFile: (file: File, hint?: WorkbenchImportOptions["hint"]) => void;
+  onImportFile?: (file: File, hint?: WorkbenchImportOptions["hint"]) => void;
+  onImportText?: (text: string, name: string, options?: WorkbenchImportOptions) => void;
+  initialPlan?: MiloMotionPlan;
 };
 type Issue = { message: string; line?: number; column?: number };
 const message = (cause: unknown) => cause instanceof Error ? cause.message : "操作失败，请重新尝试。";
-
-async function readTextResource(url: string, signal: AbortSignal) {
-  const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error(`读取 ${url.split("/").at(-1)} 失败（HTTP ${response.status}）。`);
-  return decodeImportUtf8(await response.arrayBuffer());
-}
-
-function exampleBom(text: string, name: string): MiloBom {
-  const result = parseImportText(text, name, { hint: "bom" });
-  if (result.kind !== "milo-bom") throw new Error("未从示例文件识别到 Milo v1.5 采购清单。");
-  return result.bom;
-}
-
-function exampleProgram(text: string, name: string): string {
-  const result = parseImportText(text, name, { hint: "gcode" });
-  if (result.kind !== "gcode") throw new Error("未从示例文件识别到 G 代码程序。");
-  return result.program;
-}
 
 function Inventory({ bom, source }: { bom: MiloBom; source?: string }) {
   const [chosen, setChosen] = useState("");
@@ -109,140 +90,59 @@ function AxisCard({ axis, state, onAssemble, onRemove }: { axis: MiloAxisId; sta
   </article>;
 }
 
-export default function MiloWorkbench({ workspace, onChange, onImportFile }: Props) {
+export default function MiloWorkbench({ workspace, onChange, onImportFile, onImportText, initialPlan }: Props) {
   const state = workspace.milo ?? initialMiloWorkspace;
-  const latest = useRef({ workspace, state, onChange });
-  useLayoutEffect(() => { latest.current = { workspace, state, onChange }; }, [workspace, state, onChange]);
   const bomFile = useRef<HTMLInputElement>(null), programFile = useRef<HTMLInputElement>(null), editor = useRef<HTMLTextAreaElement>(null);
-  const bomRequest = useRef<AbortController | null>(null), programRequest = useRef<AbortController | null>(null);
-  const [reading, setReading] = useState<"official" | "local" | null>(null);
   const [bomError, setBomError] = useState(""), [notice, setNotice] = useState("");
   const [programIssue, setProgramIssue] = useState<Issue | null>(null);
-  const [readingProgram, setReadingProgram] = useState(false);
-  const [programNotice, setProgramNotice] = useState("");
-  const [run, setRun] = useState<{ source: string; plan: MiloMotionPlan; id: number } | null>(null);
+  const [pocketSource] = useState(() => initialPlan ? state.program : "");
+  const [editedSource, setEditedSource] = useState<string | null>(null);
+  const [run, setRun] = useState<{ source: string; plan: MiloMotionPlan; id: number } | null>(() =>
+    initialPlan ? { source: state.program, plan: initialPlan, id: 0 } : null);
   const playback = useRef<HTMLDivElement>(null);
   const runId = useRef(0);
   const pendingAxes = miloAxisIds.filter((axis) => !state.assembled.includes(axis));
   const ready = !!state.bom && !pendingAxes.length;
-  const hasDraft = !!state.program.trim() && state.program !== miloDemoGcode;
+  const hasDraft = !!state.program.trim();
   const currentRun = ready && run?.source === state.program ? run : null;
-  const cancelPending = useCallback(() => {
-    const bom = bomRequest.current, program = programRequest.current;
-    if (!bom && !program) return;
-    bomRequest.current = null; programRequest.current = null;
-    bom?.abort(); program?.abort();
-    setReading(null); setReadingProgram(false);
-  }, []);
-  useCancelOnNewImport(cancelPending);
-  useLayoutEffect(() => () => { bomRequest.current?.abort(); programRequest.current?.abort(); }, []);
-  useLayoutEffect(() => {
-    if (window.location.hash === "#milo-pocket") document.getElementById("milo-pocket")?.scrollIntoView();
-  }, []);
-  useLayoutEffect(() => { if (run) playback.current?.scrollIntoView({ block: "start" }); }, [run]);
-
-  async function importBom(from: "official" | "local") {
-    programRequest.current?.abort(); setReadingProgram(false);
-    bomRequest.current?.abort();
-    const controller = new AbortController();
-    bomRequest.current = controller;
-    setReading(from); setBomError(""); setNotice("");
-    let timedOut = false, fetchingOfficial = from === "official";
-    const timer = from === "official" ? window.setTimeout(() => { timedOut = true; controller.abort(); }, 20_000) : undefined;
-    try {
-      const text = await readTextResource(from === "official" ? officialRaw : factsUrl, controller.signal);
-      const source = from === "official" ? officialRaw : localSource;
-      if (bomRequest.current !== controller) return;
-      if (timedOut) throw new Error("连接超时。");
-      if (controller.signal.aborted) return;
-      fetchingOfficial = false;
-      const current = latest.current;
-      const next = applyMiloBomImport(current.workspace, exampleBom(text, from === "official" ? "sourcing_guide.md" : "bom-facts.md"), source);
-      current.onChange(next);
-      const lost = current.state.assembled.filter((axis) => !next.milo.assembled.includes(axis));
-      setNotice(`已读入 ${next.milo.bom?.length} 行物料。${lost.length ? `${lost.join("、")} 轴缺少关键件，需重新装配。` : next.milo.assembled.length ? `已保留 ${next.milo.assembled.join("、")} 轴的装配。` : ""}`);
-      if (lost.length) { programRequest.current?.abort(); setReadingProgram(false); setRun(null); }
-    } catch (cause) {
-      if (bomRequest.current === controller && (!controller.signal.aborted || timedOut)) {
-        setBomError(fetchingOfficial ? `官方 BOM 读取失败。${timedOut ? "连接超时。" : message(cause)} 可重试、上传官方原件，或载入本地核对表。` : message(cause));
-      }
-    } finally {
-      if (timer !== undefined) window.clearTimeout(timer);
-      if (bomRequest.current === controller) { bomRequest.current = null; setReading(null); }
-    }
-  }
+  const selectedSource = state.program === pocketSource ? "pocket" : state.program === miloDemoGcode ? "linear" : "draft";
+  useLayoutEffect(() => { if (run && run.id > 0) playback.current?.scrollIntoView({ block: "start" }); }, [run]);
 
   function assemble(axis: MiloAxisId) {
-    const { workspace: ws, state: current, onChange: save } = latest.current;
-    if (!current.bom) return;
+    if (!state.bom) return;
     try {
-      save({ ...ws, milo: { ...current, assembled: assembleMiloAxis(current.bom, current.assembled, axis) } });
+      onChange({ ...workspace, milo: { ...state, assembled: assembleMiloAxis(state.bom, state.assembled, axis) } });
       setBomError(""); setNotice(`已装配 ${axis} 轴。`);
     } catch (cause) { setBomError(message(cause)); }
   }
 
   function removeAxis(axis: MiloAxisId) {
-    const { workspace: ws, state: current, onChange: save } = latest.current;
     try {
-      save({ ...ws, milo: { ...current, assembled: current.assembled.filter((item) => item !== axis) } });
-      programRequest.current?.abort(); setReadingProgram(false); setRun(null);
-      setProgramIssue(null); setProgramNotice(""); setBomError(""); setNotice(`已卸下 ${axis} 轴，已按剩余装配重新核算可用数量。`);
+      onChange({ ...workspace, milo: { ...state, assembled: state.assembled.filter(item => item !== axis) } });
+      setRun(null); setProgramIssue(null); setBomError(""); setNotice(`已卸下 ${axis} 轴，已按剩余装配重新核算可用数量。`);
     } catch (cause) { setBomError(message(cause)); }
   }
 
-  function changeProgram(value: string, feedback = "") {
-    programRequest.current?.abort();
-    setReadingProgram(false);
-    const { workspace: ws, state: current, onChange: save } = latest.current;
+  function changeProgram(value: string) {
     try {
-      if (!current.bom || !miloAxisIds.every((axis) => current.assembled.includes(axis))) throw new Error("请先完成三轴装配。");
       if (value.length > MILO_MAX_PROGRAM_CHARS) throw new Error(`程序超过 ${MILO_MAX_PROGRAM_CHARS} 字符，请缩短后再载入。`);
-      save({ ...ws, milo: { ...current, program: value } }); setProgramIssue(null); setProgramNotice(feedback);
-    } catch (cause) { setProgramIssue({ message: message(cause) }); setProgramNotice(""); }
+      onChange({ ...workspace, milo: { ...state, program: value } }); setProgramIssue(null);
+      if (initialPlan && value !== pocketSource && value !== miloDemoGcode) setEditedSource(value);
+    } catch (cause) { setProgramIssue({ message: message(cause) }); }
   }
 
   function previewFile(file: File, hint?: WorkbenchImportOptions["hint"]) {
-    cancelPending();
-    setBomError(""); setProgramIssue(null); setNotice(""); setProgramNotice("");
-    onImportFile(file, hint);
-  }
-
-  async function loadPocket() {
-    programRequest.current?.abort();
-    const controller = new AbortController();
-    programRequest.current = controller;
-    setReadingProgram(true); setProgramIssue(null); setProgramNotice("");
-    try {
-      const previous = latest.current.state;
-      const [programText, facts] = await Promise.all([
-        readTextResource(pocketUrl, controller.signal),
-        previous.bom ? "" : readTextResource(factsUrl, controller.signal),
-      ]);
-      if (controller.signal.aborted) return;
-      if (previous !== latest.current.state) throw new Error("工程已更新，请重新打开圆槽示例。");
-      const program = exampleProgram(programText, "circular-pocket.nc");
-      const bom = previous.bom ?? exampleBom(facts, "bom-facts.md");
-      const base = previous.bom ? previous : applyMiloBomImport(latest.current.workspace, bom, localSource).milo;
-      const assembled = miloAxisIds.reduce((axes, axis) => assembleMiloAxis(bom, axes, axis), base.assembled);
-      const plan = planMiloProgram(program);
-      if (previous.program.trim() && previous.program !== miloDemoGcode && previous.program.trim() !== program.trim()
-        && !window.confirm("用圆形凹槽示例替换当前 G 代码？如需保留，请先取消并导出工程。")) return;
-      latest.current.onChange({ ...latest.current.workspace, milo: { ...base, assembled, program } });
-      setRun({ source: program, plan, id: ++runId.current }); setBomError("");
-      setProgramNotice("已载入 circular-pocket.nc。可修改程序后再次运行。");
-    } catch (cause) {
-      if (!controller.signal.aborted) { setProgramIssue({ message: message(cause) }); setProgramNotice(""); }
-    } finally { if (programRequest.current === controller) { programRequest.current = null; setReadingProgram(false); } }
+    setBomError(""); setProgramIssue(null); setNotice("");
+    onImportFile?.(file, hint);
   }
 
   function execute() {
-    programRequest.current?.abort();
     if (!ready) return;
     try {
       const plan = planMiloProgram(state.program);
-      setRun({ source: state.program, plan, id: ++runId.current }); setProgramIssue(null); setProgramNotice("");
+      setRun({ source: state.program, plan, id: ++runId.current }); setProgramIssue(null);
     } catch (cause) {
-      setRun(null); setProgramNotice("");
+      setRun(null);
       setProgramIssue(cause instanceof MiloProgramError ? { message: cause.message, line: cause.line, column: cause.column } : { message: message(cause) });
     }
   }
@@ -256,19 +156,26 @@ export default function MiloWorkbench({ workspace, onChange, onImportFile }: Pro
     input.focus(); input.setSelectionRange(offset, Math.min(offset + 1, input.value.length));
   }
 
+  const replay = currentRun && <div ref={playback} className="scroll-mt-3"><Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开三轴轨迹…</p>}>
+    <MotionBench key={currentRun.id} plan={currentRun.plan} />
+  </Suspense></div>;
   return <section className="min-w-0 space-y-4" aria-label="Milo v1.5 三轴铣床">
+    {initialPlan && replay}
     <section className="surface min-w-0 space-y-3 p-4 sm:p-5">
-      <h2 className="flex items-center gap-2 text-lg font-semibold"><Box className="size-5 text-primary" />Milo v1.5 三轴铣床</h2>
-      <p className="text-sm leading-6 text-muted-foreground">导入 Millennium Machines 采购清单，核对三轴运动与驱动关键件，再用 G 代码仿真工作台与主轴座的联动。</p>
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={reading === "official"} onClick={() => void importBom("official")}>{reading === "official" ? <Loader2 className="animate-spin" /> : <Download />}载入官方 BOM</Button>
-        <Button variant="outline" disabled={reading === "local"} onClick={() => void importBom("local")}>{reading === "local" ? <Loader2 className="animate-spin" /> : <Layers3 />}载入本地核对表</Button>
+      {!initialPlan && <>
+        <h2 className="flex items-center gap-2 text-lg font-semibold"><Box className="size-5 text-primary" />Milo v1.5 三轴铣床</h2>
+        <p className="text-sm leading-6 text-muted-foreground">导入 Millennium Machines 采购清单，核对三轴运动与驱动关键件，再用 G 代码仿真工作台与主轴座的联动。</p>
+      </>}
+      {onImportFile && <div className="flex flex-wrap gap-2">
+        {onImportText && <>
+          <Button onClick={() => onImportText(officialRaw, "sourcing_guide.md", { source: officialRaw })}><Download />导入官方采购表</Button>
+          <Button variant="outline" onClick={() => onImportText(new URL(factsUrl, document.baseURI).href, "bom-facts.md", { source: `本站核对表 · ${miloBomSource.documentUrl}` })}><Layers3 />使用本地核对表</Button>
+        </>}
         <Button variant="outline" onClick={() => bomFile.current?.click()}><FileUp />上传采购指南</Button>
         <input ref={bomFile} aria-label="上传 Milo BOM 文件" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" className="hidden" onChange={(event) => {
           const selected = event.target.files?.[0]; event.target.value = ""; if (selected) previewFile(selected, "bom");
         }} />
-      </div>
-      {reading && <p role="status" className="text-xs text-muted-foreground">{reading === "official" ? "正在从 GitHub 读取固定版本的 sourcing_guide.md…" : "正在读取采购清单…"}</p>}
+      </div>}
       {bomError && <p role="alert" className="whitespace-pre-line break-words text-sm text-destructive">{bomError}</p>}
       {notice && <p role="status" className="text-xs text-primary">{notice}</p>}
       {state.bom && <Inventory bom={state.bom} source={state.bomSource} />}
@@ -288,18 +195,24 @@ export default function MiloWorkbench({ workspace, onChange, onImportFile }: Pro
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-base font-semibold">G 代码程序</h3>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => programFile.current?.click()}><FileUp />载入程序文件</Button>
-          <a className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline" href={pocketUrl} download="circular-pocket.nc"><Download className="size-3.5" />下载圆槽 G 代码</a>
+          {initialPlan && <label className="inline-flex items-center gap-2 text-xs">
+            示例程序
+            <select aria-label="示例程序" value={selectedSource} className="h-8 rounded border bg-background px-2 text-xs" onChange={event => {
+              const choice = event.target.value;
+              changeProgram(choice === "pocket" ? pocketSource : choice === "linear" ? miloDemoGcode : editedSource ?? state.program);
+            }}>
+              <option value="pocket">圆形凹槽</option><option value="linear">三轴直线</option>
+              {editedSource !== null && <option value="draft">当前编辑稿</option>}
+            </select>
+          </label>}
+          {onImportFile && <Button variant="outline" size="sm" onClick={() => programFile.current?.click()}><FileUp />载入程序文件</Button>}
+          {initialPlan && <a className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline" href={pocketUrl} download="circular-pocket.nc"><Download className="size-3.5" />下载原始圆槽程序</a>}
         </div>
       </div>
-      <input ref={programFile} aria-label="载入 G 代码文件" type="file" accept=".gcode,.nc,.ngc,.cnc,.tap,.txt,text/plain" className="hidden" onChange={(event) => {
+      {onImportFile && <input ref={programFile} aria-label="载入 G 代码文件" type="file" accept=".gcode,.nc,.ngc,.cnc,.tap,.txt,text/plain" className="hidden" onChange={(event) => {
         const selected = event.target.files?.[0]; event.target.value = "";
         if (selected) previewFile(selected, /\.txt$/i.test(selected.name) ? "gcode" : undefined);
-      }} />
-      <div className="surface-inset flex flex-wrap items-center justify-between gap-3 p-3">
-        <div><h4 className="text-sm font-medium">圆形平底凹槽</h4><p className="mt-1 text-xs text-muted-foreground">Ø6 mm 平底刀分三层铣出直径 30 mm、深 3 mm 的凹槽。回放时可旋转视角，检查槽底或查看整机。</p></div>
-        <Button variant="outline" disabled={!!reading || readingProgram} onClick={() => void loadPocket()}><Play />{ready ? "回放圆形凹槽" : "组装并回放圆形凹槽"}</Button>
-      </div>
+      }} />}
       {!ready ? <div className="space-y-2 text-sm">
         <p className="text-muted-foreground">{hasDraft ? "程序已保存，" : "可先"}{state.bom ? "" : "载入 BOM 并"}完成 {pendingAxes.join("、")} 轴装配{hasDraft ? "后运行。" : "，再编辑自己的程序。"}</p>
         {hasDraft && <details><summary className="cursor-pointer text-xs font-medium">查看已保存的程序</summary>
@@ -309,16 +222,15 @@ export default function MiloWorkbench({ workspace, onChange, onImportFile }: Pro
         <p className="text-xs leading-5 text-muted-foreground">曲线为理想开环步进规划值，按参考固件的轴限速与加速度计算，每个运动段起止时停稳。</p>
         <details className="text-xs leading-5 text-muted-foreground">
           <summary className="cursor-pointer text-foreground">工件零点与行程</summary>
-          <p className="mt-1.5">示例装夹的工件零点位于机床坐标 {miloAxisIds.map((axis, i) => axis + MILO_MACHINE.workOriginMachineMm[i]).join(" ")} mm。</p>
+          <p className="mt-1.5">当前虚拟装夹的工件零点位于机床坐标 {miloAxisIds.map((axis, i) => axis + MILO_MACHINE.workOriginMachineMm[i]).join(" ")} mm。</p>
           <p>仿真假定平底刀已旋转，G0 只做定位，G1、G2、G3 进给时按刀刃扫过的体积去料。</p>
           <p>M208 机床坐标范围为 {miloAxisIds.map((axis, i) => `${axis} [${MILO_MACHINE.minMm[i]}, ${MILO_MACHINE.maxMm[i]}]`).join("，")} mm。</p>
           <p>换算后的工件可编程范围为 {miloAxisIds.map((axis, i) => `${axis} [${MILO_MACHINE.minMm[i] - MILO_MACHINE.workOriginMachineMm[i]}, ${MILO_MACHINE.maxMm[i] - MILO_MACHINE.workOriginMachineMm[i]}]`).join("，")} mm。</p>
         </details>
-        <Textarea aria-label="G 代码程序" ref={editor} spellCheck={false} autoCapitalize="off" autoCorrect="off" wrap="off" value={state.program} placeholder="输入 G 代码，或载入示例程序"
+        <Textarea aria-label="G 代码程序" ref={editor} spellCheck={false} autoCapitalize="off" autoCorrect="off" wrap="off" value={state.program} placeholder="输入 G 代码，或导入程序文件"
           className="mono h-48 w-full resize-y text-sm leading-6" onChange={(event) => changeProgram(event.target.value)} />
         <div className="flex flex-wrap gap-2">
-          <Button disabled={readingProgram || !state.program.trim()} onClick={execute}><Play />运行 G 代码</Button>
-          <Button variant="ghost" onClick={() => changeProgram(exampleProgram(miloDemoGcode, "linear-example.nc"), "已载入三轴直线示例。")}>载入直线示例</Button>
+          <Button disabled={!state.program.trim()} onClick={execute}><Play />运行 G 代码</Button>
         </div>
         {run && !currentRun && <p role="status" className="text-xs text-amber-300">程序已修改，请重新运行以查看当前文本的轨迹。</p>}
       </>}
@@ -326,11 +238,7 @@ export default function MiloWorkbench({ workspace, onChange, onImportFile }: Pro
         <span className="whitespace-pre-line break-words">{programIssue.message}</span>
         {ready && programIssue.line && <Button size="sm" variant="outline" onClick={locateIssue}>定位到第 {programIssue.line} 行</Button>}
       </div>}
-      {readingProgram && <p role="status" className="text-xs text-muted-foreground">正在读取程序文件…</p>}
-      {programNotice && <p role="status" className="text-xs text-primary">{programNotice}</p>}
     </section>
-    {currentRun && <div ref={playback} className="scroll-mt-3"><Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开三轴轨迹…</p>}>
-      <MotionBench key={currentRun.id} plan={currentRun.plan} />
-    </Suspense></div>}
+    {!initialPlan && replay}
   </section>;
 }

@@ -1,0 +1,94 @@
+import { lazy, Suspense, useState } from "react";
+import { ArrowLeft, FolderInput } from "lucide-react";
+import { Link } from "react-router";
+import { getStudioExample, studioHref, type StudioRoute, type StudioTarget, type StudioTargetOption } from "@contracts/studio-navigation";
+import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { Button } from "@/components/ui/button";
+import type { IncomingWorkbenchModel, WorkbenchImportOptions } from "@/lib/workbench-import";
+import TwinSimulation from "./TwinSimulation";
+
+const Physics = lazy(() => import("./ImportCenterPhysics"));
+const Servo = lazy(() => import("./ServoAxisBench"));
+const Follower = lazy(() => import("./So101Workbench"));
+const Mill = lazy(() => import("./MiloWorkbench"));
+const ExampleBench = lazy(() => import("./StudioExampleBench"));
+
+type Props = {
+  route: Extract<StudioRoute, { view: "workbench" }> | null;
+  workspace: TwinWorkspace;
+  generation: number;
+  bomRevision: number;
+  servoChoice: { version: number; driveKey?: string; motorKey?: string };
+  lastTarget?: StudioTarget;
+  targets: StudioTargetOption[];
+  incoming: IncomingWorkbenchModel | null;
+  onChange: (next: TwinWorkspace) => void;
+  onNavigate: (route: StudioRoute, message?: string, replace?: boolean) => void;
+  onApplyExample: (next: TwinWorkspace, target: StudioTarget, name: string) => void;
+  onImportFile: (file: File, hint?: WorkbenchImportOptions["hint"]) => void;
+  onImportText: (text: string, name: string, options?: WorkbenchImportOptions) => void;
+};
+
+const editorNames = { wiring: "信号接线", servo: "伺服轴", so101: "SO-101 从臂", milo: "Milo v1.5 三轴铣床" };
+
+export default function StudioRunArea({ route, workspace, generation, bomRevision, servoChoice, lastTarget, targets, incoming, onChange, onNavigate, onApplyExample, onImportFile, onImportText }: Props) {
+  const isExample = route?.exampleId !== undefined;
+  const example = getStudioExample(route?.exampleId);
+  const exampleTarget = example?.kind === "physics" ? undefined : example?.kind;
+  const target = route && !isExample && route.unavailableTarget === undefined
+    ? route.target ?? lastTarget ?? targets[0]?.id : undefined;
+  const model = target?.startsWith("model:") ? workspace.catalog?.models.find(item => `model:${item.id}` === target) : undefined;
+  const missing = isExample && !example ? "没有找到这个示例。"
+    : route?.unavailableTarget !== undefined || (target?.startsWith("model:") && !model) ? "当前工程中没有这个对象。"
+    : target === "incoming" && !incoming ? "本次预览的模型文件已关闭，请重新选择文件。"
+    : undefined;
+  const [wiringRevision, setWiringRevision] = useState(0);
+  const options = targets.slice();
+  if (target && !missing && !targets.some(item => item.id === target)) {
+    if (target === "incoming") options.push({ id: target, name: "待安装的物理模型" });
+    else if (target in editorNames) options.push({ id: target, name: editorNames[target as keyof typeof editorNames] });
+  }
+
+  return <section hidden={!route} aria-label="装配与仿真工作区" className="min-w-0 space-y-4">
+    {route && <header className="flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        {isExample && <Link to={studioHref({ view: "examples" })} className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="size-3.5" />返回示例库
+        </Link>}
+        <h1 className="display-title break-words text-2xl font-semibold">{example?.name ?? (isExample ? "示例预览" : "装配与仿真")}</h1>
+        {example && <p className="mt-1 text-xs text-muted-foreground">可在此试跑和调整，点“加入当前工程”后保存。</p>}
+      </div>
+      {!isExample && !missing && target && <label className="flex max-w-full flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        当前工程对象
+        <select aria-label="当前工程对象" className="h-9 max-w-full rounded border bg-background px-2 text-sm text-foreground"
+          value={target} onChange={event => { const choice = options.find(item => item.id === event.target.value); if (choice) onNavigate({ view: "workbench", target: choice.id }); }}>
+          {options.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+      </label>}
+    </header>}
+    {route && (missing || (!target && !isExample)) && <div className="surface space-y-3 p-5">
+      <p className="text-sm">{missing ?? "当前工程还没有可装配或运行的对象。"}</p>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" asChild><Link to={studioHref({ view: "resources" })}><FolderInput />打开工程资源</Link></Button>
+        <Button size="sm" variant="ghost" asChild><Link to={studioHref({ view: "examples" })}>浏览示例库</Link></Button>
+      </div>
+    </div>}
+    {route && !missing && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开运行台…</p>}>
+      {example && exampleTarget && <ExampleBench key={example.id} example={example} workspace={workspace} onApply={next => {
+        onApplyExample(next, exampleTarget, example.name);
+        if (exampleTarget === "wiring") setWiringRevision(revision => revision + 1);
+      }} />}
+      {(example?.kind === "physics" || model || (target === "incoming" && incoming)) && <Physics
+        key={example ? `example:${example.id}` : `${generation}-${model?.id ?? incoming?.token}`} workspace={workspace} onChange={onChange}
+        exampleId={example?.id ?? null} requested={model ?? null} incoming={target === "incoming" ? incoming ?? undefined : undefined}
+        onClose={() => onNavigate(example ? { view: "examples" } : { view: "resources", section: "physics" })}
+        onInstalled={ref => onNavigate({ view: "workbench", target: `model:${ref.id}` }, `已将“${ref.name}”加入当前工程。`, target === "incoming")} />}
+      {target === "servo" && <Servo key={`${generation}-${servoChoice.version}`} workspace={workspace} onChange={onChange} preferred={servoChoice} />}
+      {target === "so101" && <Follower key={`${generation}-${bomRevision}`} workspace={workspace} onChange={onChange} onImportFile={onImportFile} onImportText={onImportText} />}
+      {target === "milo" && <Mill key={`${generation}-${bomRevision}`} workspace={workspace} onChange={onChange} onImportFile={onImportFile} onImportText={onImportText} />}
+    </Suspense>}
+    <div hidden={target !== "wiring"}>
+      <TwinSimulation key={`${generation}-${wiringRevision}`} workspace={workspace} onChange={onChange} />
+    </div>
+  </section>;
+}

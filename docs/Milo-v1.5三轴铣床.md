@@ -1,13 +1,13 @@
 # Milo v1.5 三轴铣床
 
-1. 打开 [Milo v1.5 工作台](https://lusipad.com/omg/?view=milo)，载入官方 BOM。也可以在导入中心粘贴官方采购指南链接，或在任一导入文件入口选择原版 `sourcing_guide.md`，核对后点 **导入 Milo BOM**。GitHub 原文件暂时无法访问时，可以使用站内已核对的物料表。[官方采购指南](https://millenniummachines.github.io/docs/milo_1.5/bom/sourcing_guide/) · [固定版本原文件](https://raw.githubusercontent.com/MillenniumMachines/millenniummachines.github.io/2aaa0c55e6bc176e42592bdb27051e428413f516/docs/milo_1.5/bom/sourcing_guide.md)
+1. 在 **工程资源** 粘贴官方采购指南链接或选择原版 `sourcing_guide.md`。也可以从 Milo 工作台点 **导入官方采购表**。核对 81 条原始记录后点 **导入 Milo BOM**。GitHub 原文件暂时无法访问时，可选择 **使用本地核对表**，核对同一版本。[Milo 工作台](https://lusipad.com/omg/?view=workbench&target=milo) · [官方采购指南](https://millenniummachines.github.io/docs/milo_1.5/bom/sourcing_guide/) · [固定版本原文件](https://raw.githubusercontent.com/MillenniumMachines/millenniummachines.github.io/2aaa0c55e6bc176e42592bdb27051e428413f516/docs/milo_1.5/bom/sourcing_guide.md)
 2. 分别装配 X、Y、Z 三根轴。每次装配都核对当前库存。比如把 NEMA 23 的数量从 3 改为 2，前两根轴会用完两台电机，第三根会显示缺料。可以卸下一根轴把电机改配给另一轴，也可以补齐数量后重新导入。完整清单保留七组共 81 条记录，包括接线、紧固件和可选配置的原始数量。[部件分配和来源](../public/machines/milo-v1-5/SOURCE.md)
-3. 三根轴就绪后，运行示例或自己的 G 代码。回放默认打开**三维视图**。在画布上拖动可绕工件旋转，滚轮缩放，右键拖动平移。触屏用单指旋转，双指缩放和平移。可边播放边观察，也可暂停在某一层再转到侧面查看槽底。
+3. 三根轴就绪后，在编辑器粘贴或导入自己的 G 代码并运行。回放默认打开**三维视图**。在画布上拖动可绕工件旋转，滚轮缩放，右键拖动平移。触屏用单指旋转，双指缩放和平移。可边播放边观察，也可暂停在某一层再转到侧面查看槽底。
 4. 通过 **工程文件 → 导出工程 JSON** 保存清单、已装轴和程序草稿。在另一台电脑导入工程文件后可以重新运行。工程中另外安装了物理模型时，使用同一菜单导出的完整 ZIP。
 
 ## 分三层铣一个圆形凹槽
 
-打开 [圆形凹槽回放](https://lusipad.com/omg/?view=milo#milo-pocket)，点 **回放圆形凹槽**。空工程可点 **组装并回放圆形凹槽**，工作台会用站内的官方 BOM 核对表装配三轴。工程已有 BOM 时会按该表的库存核料。示例程序进入编辑器，可以修改、重新运行或保存到工程中。[下载完整 G 代码](https://lusipad.com/omg/machines/milo-v1-5/circular-pocket.nc)
+在 **示例库** 打开 **Milo v1.5 三轴铣床**，即可回放圆形凹槽。示例用官方 BOM 核对表装好了三根轴，并载入圆弧程序。可以拖动时间轴、查看每一层、修改 G 代码并重跑。要采用这台示例铣床，点 **加入当前工程**。如果工程里已有另一份 Milo 配置，页面会列出要替换的内容，再由你确认。[打开圆形凹槽示例](https://lusipad.com/omg/?view=workbench&example=milo-v1-5) · [下载完整 G 代码](https://lusipad.com/omg/machines/milo-v1-5/circular-pocket.nc)
 
 在 **工件特写** 中，三轴使用相同的毫米比例，刀尖和刀路以工件为参照。选择 **整机视图** 可以看到 X、Y 工作台在主轴下方反向移动，Z 轴带动主轴升降。整机使用依据装配手册建立的运动简化模型。**复位视角** 可重新取景。关闭 **显示刀路** 可以直接观察槽壁。要逐点读取切深或观察截面，可切到 **二维分析**。浏览器缺少 WebGL 2 时也可以在二维分析中完成回放。[官方机构说明](https://millenniummachines.github.io/docs/milo_1.5/faq/#what-is-the-work-area) · [官方装配手册](https://millenniummachines.github.io/docs/milo_1.5/)
 
@@ -29,7 +29,7 @@
 
 ## 可手算的三轴直线示例
 
-工作台内置以下程序。刀尖从工件坐标 `(0, 0, 5)` mm 开始，抬至 Z8，再以每分钟 180 mm 进给至工件表面 Z0。
+在 Milo 示例的 **G 代码程序** 中将 **示例程序** 切为 **三轴直线**，再点 **运行 G 代码**。也可以将以下程序粘贴到自己已装好三轴的 Milo 编辑器。刀尖从工件坐标 `(0, 0, 5)` mm 开始，抬至 Z8，再以每分钟 180 mm 进给至工件表面 Z0。
 
 ```gcode
 ; Milo v1.5 三轴联动

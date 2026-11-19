@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getMiloAxisRequirements, miloAxisSchema, miloBomSchema, validateMiloAssembly, type MiloAxisId, type MiloBom } from "./milo-bom";
-import { MILO_MAX_PROGRAM_CHARS, miloDemoGcode } from "./milo-motion";
+import { MILO_MAX_PROGRAM_CHARS } from "./milo-motion";
 import { readTwinData } from "./twin-device";
 
 const sourceSchema = z.string().trim().min(1).max(500);
@@ -12,7 +12,7 @@ const miloWorkspaceSchema = z.strictObject({
 });
 
 export type MiloWorkspaceState = z.infer<typeof miloWorkspaceSchema>;
-export const initialMiloWorkspace: MiloWorkspaceState = { assembled: [], program: miloDemoGcode };
+export const initialMiloWorkspace: MiloWorkspaceState = { assembled: [], program: "" };
 
 export function parseMiloWorkspace(value: unknown): MiloWorkspaceState {
   const state = readTwinData(miloWorkspaceSchema, value, "Milo v1.5 工程");

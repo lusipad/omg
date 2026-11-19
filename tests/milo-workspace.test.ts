@@ -8,6 +8,12 @@ const source = readFileSync(new URL("../public/machines/milo-v1-5/bom-facts.md",
 const bom = parseMiloBom(source);
 const imported = withMiloBom(initialMiloWorkspace, bom, "sourcing_guide.md");
 
+it("首次导入采购表只建立装配资料，程序来自用户导入或显式加入的示例", () => {
+  expect(imported.program).toBe("");
+  const saved = { ...imported, program: "G21 G90\nG0 Z7" };
+  expect(withMiloBom(saved, bom, "复核.md").program).toBe(saved.program);
+});
+
 describe("Milo 工程导入和恢复", () => {
   it("旧工程仍可用，部分装配及编辑中的程序可独立往返 JSON", () => {
     const previous = emptyWorkspace();

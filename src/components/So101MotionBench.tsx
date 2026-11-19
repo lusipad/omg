@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Activity, Loader2, Pause, Play, Plus, RotateCcw, SkipBack, Trash2 } from "lucide-react";
-import { DEFAULT_SO101_MOTION, SO101_JOINTS, parseSo101Motion, type So101Sample, type So101Waypoint } from "@contracts/so101";
+import { SO101_JOINTS, parseSo101Motion, type So101Sample, type So101Waypoint } from "@contracts/so101";
 import { loadSo101Physics } from "@/lib/so101-physics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +33,7 @@ function errorText(cause: unknown) {
 export default function So101MotionBench({ waypoints, onChange }: {
   waypoints: So101Waypoint[]; onChange: (next: So101Waypoint[]) => void;
 }) {
-  const [rows, setRows] = useState(() => frameInputs(waypoints.length ? waypoints : DEFAULT_SO101_MOTION));
+  const [rows, setRows] = useState(() => frameInputs(waypoints));
   const nextId = useRef(rows.length);
   const [physics, setPhysics] = useState<Physics | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -83,10 +83,8 @@ export default function So101MotionBench({ waypoints, onChange }: {
     try {
       onChange(parsedFrames(next));
       setError("");
-      return true;
     } catch (cause) {
       setError(errorText(cause));
-      return false;
     }
   }
 
@@ -97,10 +95,10 @@ export default function So101MotionBench({ waypoints, onChange }: {
     }));
   }
 
-  function run(input = rows) {
+  function run() {
     if (!physics) return;
     try {
-      const motion = parsedFrames(input);
+      const motion = parsedFrames(rows);
       const next = physics.run(motion);
       if (!next.length) throw new Error("物理引擎未返回采样，请重新运行动作。");
       setSamples(next);
@@ -124,7 +122,7 @@ export default function So101MotionBench({ waypoints, onChange }: {
           <h2 className="text-base font-semibold">动作控制</h2>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">从新版校准零位静止起步。五个臂关节和夹爪开合均以度表示，到达时间自 0 s 起算。</p>
         </div>
-        <Button onClick={() => run()} disabled={!physics || Boolean(error)}><Play />运行动作</Button>
+        <Button onClick={run} disabled={!physics || Boolean(error)}><Play />运行动作</Button>
       </div>
       <details className="border-t px-4 py-3 sm:px-5">
         <summary className="cursor-pointer text-sm font-medium">编辑动作关键帧（{rows.length} 帧）</summary>
@@ -149,11 +147,6 @@ export default function So101MotionBench({ waypoints, onChange }: {
               const previous = rows[rows.length - 1];
               edit([...rows, { id: nextId.current++, time: String(Math.min(20, Math.round((lastTime + 1) * 100) / 100)), angles: [...previous.angles] }]);
             }}><Plus />新增关键帧</Button>
-            <Button size="sm" variant="ghost" disabled={!physics} onClick={() => {
-              const defaults = frameInputs(DEFAULT_SO101_MOTION);
-              nextId.current = defaults.length;
-              if (edit(defaults)) run(defaults);
-            }}><RotateCcw />载入并运行内置动作</Button>
             <span className="text-xs text-muted-foreground">最多 20 帧，末帧在 20 s 内。</span>
           </div>
         </div>

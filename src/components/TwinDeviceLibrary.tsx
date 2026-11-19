@@ -1,5 +1,5 @@
 import { useCallback, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
-import { ArrowRight, BookOpen, Copy, FileJson, FileUp, Layers3, Link2, Loader2, PackageOpen, Plus, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, Copy, FileJson, FileUp, Link2, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,7 +9,7 @@ import { fetchSourceText } from "@/lib/twin-source-text";
 import type { DeviceDraftPatch, WorkbenchImportOptions } from "@/lib/workbench-import";
 import { trpc } from "@/providers/trpc";
 import type { MaterialRow } from "@contracts/import-catalog";
-import { packageKey, parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
+import { parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
 import { deviceExtractionPrompt, deviceSourceFromMaterial, generateDevicePackage, inovanceSource, suggestSourceMetadata, type DeviceSourceInput } from "@contracts/twin-extract";
 
 const emptySource: DeviceSourceInput = { manufacturer: "", model: "", revision: "", title: "", url: "", locator: "", text: "" };
@@ -37,9 +37,7 @@ function isSampleUrl(value: string) {
   }
 }
 
-export default function TwinDeviceLibrary({ packages, onAssemble, initialSource, incomingSource, onImportFile, onImportText, onPreviewDevice, active = true }: {
-  packages: DevicePackage[];
-  onAssemble: (pkg: DevicePackage) => void;
+export default function TwinDeviceLibrary({ initialSource, incomingSource, onImportFile, onImportText, onPreviewDevice, active = true }: {
   initialSource?: Partial<DeviceSourceInput>;
   incomingSource?: DeviceDraftPatch;
   active?: boolean;
@@ -251,20 +249,10 @@ export default function TwinDeviceLibrary({ packages, onAssemble, initialSource,
     }
   }
 
-  function assemble(device: DevicePackage) {
-    setError("");
-    try {
-      onAssemble(device);
-    } catch (cause) {
-      setError(message(cause));
-    }
-  }
-
   return (
-    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(17rem,1fr)]">
-      <section className="surface min-w-0" aria-labelledby="twin-add-heading">
+    <section className="surface min-w-0" aria-labelledby="twin-add-heading">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-4 sm:px-5">
-          <h2 id="twin-add-heading" className="text-base font-semibold">添加设备</h2>
+          <h1 id="twin-add-heading" className="text-xl font-semibold">创建设备</h1>
           <div className="flex flex-wrap gap-1 rounded-md border bg-background/50 p-1">
             <Button size="sm" variant={mode === "source" ? "secondary" : "ghost"} aria-pressed={mode === "source"} onClick={() => switchMode("source")}><BookOpen />从资料生成</Button>
             <Button size="sm" variant={mode === "package" ? "secondary" : "ghost"} aria-pressed={mode === "package"} onClick={() => switchMode("package")}><FileJson />导入设备包</Button>
@@ -352,33 +340,5 @@ export default function TwinDeviceLibrary({ packages, onAssemble, initialSource,
           {notice && <p role="status" className="break-words text-xs leading-5 text-primary">{notice}</p>}
         </div>
       </section>
-      <section className="surface min-w-0" aria-labelledby="twin-installed-heading">
-        <header className="flex items-center justify-between border-b px-4 py-4 sm:px-5">
-          <h2 id="twin-installed-heading" className="text-base font-semibold">已安装设备</h2>
-          <span className="mono text-xs text-muted-foreground">{packages.length} 个型号修订</span>
-        </header>
-        {packages.length === 0
-          ? <div className="px-5 py-8"><PackageOpen className="mb-3 size-6 text-muted-foreground" /><p className="text-sm text-muted-foreground">设备库为空。可先用汇川示例生成并安装第一台设备的定义。</p></div>
-          : <ul className="divide-y">{packages.map((pkg) => (
-            <li key={packageKey(pkg)} className="px-4 py-4 sm:px-5">
-              <div className="flex items-start gap-3">
-                <Layers3 className="mt-1 size-4 shrink-0 text-primary" />
-                <div className="min-w-0">
-                  <h3 className="break-words text-sm font-semibold">{pkg.model}</h3>
-                  <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">
-                    {pkg.manufacturer} · {pkg.revision} · {pkg.servo
-                      ? (pkg.servo.kind === "drive" ? `伺服驱动器 · 额定 ${pkg.servo.ratedCurrentA} A` : `伺服电机 · ${pkg.servo.ratedPowerW} W · ${pkg.servo.ratedTorqueNm} N·m`)
-                      : `${pkg.ports.length} 个端口`}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => { invalidate(); onPreviewDevice(pkg, true); }}>{pkg.servo ? "来源与参数" : "来源与规则"}</Button>
-                    <Button size="sm" variant="secondary" onClick={() => assemble(pkg)}><Plus />{pkg.servo ? "用于伺服仿真" : "装配实例"}</Button>
-                  </div>
-                </div>
-              </div>
-            </li>
-          ))}</ul>}
-      </section>
-    </div>
   );
 }

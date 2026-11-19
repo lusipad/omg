@@ -1,24 +1,26 @@
 # 构元 · 通用模块工程平台
 
-[打开在线导入中心](https://lusipad.github.io/omg/)。选择文件、模型文件夹，或粘贴原文和资料链接即可开始。工作台按内容区分设备包与工程、模型包与工程 ZIP，并识别通用 BOM、SO-101 和 Milo 采购表、手册与 G 代码。先核对预览，再安装、保存或替换工程。在设备库和专用工作台选择文件也会进入同一流程。[导入格式与操作步骤](docs/通用模型与资料导入.md)
+[打开在线工作台](https://lusipad.github.io/omg/)。可以从自己的工程资源开始，也可以先试一个现成案例。
 
-在首页的 **开源机器人** 中可以直接试跑[双足机器鸭 Open Duck Mini v2](https://lusipad.com/omg/?view=import&robot=open-duck-mini-v2)、[三轮机械臂 LeKiwi](https://lusipad.com/omg/?view=import&robot=lekiwi)和[四足机器人 Barkour v0](https://lusipad.com/omg/?view=import&robot=barkour-v0)。打开卡片会加载对应模型包，点击 **运行仿真** 可观察关节和指定部位的反馈。每个模型都能单独下载、重新导入。
+| 入口 | 可以做什么 |
+| --- | --- |
+| [工程资源](https://lusipad.com/omg/?view=resources) | 导入文件、文件夹或资料链接，在同一份清单中查找设备、模型、物料与程序，选用它们或创建新设备。 |
+| [装配与仿真](https://lusipad.com/omg/?view=workbench) | 选择当前工程对象，组装、接线、运行并查看曲线与三维结果。 |
+| [示例库](https://lusipad.com/omg/?view=examples) | 集中试用信号接线、伺服、弹簧滑台、机床和机器人。在运行台点 **加入当前工程** 才会保存示例。 |
 
-[组装 UR5e 取放工位](https://lusipad.com/omg/?view=import&robot=ur5e-pick-place)可以把[UR5e 六轴臂](https://lusipad.com/omg/?view=import&robot=ur5e)、[Robotiq 2F-85 夹爪](https://lusipad.com/omg/?view=import&robot=robotiq-2f85)和独立的 30 mm 方块装成一个场景。点击 **组装取放工位 → 运行仿真**，在 **阶段观测记录** 中比较夹爪与工件的抬升、横移和释放结果。另有 [TurtleBot3 Burger](https://lusipad.com/omg/?view=import&robot=turtlebot3-burger) 可通过左右轮速度试验直行和转向。
+例如，可以在 Milo 上分三层铣出 Ø30 × 3 mm 的平底槽，或用 UR5e、2F-85 夹爪及独立方块组装取放工位。试用中可调整程序或工况。[Milo 圆槽](https://lusipad.com/omg/?view=workbench&example=milo-v1-5) · [UR5e 取放工位](https://lusipad.com/omg/?view=workbench&example=ur5e-pick-place) · [下载圆槽 G 代码](public/machines/milo-v1-5/circular-pocket.nc)
 
-[Milo v1.5 三轴铣床](https://lusipad.com/omg/?view=milo)可直接读取官方 BOM 并逐个装配 X、Y、Z。打开**[圆形凹槽示例](https://lusipad.com/omg/?view=milo#milo-pocket)**，用 Ø6 mm 平底刀通过 G2/G3 圆弧分三层铣出 Ø30 × 3 mm 的凹槽。回放中可拖动三维视角，贴近工件查看槽壁与刀尖，或切到整机观察工作台与主轴的运动。时间轴同时驱动毛坯、刀路和三轴曲线。[下载 G 代码](public/machines/milo-v1-5/circular-pocket.nc) · [装轴步骤与刀路算例](docs/Milo-v1.5三轴铣床.md)
-
-公开站点在浏览器内运行模型。轻量工程可导出 JSON，包含用户物理模型的工程可导出带原始资源的 ZIP。工作台也提供[汇川伺服轴](https://lusipad.com/omg/?view=servo)和 [SO-101 从臂](https://lusipad.com/omg/?view=so101)的专用界面。客户项目、数据库、通用官网资料提取、PDF 转换和在线 AI 生成使用下文的完整服务部署。`npm run build:pages` 生成 `dist/pages`，推送到 `main` 后 GitHub Actions 会构建并发布这个目录。
+公开站点在浏览器内运行模型。轻量工程可导出 JSON，包含用户物理模型的工程可导出带原始资源的 ZIP。客户项目、数据库、官网资料提取、PDF 转换和在线 AI 生成使用下文的完整服务部署。`npm run build:pages` 生成 `dist/pages`，推送到 `main` 后 GitHub Actions 会构建并发布这个目录。[导入格式与操作步骤](docs/通用模型与资料导入.md)
 
 ## 从底层设备搭建仿真
 
 在工程根目录运行 `npm ci`、`npm run dev`，打开 [本机设备仿真工作台](http://127.0.0.1:3000/twin)。此入口支持从制造商资料生成设备包、审核安装、创建多个设备实例、连接端口和单步仿真。本机工作区可以在没有数据库和 OAuth 配置的开发环境中使用。原客户项目工作台的部署要求见下文。
 
-点击 **打开接线示例** 可运行一个已接好线的汇川 GL10-1600END 和虚拟电压源。要制作自己的设备，请从 **设备库** 开始。操作步骤、设备包格式、AI 接入和仿真边界见[设备仿真工作台指南](docs/设备仿真工作台.md)。
+在 **示例库 → 信号接线** 可试跑已接好线的汇川 GL10-1600END 和虚拟电压源。要制作自己的设备，请从 **工程资源 → 创建设备** 开始。[设备仿真工作台指南](docs/设备仿真工作台.md)
 
-[伺服轴工作台](http://127.0.0.1:3000/twin?view=servo)支持从驱动器和电机的官网资料链接生成两个独立设备包。导入后选择目标角度，可以观察轴的位置和速度随时间变化。试用时点 **打开伺服轴示例**，或导入[已经装配好的 90° 示例工程](examples/inovance-servo-axis.twin.json)。操作步骤及模型假设见[汇川伺服轴示例](docs/汇川伺服轴示例.md)。
+在完整版 **工程资源 → 创建设备 → 从官网创建配套伺服设备** 可生成独立的驱动器和电机设备包。确认安装后，在运行台设定角度，观察位置和速度曲线。[试跑汇川伺服轴](https://lusipad.com/omg/?view=workbench&example=inovance-servo) · [已装配的工程文件](examples/inovance-servo-axis.twin.json) · [操作步骤与模型假设](docs/汇川伺服轴示例.md)
 
-[SO-101 从臂工作台](http://127.0.0.1:3000/twin?view=so101)可以直接导入上游 Markdown 采购表，装配新标定的 Follower 模型，并在浏览器中用 MuJoCo 运行六关节动作。运行后可回放三维姿态，观察关节实际位置、速度和夹爪末端轨迹。[操作指南](docs/SO-101从臂示例.md) · [已装配的工程文件](examples/so101-follower.twin.json)
+SO-101 工作台可以直接导入上游 Markdown 采购表，装配新标定的 Follower 模型，并在浏览器中用 MuJoCo 运行六关节动作。运行后可回放三维姿态，观察关节实际位置、速度和夹爪末端轨迹。[试跑 SO-101 从臂](https://lusipad.com/omg/?view=workbench&example=so101-follower) · [操作指南](docs/SO-101从臂示例.md) · [已装配的工程文件](examples/so101-follower.twin.json)
 
 面向非标机电设备早期方案设计的客户试点自动配置版。默认从少量整机需求自动创建组成模块、分配参数、完成初算、初筛候选部件并冻结 V1 草案；高级模式仍可手动组成。平台在同一项目中维护需求参数、工程初算、官方部件来源、计算历史、版本快照和审计事件。
 

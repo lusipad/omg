@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { applyMiloBomImport, applySo101BomImport, mergeImportedMaterials } from "../contracts/import-apply";
 import { initialMiloWorkspace } from "../contracts/milo-workspace";
 import { parseMiloBom } from "../contracts/milo-bom";
-import { DEFAULT_SO101_MOTION, SO101_MODEL_ID } from "../contracts/so101";
+import { SO101_MODEL_ID } from "../contracts/so101";
 import { parseSo101Bom } from "../contracts/so101-bom";
 import { createDocumentMaterial, parseMaterialTable } from "../contracts/material-import";
 import { emptyWorkspace } from "../contracts/twin-simulation";
@@ -28,9 +28,9 @@ describe("确认导入到当前工程", () => {
     expect(base.milo.assembled).toEqual(["Y", "X", "Z"]);
   });
 
-  it("初始 SO-101 装配使用默认路点，重导时沿用已编辑路点", () => {
+  it("首次从采购表装配 SO-101 仅给一个零位保持点，重导保留已编辑路点", () => {
     const initial = applySo101BomImport(emptyWorkspace(), follower);
-    expect(initial.so101).toMatchObject({ modelId: SO101_MODEL_ID, bom: follower, waypoints: DEFAULT_SO101_MOTION });
+    expect(initial.so101).toMatchObject({ modelId: SO101_MODEL_ID, bom: follower, waypoints: [{ timeS: 1, anglesDeg: [0, 0, 0, 0, 0, 0] }] });
     const customized = [{ timeS: 1.5, anglesDeg: [1, 2, 3, 4, 5, 6] }];
     const ws = { ...initial, so101: { ...initial.so101!, waypoints: customized } };
     const next = applySo101BomImport(ws, follower.filter(row => !row.part.startsWith("Screwdriver")));
