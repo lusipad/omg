@@ -45,22 +45,27 @@ fi
 
 verify() { printf '%s  %s\n' "$1" "$2" | sha256sum --check --status; }
 fetch() {
-  local file="$1" url="$2" digest="$3" partial
+  local file="$1" digest="$2" partial url
+  shift 2
   if [[ -f "$cache/$file" ]] && verify "$digest" "$cache/$file"; then return; fi
   partial=$(mktemp "$cache/.download.XXXXXXXX")
-  if ! curl -fLsS --retry 2 --max-time 180 "$url" -o "$partial" || ! verify "$digest" "$partial"; then
-    rm -f -- "$partial"
-    echo "Failed to fetch or verify $file" >&2
-    return 1
-  fi
-  mv -f -- "$partial" "$cache/$file"
+  for url in "$@"; do
+    echo "Downloading $file from $url" >&2
+    if curl -fLsS --retry 1 --connect-timeout 10 --max-time 150 "$url" -o "$partial" && verify "$digest" "$partial"; then
+      mv -f -- "$partial" "$cache/$file"
+      return 0
+    fi
+  done
+  rm -f -- "$partial"
+  echo "Failed to fetch or verify $file" >&2
+  return 1
 }
 
 # SHA-256 来自经 OpenModelica Build System 签名的 Noble release 包索引。
 # 发布主密钥指纹 D229AF1CE5AED74E5F59DF303A59B53664970947。
 release=https://build.openmodelica.org/apt/pool/contrib-noble
 while read -r file digest; do
-  fetch "$file" "$release/$file" "$digest"
+  fetch "$file" "$digest" "$release/$file"
   dpkg-deb -x "$cache/$file" "$prefix"
 done <<'OMC_PACKAGES'
 omc_1.27.2-1_amd64.deb 9412556112cf0b9deb320b1f4b1eaafe35583fbac0d0b9f07f8a427fbf9fac77
@@ -81,13 +86,14 @@ for dep in libblas3 libblas-dev liblapack3 liblapack-dev libgfortran5 libomniorb
   digest=$(awk '/^SHA256: / {print $2; exit}' <<< "$metadata")
   [[ -n "$relative" && -n "$digest" ]] || { echo "Missing archive metadata for $dep=$candidate" >&2; exit 2; }
   file=${relative##*/}
-  fetch "$file" "https://archive.ubuntu.com/ubuntu/$relative" "$digest"
+  fetch "$file" "$digest" "https://azure.archive.ubuntu.com/ubuntu/$relative" \
+    "https://mirrors.mit.edu/ubuntu/$relative" "https://archive.ubuntu.com/ubuntu/$relative"
   dpkg-deb -x "$cache/$file" "$prefix"
 done
 
 # 上游标签 v4.0.0 对应提交 6626538a236a34a390655b55d5e8c906bfe31772。
-fetch MSL4.0.0.tgz https://codeload.github.com/modelica/ModelicaStandardLibrary/tar.gz/refs/tags/v4.0.0 \
-  c5ebed218f20320b95aa5086c1c7de6a28bd1614e7bc14dc084523b5fa6a713c
+fetch MSL4.0.0.tgz c5ebed218f20320b95aa5086c1c7de6a28bd1614e7bc14dc084523b5fa6a713c \
+  https://codeload.github.com/modelica/ModelicaStandardLibrary/tar.gz/refs/tags/v4.0.0
 mkdir -p "$prefix/bin" "$prefix/msl" "$prefix/libraries"
 tar -xzf "$cache/MSL4.0.0.tgz" --strip-components=1 -C "$prefix/msl" \
   ModelicaStandardLibrary-4.0.0/{Modelica,ModelicaServices,Complex.mo,LICENSE}
