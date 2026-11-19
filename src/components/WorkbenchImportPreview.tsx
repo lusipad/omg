@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import TwinPackagePreview, { DeviceSourceEvidence, MechanicalDefinitionDetails, MechanicalDetails, ServoRatings } from "./TwinPackagePreview";
+import TwinPackagePreview, { DeviceSourceEvidence, FeedRatings, MechanicalDefinitionDetails, MechanicalDetails, ServoRatings } from "./TwinPackagePreview";
 
 type Props = {
   candidate: WorkbenchImportCandidate;
@@ -62,6 +62,10 @@ function ProjectSummary({ candidate, current }: { candidate: Extract<WorkbenchIm
   const packaged = (ws: TwinWorkspace) => ws.packages.filter((pkg) => pkg.mechanics?.kind === "assembly").length;
   const beforePackaged = packaged(current), afterPackaged = packaged(next);
   if (beforePackaged || afterPackaged) rows.push(["已封装机械装配包", beforePackaged, afterPackaged]);
+  const feedModels = (ws: TwinWorkspace) => ws.assemblies?.flatMap(assembly => assembly.modelRef
+    ? [`${assembly.name} · ${assembly.modelRef.id} @ ${assembly.modelRef.version}`] : []).join("、");
+  const beforeFeed = feedModels(current), afterFeed = feedModels(next);
+  if (beforeFeed || afterFeed) rows.push(["直线轴求解模型", beforeFeed || "—", afterFeed || "—"]);
   if (current.servoAxis || next.servoAxis) {
     const name = (axis: TwinWorkspace["servoAxis"]) => axis?.modelRef ? `${axis.modelRef.id} @ ${axis.modelRef.version}` : axis ? "已组轴" : "—";
     rows.push(["伺服轴", name(current.servoAxis), name(next.servoAxis)]);
@@ -93,6 +97,7 @@ function AssemblySummary({ definition, workspace }: { definition: LinearAssembly
     <div>
       <h3 className="break-words text-base font-semibold">{definition.name}</h3>
       <p className="mt-1 break-all text-xs text-muted-foreground">ID {definition.id} · {definition.modules.length} 个轴模块 · {definition.axes.length} 个轴实例</p>
+      {definition.modelRef && <p className="mono mt-1 break-all text-xs">求解模型 · {definition.modelRef.id} @ {definition.modelRef.version}</p>}
     </div>
     {previous && <p className="rounded-md border border-amber-400/30 bg-amber-400/5 p-3 text-sm leading-6">
       当前工程已有同一 ID 的“{previous.name}”。{previous.name !== definition.name && <>新名称为“{definition.name}”。</>}本次仅替换这份装配的定义及各轴目标位移。
@@ -110,8 +115,10 @@ function AssemblySummary({ definition, workspace }: { definition: LinearAssembly
       <ul aria-label="装配引用的物料" className="max-h-56 divide-y overflow-auto rounded-md border px-3">
         {definition.modules.map((mod) => <li key={mod.id} className="space-y-1 py-2 text-xs">
           <strong className="break-all">{mod.id}</strong>
-          <p className="flex flex-wrap gap-x-4 break-words leading-5"><span>驱动器 · {part(mod.drive)}</span><span>电机 · {part(mod.motor)}</span><span>丝杠 · {part(mod.screw)}</span></p>
-          <p className="flex flex-wrap gap-x-4 text-muted-foreground"><span>导程 · {mod.leadMmPerRev === null ? "由 BOM 提供或待补" : mod.leadMmPerRev + " mm/rev"}</span><span>负载惯量比 · {mod.loadInertiaRatio}</span></p>
+          <p className="flex flex-wrap gap-x-4 break-words leading-5"><span>驱动器 · {part(mod.drive)}</span><span>电机 · {part(mod.motor)}</span><span>丝杠 · {part(mod.screw)}</span>
+            {definition.modelRef && <span>工作台 · {part(mod.table ?? "")}</span>}</p>
+          <p className="flex flex-wrap gap-x-4 text-muted-foreground"><span>导程 · {mod.leadMmPerRev === null ? "由装配物料提供或待补" : mod.leadMmPerRev + " mm/rev"}</span>
+            {!definition.modelRef && <span>负载惯量比 · {mod.loadInertiaRatio}</span>}</p>
         </li>)}
       </ul>
     </section>
@@ -147,6 +154,7 @@ function PackageList({ devices, rootKey }: { devices: DevicePackage[]; rootKey?:
         <summary className="cursor-pointer break-words text-sm"><strong>{device.model}</strong> · {device.manufacturer} · {device.revision}{key === rootKey && " · 根设备"}</summary>
         <div className="mt-2 space-y-2"><DeviceSourceEvidence source={device.source} />
           {device.mechanics && <MechanicalDetails mechanics={device.mechanics} />}
+          {device.feed && <FeedRatings feed={device.feed} />}
           {device.servo && <ServoRatings servo={device.servo} />}
           {device.ports.length > 0 && <p className="text-xs text-muted-foreground">{device.ports.length} 个端口 · {device.rules.length} 条行为规则</p>}
         </div>
@@ -189,7 +197,8 @@ function MaterialRows({ rows }: { rows: MaterialRow[] }) {
     <ul aria-label="待保存物料" className="max-h-60 divide-y overflow-auto rounded-md border px-3">
       {rows.slice(index * 12, (index + 1) * 12).map((row) => <li key={row.id} className="space-y-1 py-2">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3"><strong className="break-words text-sm">{row.name}</strong><span className="text-xs">{row.quantity} {row.unit ?? "（未填单位）"}</span></div>
-        <p className="break-words text-xs text-muted-foreground">{[row.manufacturer, row.model, row.leadMmPerRev !== undefined ? "导程 " + row.leadMmPerRev + " mm/rev" : undefined, row.binding ? "已有可用模型" : "待建模"].filter(Boolean).join(" · ")}</p>
+        <p className="break-words text-xs text-muted-foreground">{[row.manufacturer, row.model, row.leadMmPerRev !== undefined && `导程 ${row.leadMmPerRev} mm/rev`,
+          row.massKg !== undefined && `移动质量 ${row.massKg} kg`, row.binding ? "已有可用模型" : row.massKg === undefined && row.leadMmPerRev === undefined && "待建模"].filter(Boolean).join(" · ")}</p>
         {row.source && <p className="break-all text-xs text-muted-foreground">来源 · {row.source}</p>}
       </li>)}
     </ul>

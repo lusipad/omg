@@ -4,7 +4,7 @@ import { PICK_PLACE_EXAMPLE, ROBOT_EXAMPLES } from "./robot-examples";
 import { signalIdSchema } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
 
-export type StudioExampleKind = "wiring" | "servo" | "so101" | "milo" | "physics";
+export type StudioExampleKind = "wiring" | "servo" | "linear-assembly" | "so101" | "milo" | "physics";
 export interface StudioExample {
   id: string;
   name: string;
@@ -31,6 +31,10 @@ export const STUDIO_EXAMPLES: readonly StudioExample[] = [
   { id: "inovance-servo", kind: "servo", name: "汇川伺服轴", category: "伺服驱动",
     description: "用 SV660N 驱动器与 MS1 电机组成 Modelica 伺服轴，改变目标角度或负载惯量，比较位置和速度曲线。",
     preview: "examples/previews/servo.webp", source: servoDrive.source.url, download: modelicaServoProjectPath },
+  { id: "modelica-feed-axis", kind: "linear-assembly", name: "丝杠直线进给轴", category: "机电传动",
+    description: "从 BOM 更换丝杠或工作台，比较相同位移指令下的进给速度、电机转矩与轴向推力。",
+    preview: "assemblies/feed-axis/preview.webp", download: "assemblies/feed-axis/project.twin.json",
+    source: "https://github.com/lusipad/omg/blob/main/docs/Modelica直线进给轴.md" },
   { id: "so101-follower", kind: "so101", name: "SO-101 从臂", category: "六关节机器人",
     description: "核对从臂采购表，编辑关节关键帧，查看夹爪轨迹和实际关节响应。",
     preview: "models/so101/preview.png", source: "https://github.com/TheRobotStudio/SO-ARM100",
@@ -80,8 +84,8 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
     const exampleId = params.get("example"), target = params.get("target");
     if (exampleId !== null) return { view, exampleId };
     if (target === null) return { view };
-    if (target === "wiring" || target === "servo" || target === "so101" || target === "milo" || target === "incoming" || target === "assembly-new") return { view, target };
-    if (target === "mechanism-new") {
+    if (target === "wiring" || target === "servo" || target === "so101" || target === "milo" || target === "incoming") return { view, target };
+    if (target === "mechanism-new" || target === "assembly-new") {
       const part = params.get("part");
       return part ? { view, target, part } : { view, target };
     }
@@ -120,7 +124,7 @@ export function studioHref(route: StudioRoute, hash = ""): string {
     if (route.exampleId !== undefined) params.set("example", route.exampleId);
     else if (route.target !== undefined) {
       params.set("target", route.target);
-      if (route.target === "mechanism-new" && route.part) params.set("part", route.part);
+      if ((route.target === "mechanism-new" || route.target === "assembly-new") && route.part) params.set("part", route.part);
     }
     else if (route.unavailableTarget !== undefined) params.set("target", route.unavailableTarget);
   }
@@ -150,6 +154,7 @@ export function getWorkbenchTargets(workspace: TwinWorkspace): StudioTargetOptio
   for (const model of workspace.catalog?.models ?? []) targets.push({ id: `model:${model.id}`, name: model.name });
   if (workspace.milo && !workspace.milo.assembled.length && (workspace.milo.bom?.length || workspace.milo.program.trim())) targets.push(milo);
   if (!workspace.mechanisms?.length && workspace.packages.some(p => p.mechanics)) targets.push({ id: "mechanism-new", name: "用机械部件新建装配" });
+  if (!workspace.assemblies?.length && workspace.packages.some(p => p.feed)) targets.push({ id: "assembly-new", name: "用进给部件新建直线轴" });
   if (!workspace.instances.length && workspace.packages.some((p) => !p.servo && p.ports.length > 0)) targets.push(wiring);
   if (!workspace.servoAxis && workspace.packages.some((p) => p.servo)) targets.push(servo);
   return targets;

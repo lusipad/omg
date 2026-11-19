@@ -3,6 +3,7 @@ import { parseMaterialTable, parseMarkdownMaterialTable, createDocumentMaterial,
 import { packageKey, type DevicePackage } from "../contracts/twin-device";
 import { emptyWorkspace } from "../contracts/twin-simulation";
 import { parseImportCatalog } from "../contracts/import-catalog";
+import { deviceSourceFromMaterial } from "../contracts/twin-extract";
 
 const pkg: DevicePackage = { schemaVersion: 1, manufacturer: "林泽仪器", model: "P-700", revision: "A",
   source: { title: "测试", url: "https://example.org", locator: "规格", excerpt: "测试规格" },
@@ -133,5 +134,43 @@ describe("丝杠导程", () => {
     const ws = { ...emptyWorkspace(), packages: [pkg], catalog: { models: [], materials: [{ ...row, binding }] } };
     expect(matchMaterials(parseMaterialTable(text), ws)[0].binding).toEqual(binding);
     expect(() => matchMaterials([{ ...row, leadMmPerRev: 5 }], ws)).toThrow(/标识.*不同/);
+  });
+});
+
+describe("BOM 单件移动质量", () => {
+  it("只提取标明 kg 的列，保留来源与其他单位的原文", () => {
+    const [table] = parseMaterialTable("名称,数量,移动质量（kg）,来源\n滑台,2,5.00,装配图 B");
+    expect(table).toMatchObject({ massKg: 5, quantity: 2, source: "装配图 B" });
+    expect(parseMaterialTable("Part\tQty\tmassKg\tSource\n滑台\t2\t5\t装配图 B")).toEqual([table]);
+    expect(parseMarkdownMaterialTable("|名称|数量|质量(kg)|来源|\n|---|---|---|---|\n|滑台|2|5|装配图 B|")).toEqual([table]);
+    for (const header of ["质量", "移动质量(g)", "mass(lb)"]) {
+      const [unspecified] = parseMaterialTable(`名称,数量,${header}\n滑台,2,5`);
+      expect(unspecified).not.toHaveProperty("massKg");
+      expect(unspecified.notes).toBe(header + "：5");
+    }
+  });
+
+  it("物料身份区分同数值的质量与导程，空质量列保留既有标识", () => {
+    const id = (lead: string, mass: string) => parseMaterialTable(`名称,数量,leadMmPerRev,massKg\n试件,1,${lead},${mass}`)[0].id;
+    const variants = [id("", "5"), id("5", ""), id("5", "5"), id("", "10"), id("", "")];
+    expect(new Set(variants).size).toBe(5);
+    expect(id("", "")).toBe(parseMaterialTable("名称,数量\n试件,1")[0].id);
+    expect(id("5", "")).toBe(parseMaterialTable("名称,数量,leadMmPerRev\n试件,1,5")[0].id);
+  });
+
+  it("从 BOM 带入建模资料时保留单件质量、导程、备注与原始出处", () => {
+    const [row] = parseMaterialTable("名称,数量,质量(kg),导程(mm/rev),备注,来源\n滑台组件,2,5,10,不含工装,https://example.org/drawings/2");
+    const source = deviceSourceFromMaterial(row);
+    expect(source.url).toBe(row.source);
+    expect(source.text).toContain("不含工装");
+    expect(source.text).toContain("移动质量 5 kg");
+    expect(source.text).toContain("导程 10 mm/rev");
+  });
+
+  it("非法质量和重复的质量别名有带行号与单位的诊断", () => {
+    for (const value of ["0", "-1", "5 kg", "5g", "0x10", "Infinity", "1e999"]) {
+      expect(() => parseMaterialTable("名称,数量,质量(kg)\n滑台,1," + value)).toThrow(/第 2 行.*质量.*kg/);
+    }
+    expect(() => parseMaterialTable("名称,数量,massKg,移动质量(kg)\n滑台,1,1,2")).toThrow(/第 1 行.*质量.*重复/);
   });
 });

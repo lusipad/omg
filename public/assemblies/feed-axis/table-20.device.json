@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元教学件",
+  "model": "FEED-TABLE-20",
+  "revision": "1",
+  "source": {
+    "kind": "local",
+    "title": "直线进给轴教学设计",
+    "url": "",
+    "locator": "BOM · 20 kg 工作台",
+    "excerpt": "沿水平轴平移的工作台，随轴移动的总质量为 20 kg。"
+  },
+  "ports": [],
+  "rules": [],
+  "feed": {
+    "kind": "moving-table",
+    "massKg": 20,
+    "modelRef": { "id": "Modelica.Mechanics.Translational.Components.Mass", "version": "4.0.0" }
+  }
+}

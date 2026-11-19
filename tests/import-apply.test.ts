@@ -109,6 +109,22 @@ describe("确认导入到当前工程", () => {
     }
   });
 
+  it("重导原始清单能够升级两个历史版本的质量备注，保留行 ID、重复序号和人工绑定", () => {
+    const rows = (header: string, record: string) => parseMaterialTable([header, record, record].join("\n"), "工作台装配图 A");
+    const text = "名称,数量,导程(mm/rev),移动质量(kg),备注\n滑台,1,5,2.50,按图\n滑台,1,5,2.50,按图";
+    const oldest = rows("名称,数量,备注", '滑台,1,"按图\n导程(mm/rev)：5\n移动质量(kg)：2.50"');
+    const previous = rows("名称,数量,导程(mm/rev),备注", '滑台,1,5,"按图\n移动质量(kg)：2.50"');
+    const binding = { kind: "device" as const, key: packageKey(device) };
+    for (const history of [oldest, previous, previous.map((row, i) => ({ ...row, id: oldest[i].id }))]) {
+      const originals = history.map(row => ({ ...row, binding }));
+      const ws = parseWorkspace({ ...emptyWorkspace(), packages: [device], catalog: { models: [], materials: originals } });
+      const saved = mergeImportedMaterials(ws, parseMaterialTable(text, "工作台装配图 A"));
+      expect(saved.catalog?.materials).toEqual(originals.map(row => ({ ...row, notes: "按图", leadMmPerRev: 5, massKg: 2.5 })));
+      expect(mergeImportedMaterials(parseWorkspace(JSON.parse(JSON.stringify(saved))), parseMaterialTable(text, "工作台装配图 A"))).toEqual(saved);
+      expect(mergeImportedMaterials(ws, parseMaterialTable(text.replaceAll("2.50", "5"), "工作台装配图 A")).catalog?.materials).toHaveLength(4);
+    }
+  });
+
   it("上传后修改预览来源会按原表重算旧身份，保留未知列顺序与重复行编号", async () => {
     const line = "丝杠\t2\tA\t5.00\t17\t现场核对";
     const text = ["名称\t数量\t图册\tleadMmPerRev\t批次\t备注", line, line].join("\n");

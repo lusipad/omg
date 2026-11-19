@@ -1,0 +1,26 @@
+{
+  "package": "GouyuanLinear",
+  "version": "1.0.0",
+  "source": "GouyuanLinear.mo",
+  "uses": { "Gouyuan": "1.0.0", "Modelica": "4.0.0" },
+  "assembly": {
+    "id": "GouyuanLinear.FeedAxis",
+    "parameters": { "targetMm": { "field": "targetMm", "unit": "mm" } },
+    "outputs": {
+      "positionMm": "mm", "velocityMmS": "mm/s", "motorTorqueNm": "N.m",
+      "axialForceN": "N", "angleDeg": "deg", "speedRpm": "rpm"
+    }
+  },
+  "components": {
+    "drive": { "id": "Gouyuan.PositionDrive", "version": "1.0.0" },
+    "motor": { "id": "Gouyuan.RatedTorqueMotor", "version": "1.0.0" },
+    "screw": {
+      "id": "Gouyuan.IdealLeadScrew", "version": "1.0.0",
+      "parameters": { "leadMmPerRev": { "field": "leadMmPerRev", "unit": "mm/rev" } }
+    },
+    "table": {
+      "id": "Modelica.Mechanics.Translational.Components.Mass", "version": "4.0.0",
+      "parameters": { "tableMassKg": { "field": "massKg", "unit": "kg" } }
+    }
+  }
+}

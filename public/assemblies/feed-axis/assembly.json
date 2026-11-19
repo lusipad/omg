@@ -1,0 +1,20 @@
+{
+  "kind": "linear-axis-assembly",
+  "schemaVersion": 1,
+  "id": "feed-axis",
+  "name": "水平直线进给轴",
+  "modelRef": { "id": "GouyuanLinear.FeedAxis", "version": "1.0.0" },
+  "modules": [
+    {
+      "id": "feed",
+      "drive": "伺服驱动器",
+      "motor": "伺服电机",
+      "screw": "5 mm 导程丝杠",
+      "table": "5 kg 工作台",
+      "leadMmPerRev": null
+    }
+  ],
+  "axes": [
+    { "id": "X", "module": "feed", "direction": [1, 0, 0], "targetMm": 10 }
+  ]
+}

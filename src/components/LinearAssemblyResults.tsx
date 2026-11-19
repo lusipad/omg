@@ -1,14 +1,22 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { Pause, Play } from "lucide-react";
+import { Download, Pause, Play } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import type { LinearAssembly, LinearAssemblyResult } from "@contracts/linear-assembly";
 import type { ImportedGeometry } from "@contracts/imported-physics";
 import { Button } from "@/components/ui/button";
+import { downloadBlob } from "@/lib/download";
 import PhysicsScene, { type SceneSample } from "./PhysicsScene";
 
 type Props = { assembly: LinearAssembly; result: LinearAssemblyResult };
 type Samples = LinearAssemblyResult["samples"];
-type AxisSample = { timeMs: number; position: number; velocity: number };
+const metrics = {
+  position: { label: "位置", aria: "轴位置", unit: "mm", color: "#62dfb0", column: "position_mm" },
+  velocity: { label: "速度", aria: "轴速度", unit: "mm/s", color: "#80c0f5", column: "velocity_mm_s" },
+  torque: { label: "电机转矩", aria: "电机转矩", unit: "N·m", color: "#e7bc72", column: "motor_torque_Nm" },
+  force: { label: "轴向推力", aria: "轴向推力", unit: "N", color: "#c4a7ec", column: "axial_force_N" },
+} as const;
+type Metric = keyof typeof metrics;
+type AxisSample = { timeMs: number; position: number; velocity: number; torque?: number; force?: number };
 const number = (value: number) => String(Number(value.toPrecision(6)));
 
 function nearestSample(samples: Samples, timeMs: number) {
@@ -38,15 +46,16 @@ function sceneFor(samples: Samples) {
   return { geometry, trail };
 }
 
-function AxisTrace({ data, metric, cursor, target }: { data: AxisSample[]; metric: "position" | "velocity"; cursor: AxisSample; target: number }) {
-  const position = metric === "position", label = position ? "位置" : "速度";
-  const unit = position ? "mm" : "mm/s", color = position ? "#62dfb0" : "#80c0f5";
+function AxisTrace({ data, metric, cursor, target }: { data: AxisSample[]; metric: Metric; cursor: AxisSample; target: number }) {
+  const value = cursor[metric];
+  if (value === undefined) return null;
+  const position = metric === "position", { label, aria, unit, color } = metrics[metric];
   const flatZero = data.every(point => point[metric] === 0) && (!position || target === 0);
-  return <figure className="min-w-0" aria-label={`轴${label}曲线`}>
+  return <figure className="min-w-0" aria-label={`${aria}曲线`}>
     <figcaption className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
       <span className="inline-flex items-center gap-1.5 font-medium"><i className="h-0.5 w-4" style={{ backgroundColor: color }} />{label}（{unit}）</span>
       {position && <span className="inline-flex items-center gap-1.5 text-muted-foreground"><i className="w-4 border-t border-dashed border-amber-300" />目标 {number(target)} mm</span>}
-      <output aria-label={`轴${label}读数`} className="mono ml-auto">{number(cursor[metric])} {unit}</output>
+      <output aria-label={`${aria}读数`} className="mono ml-auto">{number(value)} {unit}</output>
     </figcaption>
     <div className="h-36 min-w-0 sm:h-40">
       <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -60,7 +69,7 @@ function AxisTrace({ data, metric, cursor, target }: { data: AxisSample[]; metri
           {position && <ReferenceLine y={target} ifOverflow="extendDomain" stroke="#e7bc72" strokeDasharray="5 4" />}
           <Line type="linear" dataKey={metric} stroke={color} strokeWidth={2} dot={data.length === 1} isAnimationActive={false} />
           <ReferenceLine x={cursor.timeMs} stroke="#abbab1" strokeDasharray="3 3" />
-          <ReferenceDot x={cursor.timeMs} y={cursor[metric]} r={3.5} fill={color} stroke="#17211c" isFront />
+          <ReferenceDot x={cursor.timeMs} y={value} r={3.5} fill={color} stroke="#17211c" isFront />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -77,6 +86,7 @@ function MotionReadout({ assembly, result }: Props) {
   const { geometry, trail } = useMemo(() => sceneFor(samples), [samples]);
   const data = useMemo(() => samples.map(point => ({
     timeMs: point.timeMs, position: point.positionMm[axisIndex], velocity: point.velocityMmS[axisIndex],
+    torque: point.motorTorqueNm?.[axisIndex], force: point.axialForceN?.[axisIndex],
   })), [samples, axisIndex]);
   useEffect(() => {
     if (fromMs === null) return;
@@ -93,11 +103,22 @@ function MotionReadout({ assembly, result }: Props) {
   }, [fromMs, samples, end.timeMs]);
   function seek(next: number) { setFromMs(null); setIndex(next); }
 
+  function exportCsv() {
+    const columns = [metrics.position.column, metrics.velocity.column, ...(end.motorTorqueNm ? [metrics.torque.column, metrics.force.column] : [])];
+    const header = ["time_ms", ...assembly.axes.flatMap(a => columns.map(name => `${a.id}_${name}`)), "tip_x_mm", "tip_y_mm", "tip_z_mm"];
+    const lines = samples.map(point => [point.timeMs, ...assembly.axes.flatMap((_, i) => [
+      point.positionMm[i], point.velocityMmS[i], ...(point.motorTorqueNm && point.axialForceN ? [point.motorTorqueNm[i], point.axialForceN[i]] : []),
+    ]), ...point.tipMm].join(","));
+    downloadBlob("\uFEFF" + [header.join(","), ...lines].join("\r\n") + "\r\n", `${assembly.name}-轴响应.csv`, "text/csv;charset=utf-8");
+  }
+
   return <section className="surface min-w-0 space-y-4 p-4 sm:p-5" aria-label="直线装配运动结果">
     <header className="flex flex-wrap items-baseline justify-between gap-2">
       <h3 className="text-lg font-semibold">运动结果</h3>
-      <p className="text-xs text-muted-foreground">仿真终点 {number(end.timeMs)} ms <span className={result.settled ? "ml-1 text-primary" : "ml-1 text-amber-300"}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2"><p className="text-xs text-muted-foreground">仿真终点 {number(end.timeMs)} ms <span className={result.settled ? "ml-1 text-primary" : "ml-1 text-amber-300"}>
         {result.settled ? "全部轴已到位" : "观察时间内未全部到位"}</span></p>
+        <Button size="sm" variant="outline" onClick={exportCsv}><Download />导出响应 CSV</Button>
+      </div>
     </header>
     <div className="surface-inset flex flex-wrap items-center gap-x-3 gap-y-2 p-3">
       <Button size="sm" variant="outline" disabled={lastIndex === 0} onClick={() => {
@@ -129,9 +150,13 @@ function MotionReadout({ assembly, result }: Props) {
         </label>
         <AxisTrace data={data} metric="position" cursor={data[index]} target={axis.targetMm} />
         <AxisTrace data={data} metric="velocity" cursor={data[index]} target={axis.targetMm} />
-        <p className="text-center text-[11px] text-muted-foreground">时间（ms）</p>
       </div>
+      {end.motorTorqueNm && end.axialForceN && <div className="grid min-w-0 gap-5 sm:grid-cols-2 lg:col-span-2">
+        <AxisTrace data={data} metric="torque" cursor={data[index]} target={axis.targetMm} />
+        <AxisTrace data={data} metric="force" cursor={data[index]} target={axis.targetMm} />
+      </div>}
     </div>
+    <p className="text-center text-[11px] text-muted-foreground">时间（ms）</p>
   </section>;
 }
 

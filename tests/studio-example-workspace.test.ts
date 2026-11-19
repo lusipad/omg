@@ -7,6 +7,7 @@ import { DEFAULT_SO101_MOTION, parseSo101Motion } from "../contracts/so101";
 import { applySo101BomImport } from "../contracts/import-apply";
 import { createDocumentMaterial } from "../contracts/material-import";
 import { getStudioExample } from "../contracts/studio-navigation";
+import { inspectLinearAssembly } from "../contracts/linear-assembly";
 
 const file = (name: string) => readFileSync(new URL("../public/" + name, import.meta.url), "utf8");
 function fakeSources() {
@@ -16,6 +17,51 @@ function fakeSources() {
   }));
 }
 afterEach(() => vi.unstubAllGlobals());
+
+it("试用的进给轴可以连同可换丝杠和工作台加入工程，既有物料和装配保留", async () => {
+  fakeSources();
+  const example = getStudioExample("modelica-feed-axis");
+  expect(example?.kind).toBe("linear-assembly");
+  const sample = (await loadStudioExample("linear-assembly", new AbortController().signal, example!.download)).workspace;
+  const initial = createServoDemo();
+  const unrelated = createDocumentMaterial("设备笔记", "原工程记录");
+  const project = { ...initial, catalog: { materials: [unrelated], models: [] } };
+  const join = prepareStudioExampleJoin("linear-assembly", project, sample);
+  expect(join.next.catalog?.materials).toHaveLength(7);
+  expect(join.next.catalog?.materials).toContainEqual(unrelated);
+  expect(join.next.servoAxis).toEqual(initial.servoAxis);
+  expect(join.next.assemblies?.[0].modelRef?.id).toBe("GouyuanLinear.FeedAxis");
+  expect(join.next.packages).toHaveLength(initial.packages.length + 6);
+  expect(join.replacement).toBeUndefined();
+  expect(prepareStudioExampleJoin("linear-assembly", sample, sample).replacement).toBeUndefined();
+  expect(prepareStudioExampleJoin("linear-assembly", join.next, sample).replacement).toBeUndefined();
+  const changed = structuredClone(sample);
+  changed.assemblies![0].axes[0].targetMm = -3;
+  const next = prepareStudioExampleJoin("linear-assembly", join.next, changed);
+  expect(next.replacement).toContain(sample.assemblies![0].name);
+  expect(next.next.assemblies?.[0].axes[0].targetMm).toBe(-3);
+  expect(project.catalog.materials).toEqual([unrelated]);
+});
+
+it("加入进给轴时按原来的 BOM 行选料，同名物料与已绑定的替代件仍可辨别", async () => {
+  fakeSources();
+  const sample = (await loadStudioExample("linear-assembly", new AbortController().signal, getStudioExample("modelica-feed-axis")!.download)).workspace;
+  const rows = sample.catalog!.materials, screw = rows.find(row => row.leadMmPerRev === 5)!;
+  const duplicate = { ...screw, id: "user-screw", binding: undefined, leadMmPerRev: 8 };
+  const base = { ...emptyWorkspace(), catalog: { materials: [duplicate], models: [] } };
+  const joined = prepareStudioExampleJoin("linear-assembly", base, sample).next;
+  expect(joined.assemblies![0].modules[0].screw).toBe(screw.id);
+  expect(inspectLinearAssembly(joined, joined.assemblies![0])).toEqual([]);
+  const original = { ...sample, catalog: { ...sample.catalog!, materials: rows.map(row => row.id === screw.id ? duplicate : row) },
+    assemblies: [{ ...sample.assemblies![0], id: "old-axis", name: "已有 8 mm 丝杠" }] };
+  const both = prepareStudioExampleJoin("linear-assembly", original, sample).next;
+  expect(both.assemblies!.map(a => a.modules[0].screw)).toEqual([duplicate.id, screw.id]);
+  expect(both.assemblies!.flatMap(a => inspectLinearAssembly(both, a))).toEqual([]);
+  const otherScrew = rows.find(row => row.leadMmPerRev === 10)!;
+  const conflicting = { ...sample, catalog: { ...sample.catalog!, materials: rows.map(row =>
+    row.id === screw.id ? { ...screw, binding: otherScrew.binding } : row) } };
+  expect(() => prepareStudioExampleJoin("linear-assembly", conflicting, sample)).toThrow(/已绑定其他修订/);
+});
 
 it("示例库从可下载工程试跑有版本的轴，加入旧工程前展示型号修订和求解模型", async () => {
   fakeSources();

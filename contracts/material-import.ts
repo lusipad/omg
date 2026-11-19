@@ -7,6 +7,7 @@ const aliases = {
   name: ["名称", "物料", "物料名称", "零件名称", "零件", "部件名称", "部件", "设备名称", "品名", "name", "part", "partname", "item", "itemname", "component", "componentname"],
   quantity: ["数量", "用量", "采购数量", "需求数量", "quantity", "qty", "amount"],
   leadMmPerRev: ["导程(mm/rev)", "丝杠导程(mm/rev)", "leadmmperrev"],
+  massKg: ["移动质量(kg)", "质量(kg)", "单件质量(kg)", "mass(kg)", "movingmass(kg)", "masskg"],
   unit: ["单位", "计量单位", "unit", "uom"],
   manufacturer: ["制造商", "厂商", "厂家", "生产商", "制造厂家", "manufacturer", "maker", "mfr"],
   model: ["型号", "设备型号", "规格型号", "订货号", "料号", "模型资产id", "model", "modelnumber", "sku", "partnumber", "physicsmodelid"],
@@ -16,13 +17,14 @@ const aliases = {
 const normalizeHeader = (value: string) => value.normalize("NFKC").trim().toLowerCase().replace(/[\s_-]/g, "");
 const headerKeys = new Map(Object.entries(aliases).flatMap(([key, labels]) => labels.map(word => [word, key as keyof Fields] as const)));
 const limits = { name: 300, unit: 80, manufacturer: 240, model: 240, source: 2048, notes: 80_000 };
-// 旧版本把带单位的导程列存进备注。只用本次原表重建旧身份，工程记录不保存这份凭据。
-const previousLeadRow = new WeakMap<MaterialRow, () => MaterialRow | undefined>();
+// 从本次原表重建历史身份：早期版本将质量和导程当成备注，后来先支持了导程。
+const previousRows = new WeakMap<MaterialRow, () => MaterialRow[]>();
 
 function signature(fields: Fields): string {
   const values = [fields.name, fields.quantity, fields.unit, fields.manufacturer, fields.model, fields.source, fields.notes];
   // 保留旧物料的签名，以便重导时找到已有绑定。
-  if (fields.leadMmPerRev !== undefined) values.push(fields.leadMmPerRev);
+  if (fields.leadMmPerRev !== undefined || fields.massKg !== undefined) values.push(fields.leadMmPerRev);
+  if (fields.massKg !== undefined) values.push(fields.massKg);
   return JSON.stringify(values);
 }
 
@@ -190,23 +192,21 @@ function materialRows(header: TableRecord, records: TableRecord[], defaultSource
   if (!records.length) throw new Error("物料表只有表头，请添加至少一行物料。");
   const read = (columns: typeof keys) => readMaterialRecords(records, names, columns, defaultSource, markdown);
   const rows = read(keys);
-  const leadColumn = keys.indexOf("leadMmPerRev");
-  if (leadColumn >= 0) {
-    const oldKeys = [...keys];
-    oldKeys[leadColumn] = undefined;
-    let previous: MaterialRow[] | undefined;
-    rows.forEach((row, index) => {
-      if (row.leadMmPerRev === undefined) return;
-      const imported = signature(row);
-      previousLeadRow.set(row, () => {
-        if (signature(row) !== imported) return;
-        if (!previous) {
-          try { previous = read(oldKeys); } catch { previous = []; } // 例如旧备注超长，原表无法在旧版入库。
-        }
-        return previous[index];
+  const olderHeaders: (typeof keys)[] = [];
+  if (keys.includes("massKg")) olderHeaders.push(keys.map(key => key === "massKg" ? undefined : key));
+  if (keys.includes("leadMmPerRev")) olderHeaders.push(keys.map(key => key === "massKg" || key === "leadMmPerRev" ? undefined : key));
+  let olderTables: MaterialRow[][] | undefined;
+  rows.forEach((row, index) => {
+    if (row.leadMmPerRev === undefined && row.massKg === undefined) return;
+    const imported = signature(row);
+    previousRows.set(row, () => {
+      if (signature(row) !== imported) return [];
+      olderTables ??= olderHeaders.map(columns => {
+        try { return read(columns); } catch { return []; } // 例如原表在旧版会超出备注长度上限。
       });
+      return olderTables.flatMap(table => table[index] ? [table[index]] : []);
     });
-  }
+  });
   return rows;
 }
 
@@ -226,11 +226,12 @@ function readMaterialRecords(records: TableRecord[], names: string[], keys: (key
         else if (link) { value = link[1]; nameLink = link[2]; }
       }
       if (key === "name") fields.name = value;
-      else if (key === "quantity" || key === "leadMmPerRev") {
-        if (key === "leadMmPerRev" && !value) return;
+      else if (key === "quantity" || key === "leadMmPerRev" || key === "massKg") {
+        if (key !== "quantity" && !value) return;
         const numeric = Number(value);
         if (!/^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value) || !Number.isFinite(numeric) || numeric <= 0) {
-          const message = key === "quantity" ? "数量必须是正有限数，计量单位请填写在单位列。" : "导程必须是正有限数，单位为 mm/rev。";
+          const message = { quantity: "数量必须是正有限数，计量单位请填写在单位列。",
+            leadMmPerRev: "导程必须是正有限数，单位为 mm/rev。", massKg: "移动质量必须是正有限数，单位为 kg。" }[key];
           throw new Error(`第 ${line} 行${message}`);
         }
         fields[key] = numeric;
@@ -259,9 +260,10 @@ export function matchMaterials(rows: MaterialRow[], workspace: TwinWorkspace): M
     if (old && signature(old) !== signature(row)) throw new Error(`物料“${row.name}”与已有记录标识相同、内容不同，请核对来源。`);
     let chosen = binding ?? old?.binding;
     if (!old && saved.size) {
-      const previous = previousLeadRow.get(row)?.();
-      const archived = previous && saved.get(previous.id);
-      if (archived && (signature(archived) === signature(previous) || signature(archived) === signature(row))) {
+      const previous = previousRows.get(row)?.() ?? [];
+      const versions = new Set([signature(row), ...previous.map(signature)]);
+      const archived = previous.map(entry => saved.get(entry.id)).find(entry => entry && versions.has(signature(entry)));
+      if (archived) {
         fields.id = archived.id;
         chosen = archived.binding ?? binding;
       }

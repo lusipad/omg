@@ -38,8 +38,10 @@ jobs:
         run: |
           source "$RUNNER_TEMP/omc/env.sh"
           python3 scripts/modelica/verify.py --omc omc --out "$RUNNER_TEMP/gouyuan-modelica-native"
+          python3 -B scripts/modelica/verify-feed.py --omc omc --out "$RUNNER_TEMP/gouyuan-modelica-native"
           python3 scripts/modelica/build-web.py --check
           node scripts/modelica/compare-web.mjs "$RUNNER_TEMP/gouyuan-modelica-native"
+          node scripts/modelica/compare-web.mjs "$RUNNER_TEMP/gouyuan-modelica-native" feed
       - name: 保存原生回归日志与采样
         if: always()
         uses: actions/upload-artifact@v7
@@ -51,6 +53,8 @@ jobs:
             ${{ runner.temp }}/gouyuan-modelica-native/**/*.csv
             ${{ runner.temp }}/gouyuan-modelica-native/native-results.json
             ${{ runner.temp }}/gouyuan-modelica-native/web-comparison.json
+            ${{ runner.temp }}/gouyuan-modelica-native/feed-native-results.json
+            ${{ runner.temp }}/gouyuan-modelica-native/feed-web-comparison.json
       - run: npm run build:pages
       - uses: actions/upload-pages-artifact@v5
         with:

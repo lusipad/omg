@@ -1,0 +1,561 @@
+{
+  "passed": true,
+  "toolchain": "OpenModelica 1.27.2 / Modelica 4.0.0 / Gouyuan 1.0.0 / GouyuanLinear 1.0.0",
+  "model": "GouyuanLinear.FeedAxis",
+  "solver": "DASSL",
+  "tolerance": 1e-08,
+  "sourceSha256": "6f17866a0e5fb8bdbdba1438dbc447069fe6624fec38d493a9418eb622698903",
+  "dependencySha256": "bf0b3980597bb20a98f0b5730cfaec3b0e4fbd1fb14412a6df7bb709b6ee492e",
+  "mosSha256": "74cf7fa7912831fa9f9870c7ac14b665880e97671952ab03da4edd54089e754c",
+  "verifierSha256": "a6722820c914bfac6989a2d4d5da213db3e5b9e38698b315a273e2621f30339c",
+  "helpersSha256": "e8b6d7e7f564b7464c20adcd94f3e4b15dbdcf63ff232e65005fe29646df823b",
+  "mslRevision": "6626538a236a34a390655b55d5e8c906bfe31772",
+  "verifiedMslFiles": {
+    "Mechanics/Translational/Components/Mass.mo": "15a5d8b21338447c9ea1d21b695a20fadd3bf6fe529c05a98d6360811ac8be62",
+    "Mechanics/Translational/Sensors/ForceSensor.mo": "c59737994efe42f741d33b0efdb5bf09bd55a37f7bcff4b3a3f67923247e823d",
+    "Mechanics/Rotational/Components/Inertia.mo": "f3686d31c0612222f93a9e6f548731c3bb1f51e4b25305c2c152c68684d10c6a",
+    "Mechanics/Rotational/Components/IdealGearR2T.mo": "a73f9f7b0852325ed26f7be3a331c41c15a2ead83755dc154bc2b39482306e83"
+  },
+  "compilerWarnings": [
+    "Warning: This version of ModelicaServices does not appear to be patched for use with OpenModelica, consider using a version distributed by OpenModelica instead to avoid compatibility issues."
+  ],
+  "buildLogSha256": "b3e82cc7f29ab885bd02b3be620fb320f41f4f9f311002b3da7a2aa0a9a75221",
+  "cases": {
+    "normal": {
+      "samples": 801,
+      "csv": "feed-normal.csv",
+      "csvSha256": "c223ff5cdff3a250f6a131cbf9d46f1a3a65911fe5c61ec235cf0aed377327c1",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetMm": 10,
+        "leadMmPerRev": 5,
+        "tableMassKg": 5,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "atStart": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": 0.2099086547422556,
+        "axialForceN": 47.27648772650456,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "at100ms": {
+        "positionMm": 7.036593460067473,
+        "velocityMmS": 43.51835185842531,
+        "motorTorqueNm": -0.01391952110152104,
+        "axialForceN": -3.135011604561574,
+        "angleDeg": 506.634729124858,
+        "speedRpm": 522.2202223011037
+      },
+      "final": {
+        "positionMm": 10.0,
+        "velocityMmS": -1.79371431325099e-14,
+        "motorTorqueNm": 1.704081895195239e-18,
+        "axialForceN": 3.838003101972078e-16,
+        "angleDeg": 720.0000000000001,
+        "speedRpm": -2.152457175901188e-13
+      },
+      "maxAbsMotorTorqueNm": 0.2099086547422556,
+      "maxAbsPowerW": 7.24721858219985,
+      "maxAbsAxialForceN": 47.27648772650456,
+      "reflectedInertiaKgM2": 3.1662869888230563e-06,
+      "maxAbsMechanicalResidual": {
+        "positionMm": 7.105427357601002e-15,
+        "velocityMmS": 4.263256414560601e-14,
+        "tableForceN": 2.842170943040401e-14,
+        "tableAccelerationMS2": 1.7763568394002505e-15,
+        "screwTorqueNm": 2.0816681711721685e-17,
+        "rotorTorqueNm": 2.7755575615628914e-17,
+        "screwPowerW": 8.881784197001252e-16,
+        "kineticPowerW": 1.1102230246251565e-15
+      },
+      "settledAtSampleS": 0.67,
+      "analyticMaxAbsError": {
+        "positionMm": 5.441429173913548e-08,
+        "velocityMmS": 3.0798298240597433e-06,
+        "motorTorqueNm": 4.3962456348911605e-09,
+        "axialForceN": 9.90140467393985e-07,
+        "angleDeg": 3.917829076272028e-06,
+        "speedRpm": 3.69579578318735e-05
+      }
+    },
+    "negative": {
+      "samples": 801,
+      "csv": "feed-negative.csv",
+      "csvSha256": "a3a02225233e039aee5e1fe5b17ea54f5707d2bd78f5fecb6ca5ab80d66f18e6",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetMm": -10,
+        "leadMmPerRev": 5,
+        "tableMassKg": 5,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "atStart": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": -0.2099086547422556,
+        "axialForceN": -47.27648772650456,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "at100ms": {
+        "positionMm": -7.036593460067473,
+        "velocityMmS": -43.51835185842531,
+        "motorTorqueNm": 0.01391952110152104,
+        "axialForceN": 3.135011604561574,
+        "angleDeg": -506.634729124858,
+        "speedRpm": -522.2202223011037
+      },
+      "final": {
+        "positionMm": -10.0,
+        "velocityMmS": 1.79371431325099e-14,
+        "motorTorqueNm": -1.704081895195239e-18,
+        "axialForceN": -3.838003101972078e-16,
+        "angleDeg": -720.0000000000001,
+        "speedRpm": 2.152457175901188e-13
+      },
+      "maxAbsMotorTorqueNm": 0.2099086547422556,
+      "maxAbsPowerW": 7.24721858219985,
+      "maxAbsAxialForceN": 47.27648772650456,
+      "reflectedInertiaKgM2": 3.1662869888230563e-06,
+      "maxAbsMechanicalResidual": {
+        "positionMm": 7.105427357601002e-15,
+        "velocityMmS": 4.263256414560601e-14,
+        "tableForceN": 2.842170943040401e-14,
+        "tableAccelerationMS2": 1.7763568394002505e-15,
+        "screwTorqueNm": 2.0816681711721685e-17,
+        "rotorTorqueNm": 2.7755575615628914e-17,
+        "screwPowerW": 8.881784197001252e-16,
+        "kineticPowerW": 1.1102230246251565e-15
+      },
+      "settledAtSampleS": 0.67,
+      "analyticMaxAbsError": {
+        "positionMm": 5.441429173913548e-08,
+        "velocityMmS": 3.0798298240597433e-06,
+        "motorTorqueNm": 4.3962456348911605e-09,
+        "axialForceN": 9.90140467393985e-07,
+        "angleDeg": 3.917829076272028e-06,
+        "speedRpm": 3.69579578318735e-05
+      }
+    },
+    "zero": {
+      "samples": 801,
+      "csv": "feed-zero.csv",
+      "csvSha256": "8f37fe1f6a0275e60c0d09cdd69dbb8f1fdc0f95bf147ab6bb5ad8eeaff0df9f",
+      "logSha256": "25c4605175d1c419ff0729c16d455de5c39973e40b92ebdc92248b0239a8fdac",
+      "parameters": {
+        "targetMm": 0,
+        "leadMmPerRev": 5,
+        "tableMassKg": 5,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "atStart": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": 0.0,
+        "axialForceN": 0.0,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "at100ms": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": 0.0,
+        "axialForceN": 0.0,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "final": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": 0.0,
+        "axialForceN": 0.0,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "maxAbsMotorTorqueNm": 0,
+      "maxAbsPowerW": 0,
+      "maxAbsAxialForceN": 0.0,
+      "reflectedInertiaKgM2": 3.1662869888230563e-06,
+      "maxAbsMechanicalResidual": {
+        "positionMm": 0,
+        "velocityMmS": 0,
+        "tableForceN": 0,
+        "tableAccelerationMS2": 0,
+        "screwTorqueNm": 0,
+        "rotorTorqueNm": 0,
+        "screwPowerW": 0,
+        "kineticPowerW": 0
+      },
+      "settledAtSampleS": 0.05
+    },
+    "lead-10": {
+      "samples": 801,
+      "csv": "feed-lead-10.csv",
+      "csvSha256": "2d3bd947f31bb6a0dc3482dd1b5c4736bd7180bd7c00ad810b734f62c6366ae6",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetMm": 10,
+        "leadMmPerRev": 10,
+        "tableMassKg": 5,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "atStart": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": 0.1049543273711278,
+        "axialForceN": 30.74527705037915,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "at100ms": {
+        "positionMm": 6.946611920508896,
+        "velocityMmS": 50.78752062424132,
+        "motorTorqueNm": -0.01237312134110355,
+        "axialForceN": -3.624577024489959,
+        "angleDeg": 250.0780291383203,
+        "speedRpm": 304.7251237454479
+      },
+      "final": {
+        "positionMm": 10.0,
+        "velocityMmS": -1.572179252292034e-15,
+        "motorTorqueNm": 1.375058466092942e-18,
+        "axialForceN": 4.028090557048043e-16,
+        "angleDeg": 360.0,
+        "speedRpm": -9.433075513752205e-15
+      },
+      "maxAbsMotorTorqueNm": 0.1049543273711278,
+      "maxAbsPowerW": 1.8126143738164973,
+      "maxAbsAxialForceN": 30.74527705037915,
+      "reflectedInertiaKgM2": 1.2665147955292225e-05,
+      "maxAbsMechanicalResidual": {
+        "positionMm": 7.105427357601002e-15,
+        "velocityMmS": 1.4210854715202004e-14,
+        "tableForceN": 7.105427357601002e-15,
+        "tableAccelerationMS2": 8.881784197001252e-16,
+        "screwTorqueNm": 1.3877787807814457e-17,
+        "rotorTorqueNm": 1.3877787807814457e-17,
+        "screwPowerW": 2.220446049250313e-16,
+        "kineticPowerW": 8.881784197001252e-16
+      },
+      "settledAtSampleS": 0.53,
+      "analyticMaxAbsError": {
+        "positionMm": 8.682743501964296e-08,
+        "velocityMmS": 3.1221855678609245e-06,
+        "motorTorqueNm": 1.8194325560050295e-09,
+        "axialForceN": 5.32983817524979e-07,
+        "angleDeg": 3.1257876287327235e-06,
+        "speedRpm": 1.8733113392954692e-05
+      }
+    },
+    "mass-25": {
+      "samples": 801,
+      "csv": "feed-mass-25.csv",
+      "csvSha256": "d01706f558fc6eedcb130db6b009cb3de65839576c8bb46babddf15aeb49aeaa",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetMm": 10,
+        "leadMmPerRev": 5,
+        "tableMassKg": 25,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "atStart": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": 0.2099086547422556,
+        "axialForceN": 137.6789462052867,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "at100ms": {
+        "positionMm": 6.89056998950597,
+        "velocityMmS": 53.30069913098443,
+        "motorTorqueNm": -0.02796602337658882,
+        "axialForceN": -18.34289602193363,
+        "angleDeg": 496.1210392444298,
+        "speedRpm": 639.6083895718132
+      },
+      "final": {
+        "positionMm": 10.0,
+        "velocityMmS": 3.128318643211011e-15,
+        "motorTorqueNm": -5.472176316679515e-18,
+        "axialForceN": -3.589196784930369e-15,
+        "angleDeg": 720.0,
+        "speedRpm": 3.753982371853214e-14
+      },
+      "maxAbsMotorTorqueNm": 0.2099086547422556,
+      "maxAbsPowerW": 7.060654998590931,
+      "maxAbsAxialForceN": 137.6789462052867,
+      "reflectedInertiaKgM2": 1.583143494411528e-05,
+      "maxAbsMechanicalResidual": {
+        "positionMm": 7.105427357601002e-15,
+        "velocityMmS": 2.842170943040401e-14,
+        "tableForceN": 2.842170943040401e-14,
+        "tableAccelerationMS2": 8.881784197001252e-16,
+        "screwTorqueNm": 4.163336342344337e-17,
+        "rotorTorqueNm": 2.7755575615628914e-17,
+        "screwPowerW": 6.661338147750939e-16,
+        "kineticPowerW": 1.7763568394002505e-15
+      },
+      "settledAtSampleS": 0.49,
+      "analyticMaxAbsError": {
+        "positionMm": 4.2432098723566014e-08,
+        "velocityMmS": 1.5636605645852342e-06,
+        "motorTorqueNm": 1.8445292203350672e-09,
+        "axialForceN": 1.2098254842385359e-06,
+        "angleDeg": 3.055111164940172e-06,
+        "speedRpm": 1.8763926732390246e-05
+      }
+    },
+    "low-current": {
+      "samples": 801,
+      "csv": "feed-low-current.csv",
+      "csvSha256": "f56b810165a26c21a1c03bdb751732a9dfd255c268af46511877313743bf1b8e",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetMm": 10,
+        "leadMmPerRev": 5,
+        "tableMassKg": 5,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 0.04,
+        "motorRatedCurrentA": 2.8
+      },
+      "atStart": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": 0.01814285714285714,
+        "axialForceN": 4.086208661054057,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "at100ms": {
+        "positionMm": 4.054150292477795,
+        "velocityMmS": 74.34249301814765,
+        "motorTorqueNm": -0.005234241156312188,
+        "axialForceN": -1.178877250620309,
+        "angleDeg": 291.8988210584013,
+        "speedRpm": 892.1099162177718
+      },
+      "final": {
+        "positionMm": 10.0,
+        "velocityMmS": -3.387754153226512e-15,
+        "motorTorqueNm": 5.92599097417722e-18,
+        "axialForceN": 1.334675980378566e-15,
+        "angleDeg": 720.0,
+        "speedRpm": -4.065304983871814e-14
+      },
+      "maxAbsMotorTorqueNm": 0.01814285714285714,
+      "maxAbsPowerW": 1.4905826697568063,
+      "maxAbsAxialForceN": 4.086208661054057,
+      "reflectedInertiaKgM2": 3.1662869888230563e-06,
+      "maxAbsMechanicalResidual": {
+        "positionMm": 7.105427357601002e-15,
+        "velocityMmS": 2.1316282072803006e-14,
+        "tableForceN": 2.220446049250313e-15,
+        "tableAccelerationMS2": 1.1102230246251565e-16,
+        "screwTorqueNm": 1.3010426069826053e-18,
+        "rotorTorqueNm": 5.204170427930421e-18,
+        "screwPowerW": 8.326672684688674e-17,
+        "kineticPowerW": 6.661338147750939e-16
+      },
+      "settledAtSampleS": 0.72
+    },
+    "power-limit": {
+      "samples": 801,
+      "csv": "feed-power-limit.csv",
+      "csvSha256": "c3f7c2ce96af79cc48e4f95ae0c3bc6ce1129dad6552fd2e200a34246b42f142",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetMm": 50,
+        "leadMmPerRev": 5,
+        "tableMassKg": 5,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 4,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "atStart": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": 0.4373096973796992,
+        "axialForceN": 98.49268276355109,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "at100ms": {
+        "positionMm": 11.2576561995721,
+        "velocityMmS": 169.179838457329,
+        "motorTorqueNm": 0.01881488297224469,
+        "axialForceN": 4.237565073270337,
+        "angleDeg": 810.5512463691914,
+        "speedRpm": 2030.158061487949
+      },
+      "final": {
+        "positionMm": 49.99999999999999,
+        "velocityMmS": -3.109317943242864e-14,
+        "motorTorqueNm": 5.438939555267224e-17,
+        "axialForceN": 1.224980263179347e-14,
+        "angleDeg": 3600.0,
+        "speedRpm": -3.731181531891438e-13
+      },
+      "maxAbsMotorTorqueNm": 0.4373096973796992,
+      "maxAbsPowerW": 4.000000000000003,
+      "maxAbsAxialForceN": 98.49268276355109,
+      "reflectedInertiaKgM2": 3.1662869888230563e-06,
+      "maxAbsMechanicalResidual": {
+        "positionMm": 2.1316282072803006e-14,
+        "velocityMmS": 1.1368683772161603e-13,
+        "tableForceN": 7.638334409421077e-14,
+        "tableAccelerationMS2": 7.105427357601002e-15,
+        "screwTorqueNm": 1.3877787807814457e-17,
+        "rotorTorqueNm": 2.7755575615628914e-17,
+        "screwPowerW": 4.440892098500626e-16,
+        "kineticPowerW": 4.884981308350689e-15
+      },
+      "settledAtSampleS": 1.07
+    },
+    "speed-limit": {
+      "samples": 801,
+      "csv": "feed-speed-limit.csv",
+      "csvSha256": "cc44686bc52d1a2e006750571c2be7cbe624d9e87dadf086f36140bcdf4eb723",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetMm": 120,
+        "leadMmPerRev": 5,
+        "tableMassKg": 5,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 60,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "atStart": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": 0.008746193947593985,
+        "axialForceN": 1.969853655271023,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "at100ms": {
+        "positionMm": 0.4365675256628969,
+        "velocityMmS": 4.998107657433055,
+        "motorTorqueNm": 3.310159021157091e-06,
+        "axialForceN": 0.0007455275845041594,
+        "angleDeg": 31.43286184772857,
+        "speedRpm": 59.97729188919667
+      },
+      "final": {
+        "positionMm": 39.93654350937921,
+        "velocityMmS": 5.0,
+        "motorTorqueNm": 0.0,
+        "axialForceN": 0.0,
+        "angleDeg": 2875.431132675304,
+        "speedRpm": 60.0
+      },
+      "maxAbsMotorTorqueNm": 0.008746193947593985,
+      "maxAbsPowerW": 0.013626116848267412,
+      "maxAbsAxialForceN": 1.969853655271023,
+      "reflectedInertiaKgM2": 3.1662869888230563e-06,
+      "maxAbsMechanicalResidual": {
+        "positionMm": 1.7763568394002505e-14,
+        "velocityMmS": 3.552713678800501e-15,
+        "tableForceN": 7.771561172376096e-16,
+        "tableAccelerationMS2": 5.551115123125783e-17,
+        "screwTorqueNm": 6.505213034913027e-19,
+        "rotorTorqueNm": 8.673617379884035e-19,
+        "screwPowerW": 8.673617379884035e-19,
+        "kineticPowerW": 3.469446951953614e-18
+      },
+      "settledAtSampleS": null
+    },
+    "other-motor": {
+      "samples": 801,
+      "csv": "feed-other-motor.csv",
+      "csvSha256": "8b645b83913ed2912ea5b91a5b94708184a3899167d3af6b5952ca2b105acb92",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetMm": 10,
+        "leadMmPerRev": 5,
+        "tableMassKg": 5,
+        "rotorInertiaKgM2": 2.9e-05,
+        "ratedTorqueNm": 0.7,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 0.04,
+        "motorRatedCurrentA": 1.4
+      },
+      "atStart": {
+        "positionMm": 0.0,
+        "velocityMmS": 0.0,
+        "motorTorqueNm": 0.02,
+        "axialForceN": 2.473940233561887,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0
+      },
+      "at100ms": {
+        "positionMm": 2.47394023356189,
+        "velocityMmS": 49.4788046712378,
+        "motorTorqueNm": 0.02,
+        "axialForceN": 2.473940233561887,
+        "angleDeg": 178.1236968164561,
+        "speedRpm": 593.7456560548536
+      },
+      "final": {
+        "positionMm": 10.0,
+        "velocityMmS": -3.961156241270647e-15,
+        "motorTorqueNm": 1.385801629715019e-17,
+        "axialForceN": 1.714195203743811e-15,
+        "angleDeg": 720.0,
+        "speedRpm": -4.753387489524778e-14
+      },
+      "maxAbsMotorTorqueNm": 0.02,
+      "maxAbsPowerW": 1.5574005921432774,
+      "maxAbsAxialForceN": 2.473940233561887,
+      "reflectedInertiaKgM2": 3.1662869888230563e-06,
+      "maxAbsMechanicalResidual": {
+        "positionMm": 7.105427357601002e-15,
+        "velocityMmS": 2.842170943040401e-14,
+        "tableForceN": 2.6645352591003757e-15,
+        "tableAccelerationMS2": 5.551115123125783e-17,
+        "screwTorqueNm": 4.336808689942018e-19,
+        "rotorTorqueNm": 6.938893903907228e-18,
+        "screwPowerW": 8.326672684688674e-17,
+        "kineticPowerW": 4.440892098500626e-16
+      },
+      "settledAtSampleS": 0.76
+    }
+  }
+}

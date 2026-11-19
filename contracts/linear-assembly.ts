@@ -1,16 +1,19 @@
 import { z } from "zod";
+import feedLibrary from "../public/modelica/linear-library.json";
 import type { MaterialRow } from "./import-catalog";
 import { isMeasuredMaterialUnit } from "./material-import";
+import { bindModelicaServoRatings, type ModelicaServoRatings } from "./modelica-servo";
 import { isCompatibleServoPair, servoAxisConfigSchema, simulateServoAxis, type ServoAxisConfig } from "./servo-axis";
-import { packageKey, readTwinData, signalIdSchema } from "./twin-device";
+import { modelRefSchema, packageKey, readTwinData, signalIdSchema, type DevicePackage, type ModelReference } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
 
 export const LINEAR_ASSEMBLY_LIMITS = { assemblies: 64, modules: 64, axes: 32 } as const;
+export const MODELICA_FEED_REF: ModelReference = Object.freeze({ id: feedLibrary.assembly.id, version: feedLibrary.version });
 const materialRef = z.string().trim().max(300);
 const finite = z.number().finite();
 const moduleSchema = z.strictObject({
-  id: signalIdSchema, drive: materialRef, motor: materialRef, screw: materialRef,
-  leadMmPerRev: finite.positive().nullable(), loadInertiaRatio: finite.min(0).max(100),
+  id: signalIdSchema, drive: materialRef, motor: materialRef, screw: materialRef, table: materialRef.optional(),
+  leadMmPerRev: finite.positive().nullable(), loadInertiaRatio: finite.min(0).max(100).optional(),
 });
 const axisSchema = z.strictObject({
   id: signalIdSchema, module: signalIdSchema, targetMm: finite,
@@ -18,11 +21,14 @@ const axisSchema = z.strictObject({
 });
 const assemblySchema = z.strictObject({
   schemaVersion: z.literal(1), kind: z.literal("linear-axis-assembly"), id: signalIdSchema, name: z.string().trim().min(1).max(160),
-  modules: z.array(moduleSchema).min(1).max(LINEAR_ASSEMBLY_LIMITS.modules), axes: z.array(axisSchema).min(1).max(LINEAR_ASSEMBLY_LIMITS.axes),
+  modelRef: modelRefSchema.optional(), modules: z.array(moduleSchema).min(1).max(LINEAR_ASSEMBLY_LIMITS.modules),
+  axes: z.array(axisSchema).min(1).max(LINEAR_ASSEMBLY_LIMITS.axes),
 }).superRefine((a, ctx) => {
   const modules = new Set<string>(), axes = new Set<string>();
   a.modules.forEach((m, i) => {
     if (modules.has(m.id)) ctx.addIssue({ code: "custom", path: ["modules", i, "id"], message: `模块标识 ${m.id} 重复` });
+    if (!a.modelRef && m.loadInertiaRatio === undefined) ctx.addIssue({ code: "custom", path: ["modules", i, "loadInertiaRatio"], message: "原有刚性轴模型需要负载惯量比。" });
+    if (!a.modelRef && m.table) ctx.addIssue({ code: "custom", path: ["modules", i, "table"], message: "连接移动工作台时请指定直线进给轴模型版本。" });
     modules.add(m.id);
   });
   a.axes.forEach((axis, i) => {
@@ -37,8 +43,13 @@ export const linearAssemblyListSchema = z.array(assemblySchema).max(LINEAR_ASSEM
 );
 export type LinearAssembly = z.infer<typeof assemblySchema>;
 type Vec3 = [number, number, number];
-export interface LinearAssemblySample { timeMs: number; positionMm: number[]; velocityMmS: number[]; tipMm: Vec3 }
+export interface LinearAssemblySample {
+  timeMs: number; positionMm: number[]; velocityMmS: number[]; tipMm: Vec3;
+  motorTorqueNm?: number[]; axialForceN?: number[];
+}
 export interface LinearAssemblyResult { samples: LinearAssemblySample[]; settled: boolean }
+export interface ModelicaFeedParameters extends ModelicaServoRatings { targetMm: number; leadMmPerRev: number; tableMassKg: number }
+export interface ModelicaFeedAxis { id: string; direction: Vec3; parameters: ModelicaFeedParameters }
 
 export function parseLinearAssembly(raw: unknown): LinearAssembly {
   return readTwinData(assemblySchema, raw, "直线轴装配");
@@ -53,7 +64,7 @@ export function upsertLinearAssembly(workspace: TwinWorkspace, definition: Linea
   return { ...workspace, assemblies: [...existing, assembly] };
 }
 
-const roles = { drive: "驱动器", motor: "电机", screw: "丝杠" } as const;
+const roles = { drive: "驱动器", motor: "电机", screw: "丝杠", table: "工作台" } as const;
 type Role = keyof typeof roles;
 interface AxisInput { id: string; direction: Vec3; lead: number; servo: ServoAxisConfig }
 
@@ -63,8 +74,42 @@ function unitVector([x, y, z]: Vec3): Vec3 {
   return [x / scale / norm, y / scale / norm, z / scale / norm];
 }
 
+function mechanicalValue(role: "screw" | "table", row: MaterialRow, packages: Map<string, DevicePackage>, moduleId: string,
+  modelica: boolean, issues: Set<string>, manual?: number | null): number | undefined {
+  const isScrew = role === "screw", property = isScrew ? "导程" : "质量", unit = isScrew ? "mm/rev" : "kg";
+  const label = `模块 ${moduleId} 的${roles[role]}“${row.name}”`;
+  const pkg = row.binding?.kind === "device" ? packages.get(row.binding.key) : undefined;
+  const part = pkg?.feed;
+  let packageValue: number | undefined;
+  if (isScrew && part?.kind === "lead-screw") packageValue = part.leadMmPerRev;
+  if (!isScrew && part?.kind === "moving-table") packageValue = part.massKg;
+  if (modelica && row.binding) {
+    const expected = feedLibrary.components[role];
+    if (packageValue === undefined || !part) issues.add(`${label}需要 ${expected.id} 设备包。也可解除现有绑定，使用带${property}的 BOM 行。`);
+    else if (part.modelRef.id !== expected.id || part.modelRef.version !== expected.version) {
+      issues.add(`${label}引用的模型 ${part.modelRef.id} @ ${part.modelRef.version} 不可用，需要 ${expected.id} @ ${expected.version}。`);
+    }
+  } else if (row.binding?.kind === "device" && !pkg?.mechanics && packageValue === undefined) {
+    issues.add(`${label}需要绑定机械丝杠，请核对设备角色。`);
+  }
+  const bom = isScrew ? row.leadMmPerRev : row.massKg;
+  const sources = [["BOM", bom], ["设备包", packageValue], ["模块", manual]] as const;
+  const specified = sources.filter((entry): entry is readonly [typeof entry[0], number] => entry[1] != null);
+  const value = specified[0]?.[1];
+  if (value === undefined) issues.add(`${label}缺少${property}（${unit}）。`);
+  else if (!(value > 0) || !Number.isFinite(value)) issues.add(`${label}的${property}必须是正有限数，单位为 ${unit}。`);
+  else if (specified.some(([, v]) => v !== value)) {
+    issues.add(`${label}的${property}不一致（${specified.map(([where, v]) => `${where} ${v} ${unit}`).join("，")}）。`);
+  }
+  return value;
+}
+
 function resolveAxes(workspace: TwinWorkspace, assembly: LinearAssembly) {
-  const issues = new Set<string>(), inputs: AxisInput[] = [];
+  const issues = new Set<string>(), inputs: AxisInput[] = [], feedAxes: ModelicaFeedAxis[] = [];
+  const ref = assembly.modelRef;
+  if (ref && (ref.id !== MODELICA_FEED_REF.id || ref.version !== MODELICA_FEED_REF.version)) {
+    return { issues: [`此装配引用的模型 ${ref.id} @ ${ref.version} 尚未安装。`], inputs, feedAxes };
+  }
   const materials = workspace.catalog?.materials ?? [], byId = new Map(materials.map((m) => [m.id, m]));
   const byName = new Map<string, MaterialRow[]>();
   for (const row of materials) {
@@ -76,7 +121,7 @@ function resolveAxes(workspace: TwinWorkspace, assembly: LinearAssembly) {
   const copies = new Map<string, number>();
   for (const axis of assembly.axes) copies.set(axis.module, (copies.get(axis.module) ?? 0) + 1);
   const screwLeads = new Map<string, number>();
-  const resolved = new Map<string, { drive?: string; motor?: string; lead: number | null; ratio: number }>();
+  const resolved = new Map<string, { drive?: string; motor?: string; lead?: number; ratio?: number; mass?: number; ratings?: ModelicaServoRatings }>();
   for (const mod of assembly.modules) {
     const count = copies.get(mod.id) ?? 0;
     if (!count) continue;
@@ -106,19 +151,19 @@ function resolveAxes(workspace: TwinWorkspace, assembly: LinearAssembly) {
     }
     const drive = device("drive"), motor = device("motor"), screw = part("screw");
     if (drive && motor && !isCompatibleServoPair(drive, motor)) issues.add(`模块 ${mod.id} 的 ${drive.model} 与 ${motor.model} 不在同厂配套清单中，请核对绑定型号。`);
-    if (screw?.binding?.kind === "device" && !packages.get(screw.binding.key)?.mechanics) {
-      issues.add(`模块 ${mod.id} 的“${screw.name}”已绑定电气设备，丝杠应选机械 BOM 行。`);
-    }
-    const lead = screw?.leadMmPerRev ?? mod.leadMmPerRev;
-    if (lead === null) issues.add(`模块 ${mod.id} 缺少丝杠导程，请在 BOM 或模块中填写 mm/rev。`);
-    if (screw && lead !== null) {
-      if (screw.leadMmPerRev !== undefined && mod.leadMmPerRev !== null && screw.leadMmPerRev !== mod.leadMmPerRev) {
-        issues.add(`模块 ${mod.id} 的导程不一致：BOM 为 ${screw.leadMmPerRev} mm/rev，模块填写 ${mod.leadMmPerRev} mm/rev。`);
-      }
+    const lead = screw && mechanicalValue("screw", screw, packages, mod.id, !!ref, issues, mod.leadMmPerRev);
+    if (screw && lead !== undefined) {
       if (screwLeads.has(screw.id) && screwLeads.get(screw.id) !== lead) issues.add(`同一丝杠行“${screw.name}”在不同模块中使用了不同导程，请核对。`);
       screwLeads.set(screw.id, lead);
     }
-    resolved.set(mod.id, { drive: drive && packageKey(drive), motor: motor && packageKey(motor), lead, ratio: mod.loadInertiaRatio });
+    const table = ref ? part("table") : undefined;
+    const mass = table && mechanicalValue("table", table, packages, mod.id, true, issues);
+    let ratings: ModelicaServoRatings | undefined;
+    if (ref && drive?.servo?.kind === "drive" && motor?.servo?.kind === "motor") {
+      try { ratings = bindModelicaServoRatings(drive.servo, motor.servo); }
+      catch (e) { issues.add(`模块 ${mod.id} 无法绑定驱动与电机。${e instanceof Error ? e.message : "请核对型号参数。"}`); }
+    }
+    resolved.set(mod.id, { drive: drive && packageKey(drive), motor: motor && packageKey(motor), lead, ratio: mod.loadInertiaRatio, mass, ratings });
   }
   for (const { row, count, roles: usedRoles } of usage.values()) {
     if (usedRoles.size > 1) issues.add(`物料“${row.name}”不能同时用作${[...usedRoles].map((role) => roles[role]).join("和")}。`);
@@ -128,15 +173,24 @@ function resolveAxes(workspace: TwinWorkspace, assembly: LinearAssembly) {
   }
   for (const axis of assembly.axes) {
     const mod = resolved.get(axis.module)!;
-    if (mod.lead === null) continue;
+    if (mod.lead === undefined) continue;
     const angle = axis.targetMm / mod.lead * 360;
-    if (!servoAxisConfigSchema.shape.targetDeg.safeParse(angle).success || (axis.targetMm !== 0 && angle === 0)) {
+    if (ref) {
+      if (!mod.ratings || mod.mass === undefined) continue;
+      const radiusM = mod.lead * 0.001 / (2 * Math.PI);
+      const reflectedInertia = mod.mass * radiusM ** 2;
+      if (!Number.isFinite(angle) || (axis.targetMm !== 0 && angle === 0) || !Number.isFinite(1 / radiusM) ||
+          !(reflectedInertia > 0) || !Number.isFinite(mod.ratings.rotorInertiaKgM2 + reflectedInertia)) {
+        issues.add(`轴 ${axis.id} 的指令、导程或负载质量超出可表示的数值范围。`); continue;
+      }
+      feedAxes.push({ id: axis.id, direction: unitVector(axis.direction),
+        parameters: { targetMm: axis.targetMm, leadMmPerRev: mod.lead, tableMassKg: mod.mass, ...mod.ratings } });
+    } else if (!servoAxisConfigSchema.shape.targetDeg.safeParse(angle).success || (axis.targetMm !== 0 && angle === 0)) {
       issues.add(`轴 ${axis.id} 的目标位移与导程超出伺服角度计算范围（±3600°），请调整目标或核对导程。`); continue;
-    }
-    if (mod.drive && mod.motor) inputs.push({ id: axis.id, direction: unitVector(axis.direction), lead: mod.lead,
+    } else if (mod.drive && mod.motor && mod.ratio !== undefined) inputs.push({ id: axis.id, direction: unitVector(axis.direction), lead: mod.lead,
       servo: { driveKey: mod.drive, motorKey: mod.motor, targetDeg: angle, loadInertiaRatio: mod.ratio } });
   }
-  return { issues: [...issues], inputs };
+  return { issues: [...issues], inputs, feedAxes };
 }
 
 export function inspectLinearAssembly(workspace: TwinWorkspace, definition: LinearAssembly): string[] {
@@ -144,8 +198,18 @@ export function inspectLinearAssembly(workspace: TwinWorkspace, definition: Line
   catch (error) { return [error instanceof Error ? error.message : "直线轴装配参数无效。"]; }
 }
 
+export function resolveModelicaFeedAxes(workspace: TwinWorkspace, definition: LinearAssembly): ModelicaFeedAxis[] {
+  const assembly = parseLinearAssembly(definition);
+  if (!assembly.modelRef) throw new Error("请先选择有版本的 Modelica 直线进给轴模型。");
+  const { issues, feedAxes } = resolveAxes(workspace, assembly);
+  if (issues.length) throw new Error(issues.join("\n"));
+  return feedAxes;
+}
+
 export function runLinearAssembly(workspace: TwinWorkspace, definition: LinearAssembly): LinearAssemblyResult {
-  const { issues, inputs } = resolveAxes(workspace, parseLinearAssembly(definition));
+  const assembly = parseLinearAssembly(definition);
+  if (assembly.modelRef) throw new Error(`此装配选择了 ${assembly.modelRef.id} @ ${assembly.modelRef.version}，请使用对应的模型运行。`);
+  const { issues, inputs } = resolveAxes(workspace, assembly);
   if (issues.length) throw new Error(issues.join("\n"));
   const times = new Set<number>();
   const axes = inputs.map((input) => {

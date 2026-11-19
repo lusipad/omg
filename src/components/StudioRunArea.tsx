@@ -42,7 +42,6 @@ const editorNames = { wiring: "信号接线", servo: "伺服轴", so101: "SO-101
 export default function StudioRunArea({ route, workspace, generation, openedProject, bomRevision, servoChoice, target, targets, incoming, onChange, onSaveAssembly, onSaveMechanism, onInstallBundle, onNavigate, onApplyExample, onImportFile, onImportText }: Props) {
   const isExample = route?.exampleId !== undefined;
   const example = getStudioExample(route?.exampleId);
-  const exampleTarget = example?.kind === "physics" ? undefined : example?.kind;
   const model = target?.startsWith("model:") ? workspace.catalog?.models.find(item => `model:${item.id}` === target) : undefined;
   const assembly = target?.startsWith("assembly:") ? workspace.assemblies?.find(item => `assembly:${item.id}` === target) : undefined;
   const mechanism = target?.startsWith("mechanism:") ? workspace.mechanisms?.find(item => `mechanism:${item.id}` === target) : undefined;
@@ -52,7 +51,7 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
     : target === "incoming" && !incoming ? "本次预览的模型文件已关闭，请重新选择文件。"
     : undefined;
   const [wiringRevision, setWiringRevision] = useState(0);
-  const options = targets.filter(item => !creatingAssembly || item.id !== "mechanism-new");
+  const options = targets.filter(item => !creatingAssembly || (item.id !== "mechanism-new" && item.id !== "assembly-new"));
   if (target && !missing && !targets.some(item => item.id === target)) {
     if (target === "incoming") options.push({ id: target, name: "待安装的物理模型" });
     else if (target in editorNames) options.push({ id: target, name: editorNames[target as keyof typeof editorNames] });
@@ -93,9 +92,9 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
       </div>
     </div>}
     {route && !missing && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开运行台…</p>}>
-      {example && exampleTarget && <ExampleBench key={example.id} example={example} workspace={workspace} onApply={next => {
-        onApplyExample(next, exampleTarget, example.name);
-        if (exampleTarget === "wiring") setWiringRevision(revision => revision + 1);
+      {example && example.kind !== "physics" && <ExampleBench key={example.id} example={example} workspace={workspace} onApply={(next, destination) => {
+        onApplyExample(next, destination, example.name);
+        if (destination === "wiring") setWiringRevision(revision => revision + 1);
       }} />}
       {(example?.kind === "physics" || model || (target === "incoming" && incoming)) && <Physics
         key={example ? `example:${example.id}` : `${generation}-${model?.id ?? incoming?.token}`} workspace={workspace} onChange={onChange}
@@ -106,7 +105,7 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
       {target === "so101" && <Follower key={`${generation}-${bomRevision}`} workspace={workspace} onChange={onChange} onImportFile={onImportFile} onImportText={onImportText} />}
       {target === "milo" && <Mill key={`${generation}-${bomRevision}`} workspace={workspace} onChange={onChange} onImportFile={onImportFile} onImportText={onImportText} />}
       {(target === "assembly-new" || assembly) && <LinearAssemblyBench key={openedProject}
-        workspace={workspace} assembly={assembly} onSave={onSaveAssembly} />}
+        workspace={workspace} assembly={assembly} onSave={onSaveAssembly} initialPackageKey={route.target === "assembly-new" ? route.part : undefined} />}
       {(target === "mechanism-new" || mechanism) && <MechanicalAssemblyBench key={openedProject} workspace={workspace} assembly={mechanism}
         initialPackageKey={route.target === "mechanism-new" ? route.part : undefined} onSave={onSaveMechanism} onInstallBundle={onInstallBundle} />}
     </Suspense>}

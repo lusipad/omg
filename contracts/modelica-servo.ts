@@ -1,18 +1,21 @@
 import { z } from "zod";
 import library from "../public/modelica/library.json";
 import { servoAxisConfigSchema, servoAxisDevices, type ServoAxisResult } from "./servo-axis";
-import { readTwinData, type ModelReference } from "./twin-device";
+import { readTwinData, type ModelReference, type ServoDrive, type ServoMotor } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
 
 export const MODELICA_SERVO_LIBRARY = library;
 export const MODELICA_SERVO_REF: ModelReference = Object.freeze({ id: library.assembly.id, version: library.version });
 const positive = z.number().finite().positive();
-const parametersSchema = z.strictObject({
-  targetDeg: servoAxisConfigSchema.shape.targetDeg,
-  loadInertiaRatio: z.number().finite().min(0).max(100),
+const ratingsSchema = z.strictObject({
   rotorInertiaKgM2: positive, ratedTorqueNm: positive, ratedPowerW: positive,
   ratedSpeedRpm: positive, driveRatedCurrentA: positive, motorRatedCurrentA: positive,
 });
+const parametersSchema = ratingsSchema.extend({
+  targetDeg: servoAxisConfigSchema.shape.targetDeg,
+  loadInertiaRatio: z.number().finite().min(0).max(100),
+});
+export type ModelicaServoRatings = z.infer<typeof ratingsSchema>;
 export type ModelicaServoParameters = z.infer<typeof parametersSchema>;
 type ParameterFields = Record<string, { field: string; unit: string; whenMissingUse?: string }>;
 
@@ -22,22 +25,29 @@ function requireModel(ref: ModelReference, id: string, label: string) {
   }
 }
 
+function bind(values: Record<string, unknown>, source: Record<string, unknown>, fields: ParameterFields) {
+  for (const [name, binding] of Object.entries(fields)) {
+    values[name] = source[binding.field] ?? (binding.whenMissingUse ? values[binding.whenMissingUse] : undefined);
+  }
+}
+
+/** 旋转轴与进给轴共用同一驱动和电机组件的额定值、版本检查及缺项换算。 */
+export function bindModelicaServoRatings(drive: ServoDrive, motor: ServoMotor): ModelicaServoRatings {
+  if (drive.modelRef) requireModel(drive.modelRef, library.components.drive.id, "驱动器");
+  if (motor.modelRef) requireModel(motor.modelRef, library.components.motor.id, "电机");
+  const values: Record<string, unknown> = {};
+  bind(values, drive, library.components.drive.parameters);
+  bind(values, motor, library.components.motor.parameters);
+  return readTwinData(ratingsSchema, values, "Modelica 驱动器与电机额定参数");
+}
+
 export function bindModelicaServo(workspace: TwinWorkspace): ModelicaServoParameters {
   const axis = workspace.servoAxis;
   if (!axis?.modelRef) throw new Error("请先选择有版本的 Modelica 伺服轴模型。");
   requireModel(axis.modelRef, library.assembly.id, "伺服轴");
   const { drive, motor } = servoAxisDevices(workspace, axis);
-  if (drive.modelRef) requireModel(drive.modelRef, library.components.drive.id, "驱动器");
-  if (motor.modelRef) requireModel(motor.modelRef, library.components.motor.id, "电机");
-  const values: Record<string, unknown> = {};
-  function bind(source: Record<string, unknown>, fields: ParameterFields) {
-    for (const [name, binding] of Object.entries(fields)) {
-      values[name] = source[binding.field] ?? (binding.whenMissingUse ? values[binding.whenMissingUse] : undefined);
-    }
-  }
-  bind(axis, library.assembly.parameters);
-  bind(drive, library.components.drive.parameters);
-  bind(motor, library.components.motor.parameters);
+  const values = bindModelicaServoRatings(drive, motor);
+  bind(values, axis, library.assembly.parameters);
   return readTwinData(parametersSchema, values, "Modelica 伺服轴参数");
 }
 

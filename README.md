@@ -10,7 +10,7 @@
 
 在 **装配与仿真 → 新建装配** 中选择装配方式。**安装点与关节** 可按设备包声明的坐标系连接固定、直线和转动部件，查看末端位姿，也能把一组部件封装到另一台机器上。转台、滑台和工具交换安装顺序，以及 SO-101 的两个串联关节，共用这个编辑器。[打开安装点装配](https://lusipad.com/omg/?view=workbench&target=mechanism-new) · [核对转台与滑台工程](https://lusipad.com/omg/?view=resources&source=assemblies/mounts/project.twin.json) · [操作与资料](docs/机械安装点与子装配.md)
 
-**直驱丝杠伺服轴** 从 BOM、驱动器和电机设备包计算给定负载下的离线伺服响应。同一轴模块可以沿不同安装方向多次使用，输入各轴的目标位移即可观察位置、速度及三维末端轨迹。[用双轴定位台逐步验证](docs/直线轴装配.md)
+**直驱丝杠伺服轴** 从 BOM 选取驱动器、电机、丝杠和工作台，用 Modelica 计算毫米指令下的位移、进给速度、电机转矩和轴向推力。试着把 5 kg 工作台换成 20 kg，或将丝杠导程从 5 mm/rev 换成 10 mm/rev。同一轴模块可沿不同方向装配，回放时各轴共用一条时间轴。[试跑直线进给轴](https://lusipad.com/omg/?view=workbench&example=modelica-feed-axis) · [从 BOM 逐件装配](docs/Modelica直线进给轴.md) · [双轴定位台工况](docs/直线轴装配.md)
 
 例如，可以在 Milo 上分三层铣出 Ø30 × 3 mm 的平底槽，或用 UR5e、2F-85 夹爪及独立方块组装取放工位。试用中可调整程序或工况。[Milo 圆槽](https://lusipad.com/omg/?view=workbench&example=milo-v1-5) · [UR5e 取放工位](https://lusipad.com/omg/?view=workbench&example=ur5e-pick-place) · [下载圆槽 G 代码](public/machines/milo-v1-5/circular-pocket.nc)
 

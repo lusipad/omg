@@ -1,0 +1,7 @@
+物料名称,数量,单位,制造商,型号,导程(mm/rev),移动质量(kg),来源,备注
+伺服驱动器,1,台,汇川技术,SV660NS2R8I-FS-INT,,,https://www.inovance.eu/fileadmin/downloads/Brochures/EN/SV660N_FIyer_Spreads_Web_EN_v0.6.pdf,选型表第 3 页
+伺服电机,1,台,汇川技术,MS1H1-40B30CB-A331R-INT,,,https://www.inovance.eu/fileadmin/downloads/Brochures/EN/SV660N_FIyer_Spreads_Web_EN_v0.6.pdf,选型表第 3 页的配套无抱闸电机
+5 mm 导程丝杠,1,根,构元教学件,FEED-SCREW-5,5,,直线进给轴教学设计,初始装配
+5 kg 工作台,1,件,构元教学件,FEED-TABLE-5,,5,直线进给轴教学设计,初始装配
+10 mm 导程丝杠,1,根,构元教学件,FEED-SCREW-10,10,,直线进给轴教学设计,备用丝杠
+20 kg 工作台,1,件,构元教学件,FEED-TABLE-20,,20,直线进给轴教学设计,备用工作台

@@ -1,4 +1,6 @@
-import { applyMiloBomImport } from "@contracts/import-apply";
+import { applyMiloBomImport, mergeImportedMaterials } from "@contracts/import-apply";
+import type { MaterialRow } from "@contracts/import-catalog";
+import { inspectLinearAssembly, upsertLinearAssembly, type LinearAssembly } from "@contracts/linear-assembly";
 import { assembleMiloAxis, miloAxisIds } from "@contracts/milo-bom";
 import { planMiloProgram, type MiloMotionPlan } from "@contracts/milo-motion";
 import { parseMiloWorkspace } from "@contracts/milo-workspace";
@@ -44,14 +46,19 @@ async function loadMiloPocket(signal: AbortSignal) {
   return { workspace: { ...base, milo: { ...base.milo, assembled, program: nc.program } }, plan: planMiloProgram(nc.program) };
 }
 
-export async function loadStudioExample(kind: StudioBenchKind, signal: AbortSignal): Promise<LoadedStudioExample> {
+export async function loadStudioExample(kind: StudioBenchKind, signal: AbortSignal, download?: string): Promise<LoadedStudioExample> {
   signal.throwIfAborted();
   switch (kind) {
     case "wiring": return { workspace: createTwinDemo() };
-    case "servo": {
-      const text = await readStudioExampleText(import.meta.env.BASE_URL + modelicaServoProjectPath, signal);
-      const result = parseImportText(text, modelicaServoProjectPath);
-      if (result.kind !== "project" || !result.workspace.servoAxis) throw new Error("示例工程中缺少已装配的伺服轴。");
+    case "servo":
+    case "linear-assembly": {
+      const path = download ?? (kind === "servo" ? modelicaServoProjectPath : undefined);
+      if (!path) throw new Error("示例缺少可下载的装配工程。");
+      const text = await readStudioExampleText(import.meta.env.BASE_URL + path, signal);
+      const result = parseImportText(text, path);
+      if (result.kind !== "project") throw new Error("示例文件不是可导入的设备工程。");
+      if (kind === "servo" && !result.workspace.servoAxis) throw new Error("示例工程中缺少已装配的伺服轴。");
+      if (kind === "linear-assembly" && result.workspace.assemblies?.length !== 1) throw new Error("每个直线装配示例须指定一份可编辑的装配。");
       return { workspace: result.workspace };
     }
     case "so101": {
@@ -80,6 +87,25 @@ function orderedFields(_key: string, value: unknown) {
 const same = (left: unknown, right: unknown) => JSON.stringify(left, orderedFields) === JSON.stringify(right, orderedFields);
 type ExampleJoin = { next: TwinWorkspace; replacement?: string };
 
+function bomReferences(rows: MaterialRow[]) {
+  const ids = new Map<string, string | undefined>();
+  for (const row of rows) ids.set(row.name, ids.has(row.name) ? undefined : row.id);
+  for (const row of rows) ids.set(row.id, row.id);
+  return ids;
+}
+
+/** 仅在合并清单会改变名称解析时，用原来的行 ID 保留各自的选料。 */
+function preserveBomSelection(assembly: LinearAssembly, before: ReturnType<typeof bomReferences>, after: ReturnType<typeof bomReferences>) {
+  const keep = (ref: string) => {
+    const id = before.get(ref);
+    return id && id !== after.get(ref) ? id : ref;
+  };
+  return { ...assembly, modules: assembly.modules.map(module => ({
+    ...module, drive: keep(module.drive), motor: keep(module.motor), screw: keep(module.screw),
+    ...(module.table && { table: keep(module.table) }),
+  })) };
+}
+
 /** 仅计算拟议变更。提交与覆盖确认由工作台处理。 */
 export function prepareStudioExampleJoin(kind: StudioBenchKind, project: TwinWorkspace, sample: TwinWorkspace): ExampleJoin {
   switch (kind) {
@@ -106,6 +132,27 @@ export function prepareStudioExampleJoin(kind: StudioBenchKind, project: TwinWor
       const replacement = project.servoAxis
         ? `当前伺服轴（${describe(project.servoAxis)}）将被示例配置（${describe(axis)}）替换。` : undefined;
       return { next, replacement };
+    }
+    case "linear-assembly": {
+      const definition = sample.assemblies?.[0], rows = sample.catalog?.materials ?? [];
+      if (!definition) throw new Error("请先载入直线装配。");
+      const issues = inspectLinearAssembly(sample, definition);
+      if (issues.length) throw new Error(issues.join("\n"));
+      const used = rows.flatMap(row => row.binding?.kind === "device" ? [row.binding.key] : []);
+      const merged = mergeImportedMaterials(installUsedPackages(project, sample, used), rows);
+      const materials = new Map(merged.catalog?.materials.map(row => [row.id, row]));
+      for (const row of rows) {
+        if (row.binding && !same(materials.get(row.id)?.binding, row.binding)) {
+          throw new Error(`“${row.name}”在当前工程已绑定其他修订，请先在工程资源核对该物料。`);
+        }
+      }
+      const after = bomReferences(merged.catalog!.materials), before = bomReferences(project.catalog?.materials ?? []);
+      const assembly = preserveBomSelection(definition, bomReferences(rows), after);
+      const existing = (project.assemblies ?? []).map(item => preserveBomSelection(item, before, after));
+      const previous = existing.find(item => item.id === assembly.id);
+      const replacement = previous && !same(previous, assembly)
+        ? `将用示例中的“${assembly.name}”更新当前工程的“${previous.name}”，包含模块选料和 ${assembly.axes.length} 根轴的目标位移。` : undefined;
+      return { next: upsertLinearAssembly({ ...merged, assemblies: existing }, assembly), replacement };
     }
     case "so101": {
       const so101 = parseSo101Assembly(sample.so101);

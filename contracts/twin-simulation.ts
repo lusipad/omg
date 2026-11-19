@@ -86,6 +86,7 @@ function evaluationOrder(ws: TwinWorkspace): NodePlan[] {
     const definition = catalog.get(instance.packageKey);
     if (!definition) throw new Error(`实例「${instance.name}」引用的设备修订尚未安装`);
     if (definition.pkg.servo) throw new Error("请将伺服设备装配到伺服轴");
+    if (definition.pkg.feed) throw new Error("请将丝杠或工作台用于直线轴装配。");
     if (!definition.pkg.ports.length) throw new Error("纯机械设备没有信号端口，请使用机械装配。");
     for (const [id, value] of Object.entries(instance.inputs)) checkInput(definition.ports.get(id), id, value);
     nodes.set(instance.id, { ...definition, instance, incoming: new Map(), downstream: [], dependencies: 0 });
@@ -140,6 +141,7 @@ export function addInstance(ws: TwinWorkspace, key: string, name: string): TwinW
   const pkg = ws.packages.find((entry) => packageKey(entry) === key);
   if (!pkg) throw new Error("请先安装设备包");
   if (pkg.servo) throw new Error("请将伺服设备装配到伺服轴");
+  if (pkg.feed) throw new Error("请将丝杠或工作台用于直线轴装配。");
   if (!pkg.ports.length) throw new Error("纯机械设备没有信号端口，请使用机械装配。");
   if (ws.instances.length >= maxInstances) throw new Error(`单个场景最多容纳 ${maxInstances} 个设备实例`);
   const label = readTwinData(nameSchema, name, "实例名称");

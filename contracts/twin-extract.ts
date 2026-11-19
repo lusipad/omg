@@ -59,7 +59,8 @@ export const inovanceSource: DeviceSourceInput = {
 };
 
 export function deviceSourceFromMaterial(row: MaterialRow, filename?: string): DeviceSourceInput {
-  const text = row.notes ?? "";
+  const text = [row.notes, row.leadMmPerRev !== undefined && `BOM 丝杠导程 ${row.leadMmPerRev} mm/rev`,
+    row.massKg !== undefined && `BOM 单件移动质量 ${row.massKg} kg`].filter(Boolean).join("\n");
   const knownGuide = /\bGL10-1600END\b/i.test(text) && /19011103A03/i.test(text) && /inovance|汇川/i.test(text);
   const metadata = knownGuide ? inovanceSource : suggestSourceMetadata(text);
   const origin = row.source?.trim() || "";

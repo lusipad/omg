@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { FolderInput } from "lucide-react";
-import type { StudioExample } from "@contracts/studio-navigation";
+import type { StudioExample, StudioTarget } from "@contracts/studio-navigation";
+import { upsertLinearAssembly } from "@contracts/linear-assembly";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { loadStudioExample, prepareStudioExampleJoin, type LoadedStudioExample, type StudioBenchKind } from "@/lib/studio-example-workspace";
 import { Button } from "@/components/ui/button";
@@ -8,31 +9,39 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 
 const Wiring = lazy(() => import("./TwinSimulation"));
 const Servo = lazy(() => import("./ServoAxisBench"));
+const Linear = lazy(() => import("./LinearAssemblyBench"));
 const Follower = lazy(() => import("./So101MotionBench"));
 const Mill = lazy(() => import("./MiloWorkbench"));
-type ProjectProps = { workspace: TwinWorkspace; onApply: (next: TwinWorkspace) => void };
+type ProjectProps = { workspace: TwinWorkspace; onApply: (next: TwinWorkspace, target: StudioTarget) => void };
 type Confirmation = { project: TwinWorkspace; sample: TwinWorkspace; next: TwinWorkspace; description: string };
 const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message : "示例操作失败，请重试。";
 
-function ExampleSession({ kind, workspace, onApply }: ProjectProps & { kind: StudioBenchKind }) {
+function ExampleSession({ kind, download, workspace, onApply }: ProjectProps & { kind: StudioBenchKind; download?: string }) {
   const [loaded, setLoaded] = useState<LoadedStudioExample | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [feedReady, setFeedReady] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    loadStudioExample(kind, controller.signal).then(example => {
+    loadStudioExample(kind, controller.signal, download).then(example => {
       if (!controller.signal.aborted) setLoaded(example);
     }).catch(cause => {
       if (!controller.signal.aborted) setError(errorMessage(cause));
     });
     return () => controller.abort();
-  }, [kind, attempt]);
+  }, [kind, download, attempt]);
 
   function edit(next: TwinWorkspace) {
     setLoaded(previous => previous && { ...previous, workspace: next });
     setError(""); setConfirmation(null);
+  }
+  function apply(next: TwinWorkspace, sample: TwinWorkspace) {
+    if (kind !== "linear-assembly") { onApply(next, kind); return; }
+    const assembly = sample.assemblies?.[0];
+    if (!assembly) throw new Error("请先载入直线装配。");
+    onApply(next, `assembly:${assembly.id}`);
   }
   function join() {
     if (!loaded) return;
@@ -40,7 +49,7 @@ function ExampleSession({ kind, workspace, onApply }: ProjectProps & { kind: Stu
     try {
       const change = prepareStudioExampleJoin(kind, workspace, loaded.workspace);
       if (change.replacement) setConfirmation({ project: workspace, sample: loaded.workspace, next: change.next, description: change.replacement });
-      else onApply(change.next);
+      else apply(change.next, loaded.workspace);
     } catch (cause) { setError(errorMessage(cause)); }
   }
   function confirm() {
@@ -50,7 +59,7 @@ function ExampleSession({ kind, workspace, onApply }: ProjectProps & { kind: Stu
       setError("工程或示例已修改，请重新核对要加入的配置。");
       return;
     }
-    try { onApply(confirmation.next); }
+    try { apply(confirmation.next, confirmation.sample); }
     catch (cause) { setError(errorMessage(cause)); }
   }
 
@@ -64,12 +73,15 @@ function ExampleSession({ kind, workspace, onApply }: ProjectProps & { kind: Stu
   return <div className="min-w-0 space-y-4">
     <div className="flex flex-wrap items-center justify-end gap-2">
       {kind === "servo" && <p className="mr-auto text-xs text-muted-foreground">修改伺服参数后，请先组轴并运行。</p>}
-      <Button size="sm" onClick={join}><FolderInput />加入当前工程</Button>
+      {kind === "linear-assembly" && !feedReady && <p className="mr-auto text-xs text-muted-foreground">运行或应用当前设置后可加入工程。</p>}
+      <Button size="sm" onClick={join} disabled={kind === "linear-assembly" && !feedReady}><FolderInput />加入当前工程</Button>
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开运行台…</p>}>
       {kind === "wiring" && <Wiring workspace={sample} onChange={edit} />}
       {kind === "servo" && <Servo workspace={sample} onChange={edit} />}
+      {kind === "linear-assembly" && <Linear trial workspace={sample} assembly={sample.assemblies?.[0]} onTrialReady={setFeedReady}
+        onSave={assembly => edit(upsertLinearAssembly(sample, assembly))} />}
       {kind === "so101" && follower && <Follower waypoints={follower.waypoints}
         onChange={waypoints => edit({ ...sample, so101: { ...follower, waypoints } })} />}
       {kind === "milo" && <Mill workspace={sample} initialPlan={loaded.plan} onChange={edit} />}
@@ -88,5 +100,5 @@ function ExampleSession({ kind, workspace, onApply }: ProjectProps & { kind: Stu
 
 export default function StudioExampleBench({ example, ...project }: ProjectProps & { example: StudioExample }) {
   if (example.kind === "physics") return null;
-  return <ExampleSession key={example.id} kind={example.kind} {...project} />;
+  return <ExampleSession key={example.id} kind={example.kind} download={example.download} {...project} />;
 }

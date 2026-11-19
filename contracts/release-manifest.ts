@@ -46,6 +46,13 @@ export const RELEASE_MANIFEST: { release: string; name: string; checks: ReleaseC
       boundary: "验证范围为平均转矩与刚性负载的离线响应，厂家控制整定和现场轨迹由实测核对。",
     },
     {
+      key: "modelica-feed-axis",
+      title: "GouyuanLinear.FeedAxis 1.0.0 软件回归",
+      status: "passed",
+      evidence: "9 个进给工况通过 OpenModelica 原生验证。浏览器逐点核对位移、速度、电机转矩、轴向推力、转角和转速，每工况 801 个时刻。",
+      boundary: "水平无损丝杠与刚性工作台，丝杠导程和移动质量取自选定的 BOM 部件。",
+    },
+    {
       key: "modelica",
       title: "客户工程 Modelica 验收",
       status: "blocked",

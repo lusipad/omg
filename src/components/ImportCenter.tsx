@@ -138,7 +138,8 @@ function projectResources(workspace: TwinWorkspace) {
         servoAxis.modelRef && `${servoAxis.modelRef.id} @ ${servoAxis.modelRef.version}`].filter(Boolean).join(" · "), action: "打开伺服轴" });
   }
   for (const device of workspace.packages) {
-    const kind = device.mechanics ? (device.mechanics.kind === "assembly" ? "机械子装配" : "机械部件")
+    const kind = device.feed ? (device.feed.kind === "lead-screw" ? `丝杠 · ${device.feed.leadMmPerRev} mm/rev` : `移动工作台 · ${device.feed.massKg} kg`)
+      : device.mechanics ? (device.mechanics.kind === "assembly" ? "机械子装配" : "机械部件")
       : device.servo ? (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机") : `${device.ports.length} 个端口`;
     rows.push({ kind: "device", section: "device", id: "pkg:" + packageKey(device), category: "设备包", name: device.model,
       detail: `${device.manufacturer} · ${device.revision} · ${kind}`, device });
@@ -149,7 +150,9 @@ function projectResources(workspace: TwinWorkspace) {
     category: row.id.startsWith("doc-") ? "设备手册" : row.id.startsWith("bom-") ? "BOM 物料" : "资料记录", name: row.name,
     detail: [`${row.quantity}${row.unit ? " " + row.unit : ""}`, row.manufacturer, row.model,
       row.leadMmPerRev !== undefined && `导程 ${row.leadMmPerRev} mm/rev`,
-      row.binding ? "已绑定模型" : row.leadMmPerRev === undefined && "待建模"].filter(Boolean).join(" · "), row });
+      row.massKg !== undefined && `移动质量 ${row.massKg} kg`,
+      (row.massKg !== undefined || row.leadMmPerRev !== undefined) && row.source,
+      row.binding ? "已绑定模型" : row.leadMmPerRev === undefined && row.massKg === undefined && "待建模"].filter(Boolean).join(" · "), row });
   return rows;
 }
 

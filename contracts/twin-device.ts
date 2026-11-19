@@ -21,6 +21,10 @@ const ruleSchema = z.discriminatedUnion("op", [
 const positiveRating = z.number().finite().positive();
 export const modelRefSchema = z.strictObject({ id: text(240), version: text(80) });
 export type ModelReference = z.infer<typeof modelRefSchema>;
+const feedSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("lead-screw"), leadMmPerRev: positiveRating, modelRef: modelRefSchema }),
+  z.strictObject({ kind: z.literal("moving-table"), massKg: positiveRating, modelRef: modelRefSchema }),
+]);
 const servoSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("drive"), ratedCurrentA: positiveRating, peakCurrentA: positiveRating, modelRef: modelRefSchema.optional() }),
   z.strictObject({
@@ -39,7 +43,7 @@ const packageSchema = z.strictObject({
     productUrl: sourceUrl.optional(), kind: z.literal("local").optional(),
   }).refine(source => source.kind === "local" ? !source.url && !source.productUrl : Boolean(source.url),
     "本地资料请标为 local 并留空链接，在线资料须提供 HTTP 或 HTTPS 来源链接"),
-  ports: z.array(portSchema).max(256), rules: z.array(ruleSchema).max(128), servo: servoSchema.optional(),
+  ports: z.array(portSchema).max(256), rules: z.array(ruleSchema).max(128), servo: servoSchema.optional(), feed: feedSchema.optional(),
   calibration: calibrationSchema.optional(), mechanics: mechanicsSchema.optional(),
 });
 
@@ -71,6 +75,8 @@ export function packageKey(pkg: Pick<DevicePackage, "manufacturer" | "model" | "
 export function parseDevicePackage(value: unknown): DevicePackage {
   const model = value && typeof value === "object" && "mechanics" in value && "model" in value && typeof value.model === "string" ? value.model.trim().slice(0, 160) : "";
   const pkg = readTwinData(packageSchema, value, model ? `设备包“${model}”` : "设备包");
+  if (pkg.feed && pkg.servo) throw new Error("设备修订只能声明一种轴角色，请分别提供伺服设备包和进给部件包。");
+  if (pkg.feed && (pkg.ports.length || pkg.rules.length)) throw new Error("进给部件通过机械接口连接，请将信号端口和规则留空。");
   if (pkg.calibration) {
     const { gain, offset } = linearCoefficients(pkg.calibration);
     const [rule] = pkg.rules;
@@ -91,7 +97,7 @@ export function parseDevicePackage(value: unknown): DevicePackage {
     if (/[*?□…]/u.test(pkg.model)) throw new Error("伺服设备需要完整型号");
     return pkg;
   }
-  if (pkg.ports.length === 0 && !pkg.mechanics) throw new Error("信号设备至少需要一个端口");
+  if (pkg.ports.length === 0 && !pkg.mechanics && !pkg.feed) throw new Error("信号设备至少需要一个端口");
   const ports = new Map(pkg.ports.map((port) => [port.id, port]));
   if (ports.size !== pkg.ports.length) throw new Error("设备包内的端口标识必须唯一");
   for (const port of pkg.ports) {

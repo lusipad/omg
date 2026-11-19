@@ -1,0 +1,38 @@
+{
+  "model": "GouyuanLinear.FeedAxis",
+  "version": "1.0.0",
+  "msl": "4.0.0",
+  "parameters": [
+    "targetMm",
+    "leadMmPerRev",
+    "tableMassKg",
+    "rotorInertiaKgM2",
+    "ratedTorqueNm",
+    "ratedPowerW",
+    "ratedSpeedRpm",
+    "driveRatedCurrentA",
+    "motorRatedCurrentA"
+  ],
+  "integrator": {
+    "method": "RK4",
+    "stepUs": 50
+  },
+  "compiler": "OpenModelica 1.27.2",
+  "llvm": "18.1.3",
+  "sourceSha256": "6f17866a0e5fb8bdbdba1438dbc447069fe6624fec38d493a9418eb622698903",
+  "librarySha256": "3c1bd6462593edca29a8fb6658320ee84cb8116fd08f070d2ca92cac2a4b248c",
+  "equationsSha256": "2f1c70874bb00f4c23ee962a8e1d0d06d1f9f467f9e5c646ddd41389c530860c",
+  "wasmSha256": "f392955106842e82e7ee8832177162980f9a3d7f115fdcfdcd911d681ee26abf",
+  "wasmBytes": 1154,
+  "dependencySha256": {
+    "Gouyuan.mo": "bf0b3980597bb20a98f0b5730cfaec3b0e4fbd1fb14412a6df7bb709b6ee492e"
+  },
+  "outputs": [
+    "positionMm",
+    "velocityMmS",
+    "motorTorqueNm",
+    "axialForceN",
+    "angleDeg",
+    "speedRpm"
+  ]
+}

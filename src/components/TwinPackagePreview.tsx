@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { downloadJson } from "@/lib/download";
 import { bundleMechanicalDevice, type MechanicalAssembly } from "@contracts/mechanical-assembly";
-import { packageKey, type DevicePackage } from "@contracts/twin-device";
+import { packageKey, type DevicePackage, type ModelReference } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 
 function describeRule(rule: DevicePackage["rules"][number], unit?: string) {
@@ -31,9 +31,18 @@ export function ServoRatings({ servo }: { servo: NonNullable<DevicePackage["serv
       ["转子惯量", `${servo.rotorInertiaKgM2} kg·m²`],
       ["配套驱动型号", servo.compatibleDriveModels.join("、")],
     ];
+  return <RatingRows rows={rows} modelRef={servo.modelRef} />;
+}
+
+export function FeedRatings({ feed }: { feed: NonNullable<DevicePackage["feed"]> }) {
+  const row = feed.kind === "lead-screw" ? ["丝杠导程", `${feed.leadMmPerRev} mm/rev`] : ["工作台移动质量", `${feed.massKg} kg`];
+  return <RatingRows rows={[row]} modelRef={feed.modelRef} />;
+}
+
+function RatingRows({ rows, modelRef }: { rows: string[][]; modelRef?: ModelReference }) {
   return <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-2 text-xs">
-    {servo.modelRef && <><dt className="text-muted-foreground">绑定模型</dt>
-      <dd className="mono break-all">{servo.modelRef.id} @ {servo.modelRef.version}</dd></>}
+    {modelRef && <><dt className="text-muted-foreground">绑定模型</dt>
+      <dd className="mono break-all">{modelRef.id} @ {modelRef.version}</dd></>}
     {rows.map(([label, value]) => <div key={label} className="contents">
       <dt className="text-muted-foreground">{label}</dt><dd className="mono break-words">{value}</dd>
     </div>)}
@@ -118,6 +127,7 @@ export default function TwinPackagePreview({ device, workspace, installed, error
   const capabilities = [
     device.mechanics && (device.mechanics.kind === "part" ? "机械部件" : "可复用机械装配"),
     device.servo && (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机"),
+    device.feed && (device.feed.kind === "lead-screw" ? "丝杠" : "移动工作台"),
     device.ports.length > 0 && (device.ports.length + " 个端口 · " + device.rules.length + " 条行为规则"),
   ].filter(Boolean).join(" · ");
   function exportPackage() {
@@ -146,6 +156,9 @@ export default function TwinPackagePreview({ device, workspace, installed, error
           已记录的两组标定值为 {device.calibration.inputPoints[0]} → {device.calibration.outputPoints[0]} 和 {device.calibration.inputPoints[1]} → {device.calibration.outputPoints[1]}，范围外按同一条直线外推。
         </p>}
         {device.mechanics && <MechanicalDetails mechanics={device.mechanics} />}
+        {device.feed && <section aria-label="进给部件参数" className="space-y-3">
+          <h3 className="text-sm font-medium">进给部件参数</h3><FeedRatings feed={device.feed} />
+        </section>}
         {device.servo && <section aria-label="伺服参数" className="space-y-3">
           <h3 className="text-sm font-medium">型号参数</h3><ServoRatings servo={device.servo} />
         </section>}
@@ -174,7 +187,7 @@ export default function TwinPackagePreview({ device, workspace, installed, error
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={exportPackage}><Download />{device.mechanics?.kind === "assembly" ? "导出含依赖机械包" : "导出设备包"}</Button>
           {installed
-            ? <Button onClick={onAssemble}><Plus />{device.mechanics ? "用于机械装配" : device.servo ? "用于伺服仿真" : "添加到仿真装配"}</Button>
+            ? <Button onClick={onAssemble}><Plus />{device.feed ? "用于直线轴装配" : device.mechanics ? "用于机械装配" : device.servo ? "用于伺服仿真" : "添加到仿真装配"}</Button>
             : <Button onClick={onInstall}><PackageCheck />确认安装</Button>}
         </div>
       </DialogContent>

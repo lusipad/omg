@@ -88,6 +88,8 @@ export default function MaterialDetails({ workspace, row, onChange, onOpenDevice
   const url = row.source && sourceLink(row.source);
   const devices = new Map(workspace.packages.map((device) => [packageKey(device), device]));
   const models = new Map(catalog.models.map((model) => [model.id, model]));
+  const hasFeedParameters = row.leadMmPerRev !== undefined || row.massKg !== undefined;
+  const boundFeed = row.binding?.kind === "device" && devices.get(row.binding.key)?.feed;
 
   function bind(item: MaterialRow, binding: MaterialRow["binding"], base = workspace) {
     const previous = base.catalog;
@@ -116,9 +118,10 @@ export default function MaterialDetails({ workspace, row, onChange, onOpenDevice
   return <Dialog open onOpenChange={(open) => { if (!open) { onClose(); setError(""); } }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[680px]">
         <DialogHeader><DialogTitle className="break-words">{row.name}</DialogTitle>
-          <DialogDescription>{row.quantity} {row.unit} · {row.manufacturer && `${row.manufacturer} · `}{row.model && `${row.model} · `}{row.binding ? "已绑定模型" : row.leadMmPerRev === undefined ? "待建模" : "丝杠传动参数"}</DialogDescription>
+          <DialogDescription>{row.quantity} {row.unit} · {row.manufacturer && `${row.manufacturer} · `}{row.model && `${row.model} · `}{row.binding ? "已绑定模型" : hasFeedParameters ? "直线轴装配参数" : "待建模"}</DialogDescription>
         </DialogHeader>
         {row.leadMmPerRev !== undefined && <div className="text-sm"><span className="field-label">BOM 丝杠导程</span>{row.leadMmPerRev} mm/rev</div>}
+        {row.massKg !== undefined && <div className="text-sm"><span className="field-label">BOM 单件移动质量</span>{row.massKg} kg</div>}
         {row.source && <div className="break-words text-sm"><span className="field-label">资料来源</span>{url
           ? <a href={url} target="_blank" rel="noreferrer" className="text-primary hover:underline">{row.source}</a> : row.source}</div>}
         {row.notes && <div><h3 className="field-label">资料原文与备注</h3><pre className="max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-md border p-3 font-sans text-xs leading-5">{row.notes}</pre></div>}
@@ -129,13 +132,13 @@ export default function MaterialDetails({ workspace, row, onChange, onOpenDevice
               bind(row, pair ? { kind: pair[0] === "physics" ? "physics" : "device", key: pair[1] } : undefined); setError("");
             } catch (cause) { setError(errorText(cause)); }
           }}>
-            <option value="">{row.leadMmPerRev === undefined ? "待建模 · 尚未绑定" : "仅使用 BOM 传动参数"}</option>
+            <option value="">{hasFeedParameters ? "使用 BOM 中的物理参数" : "待建模 · 尚未绑定"}</option>
             {models.size > 0 && <optgroup label="物理模型">{catalog.models.map((ref) => <option value={JSON.stringify(["physics", ref.id])} key={ref.id}>{ref.name} · {ref.entry} · {ref.id.slice(0, 10)}</option>)}</optgroup>}
             {devices.size > 0 && <optgroup label="设备包">{workspace.packages.map((device) => <option key={packageKey(device)} value={JSON.stringify(["device", packageKey(device)])}>{device.manufacturer} · {device.model} · {device.revision}</option>)}</optgroup>}
           </select>
         </label>
         <div className="flex flex-wrap gap-2">
-          {row.binding && <Button onClick={() => openBinding(row)}><Play />运行绑定模型</Button>}
+          {row.binding && <Button onClick={() => openBinding(row)}><Play />{boundFeed ? "用于直线轴装配" : "运行绑定模型"}</Button>}
           <Button variant="outline" onClick={() => { onUseSource(row); onClose(); }}><FileText />从资料生成设备包</Button>
         </div>
         <MaterialCalibration material={row} onInstall={(device) => bind(row, { kind: "device", key: packageKey(device) }, installPackage(workspace, device))} />

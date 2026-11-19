@@ -356,6 +356,10 @@ export default function TwinStudio() {
   }
 
   function assemble(pkg: DevicePackage) {
+    if (pkg.feed) {
+      go({ view: "workbench", target: "assembly-new", part: packageKey(pkg) });
+      return;
+    }
     if (pkg.mechanics) {
       go({ view: "workbench", target: "mechanism-new", part: packageKey(pkg) });
       return;

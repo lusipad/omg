@@ -1,0 +1,21 @@
+// Run from a fresh directory containing Gouyuan.mo and GouyuanLinear.mo.
+if getVersion() <> "OpenModelica 1.27.2" then
+  exit(1);
+end if;
+if not loadModel(Modelica, {"4.0.0"}, requireExactVersion=true) then
+  print(getErrorString());
+  exit(1);
+end if;
+if not loadFile("Gouyuan.mo") or not loadFile("GouyuanLinear.mo") then
+  print(getErrorString());
+  exit(1);
+end if;
+print("FEED_VERSIONS " + getVersion() + " / Modelica " + getVersion(Modelica) +
+  " / Gouyuan " + getVersion(Gouyuan) + " / GouyuanLinear " + getVersion(GouyuanLinear) + "\n");
+print("FEED_MSL_FILE " + getSourceFile(Modelica) + "\n");
+checkModel(GouyuanLinear.FeedAxis);
+getErrorString();
+buildModel(GouyuanLinear.FeedAxis, startTime=0, stopTime=8, numberOfIntervals=800,
+  method="dassl", tolerance=1e-8, outputFormat="csv",
+  variableFilter="positionMm|velocityMmS|motorTorqueNm|axialForceN|angleDeg|speedRpm|table.a|motor.rotor.a|screw.shaft.tau");
+getErrorString();
