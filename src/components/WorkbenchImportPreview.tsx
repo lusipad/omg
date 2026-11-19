@@ -62,7 +62,10 @@ function ProjectSummary({ candidate, current }: { candidate: Extract<WorkbenchIm
   const packaged = (ws: TwinWorkspace) => ws.packages.filter((pkg) => pkg.mechanics?.kind === "assembly").length;
   const beforePackaged = packaged(current), afterPackaged = packaged(next);
   if (beforePackaged || afterPackaged) rows.push(["已封装机械装配包", beforePackaged, afterPackaged]);
-  if (current.servoAxis || next.servoAxis) rows.push(["伺服轴", current.servoAxis ? "已组轴" : "—", next.servoAxis ? "已组轴" : "—"]);
+  if (current.servoAxis || next.servoAxis) {
+    const name = (axis: TwinWorkspace["servoAxis"]) => axis?.modelRef ? `${axis.modelRef.id} @ ${axis.modelRef.version}` : axis ? "已组轴" : "—";
+    rows.push(["伺服轴", name(current.servoAxis), name(next.servoAxis)]);
+  }
   if (current.so101 || next.so101) rows.push(["SO-101 从臂", current.so101 ? `${current.so101.waypoints.length} 个关键帧` : "—", next.so101 ? `${next.so101.waypoints.length} 个关键帧` : "—"]);
   if (current.milo || next.milo) {
     const milo = (machine: TwinWorkspace["milo"]) => machine ? `${machine.assembled.length} 轴 / ${lineCount(machine.program)} 行程序` : "—";

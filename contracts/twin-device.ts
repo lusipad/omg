@@ -19,12 +19,14 @@ const ruleSchema = z.discriminatedUnion("op", [
 ]);
 
 const positiveRating = z.number().finite().positive();
+export const modelRefSchema = z.strictObject({ id: text(240), version: text(80) });
+export type ModelReference = z.infer<typeof modelRefSchema>;
 const servoSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("drive"), ratedCurrentA: positiveRating, peakCurrentA: positiveRating }),
+  z.strictObject({ kind: z.literal("drive"), ratedCurrentA: positiveRating, peakCurrentA: positiveRating, modelRef: modelRefSchema.optional() }),
   z.strictObject({
     kind: z.literal("motor"), ratedPowerW: positiveRating, ratedTorqueNm: positiveRating, peakTorqueNm: positiveRating,
     ratedSpeedRpm: positiveRating, maxSpeedRpm: positiveRating, rotorInertiaKgM2: positiveRating,
-    ratedCurrentA: positiveRating.optional(), compatibleDriveModels: z.array(text(160)).max(256),
+    ratedCurrentA: positiveRating.optional(), compatibleDriveModels: z.array(text(160)).max(256), modelRef: modelRefSchema.optional(),
   }),
 ]);
 const sourceUrl = text(2048).pipe(z.url({ protocol: /^https?$/ }));

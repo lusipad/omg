@@ -133,7 +133,7 @@ export const projectRouter = createRouter({
       verificationBoundary: {
         engineering: "结果仅用于方案初算；强度、寿命、热、刚度、附着、制动与安全功能必须另行验证。",
         supplier: "source_recorded 仅表示已记录制造商资料来源，不表示供应商确认或工程师复核。",
-        modelica: "当前版本未完成指定 OpenModelica 版本的编译与数值回归，不得声明模型已验证。",
+        modelica: "本客户工程尚未完成针对选定模型的 OpenModelica 编译、数值工况对照与具名工程师复核。",
         manufacturing: "本导出不是生产图纸、采购定单或可直接制造的设计包。",
       },
     };

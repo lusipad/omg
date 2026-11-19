@@ -22,13 +22,15 @@ export interface StudioExample {
   license?: string;
 }
 
+export const modelicaServoProjectPath = "modelica/servo-axis.twin.json";
+
 export const STUDIO_EXAMPLES: readonly StudioExample[] = [
   { id: "wiring-demo", kind: "wiring", name: "信号接线", category: "数字量输入",
     description: "将可调电压源接入汇川 GL10 输入模块，改变电压并观察 10 ms 滤波后的通道状态。",
     preview: "examples/previews/wiring.webp", source: digitalModule.source.url },
   { id: "inovance-servo", kind: "servo", name: "汇川伺服轴", category: "伺服驱动",
-    description: "用 SV660N 驱动器和配套电机组成单轴，改变目标角度或负载惯量，比较位置和速度曲线。",
-    preview: "examples/previews/servo.webp", source: servoDrive.source.url },
+    description: "用 SV660N 驱动器与 MS1 电机组成 Modelica 伺服轴，改变目标角度或负载惯量，比较位置和速度曲线。",
+    preview: "examples/previews/servo.webp", source: servoDrive.source.url, download: modelicaServoProjectPath },
   { id: "so101-follower", kind: "so101", name: "SO-101 从臂", category: "六关节机器人",
     description: "核对从臂采购表，编辑关节关键帧，查看夹爪轨迹和实际关节响应。",
     preview: "models/so101/preview.png", source: "https://github.com/TheRobotStudio/SO-ARM100",
@@ -127,7 +129,7 @@ export function studioHref(route: StudioRoute, hash = ""): string {
 
 export function publishedStudioFile(path: string, base: string): string {
   const parts = path.split("/");
-  if (parts.length < 2 || !["assemblies", "devices", "examples", "machines", "models", "robots", "workcells"].includes(parts[0]) ||
+  if (parts.length < 2 || !["assemblies", "devices", "examples", "machines", "modelica", "models", "robots", "workcells"].includes(parts[0]) ||
     parts.some(part => !/^[\p{L}\p{N} _().-]+$/u.test(part) || part === "." || part === "..")) {
     throw new Error("分享链接中的站内资料路径无效。可选择本地文件，或粘贴完整资料链接。");
   }

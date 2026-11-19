@@ -22,7 +22,9 @@
 
 在 **示例库 → 信号接线** 可试跑已接好线的汇川 GL10-1600END 和虚拟电压源。要制作自己的设备，请从 **工程资源 → 创建设备** 开始。[设备仿真工作台指南](docs/设备仿真工作台.md)
 
-在完整版 **工程资源 → 创建设备 → 从官网创建配套伺服设备** 可生成独立的驱动器和电机设备包。确认安装后，在运行台设定角度，观察位置和速度曲线。[试跑汇川伺服轴](https://lusipad.com/omg/?view=workbench&example=inovance-servo) · [已装配的工程文件](examples/inovance-servo-axis.twin.json) · [操作步骤与模型假设](docs/汇川伺服轴示例.md)
+在完整版 **工程资源 → 创建设备 → 从官网创建配套伺服设备** 可生成独立的驱动器和电机设备包。确认安装后，在运行台设定角度，观察位置和速度曲线。[从厂家资料生成设备包](docs/汇川伺服轴示例.md) · [v0.6 工程存档](examples/inovance-servo-axis.twin.json)
+
+在 **示例库 → 汇川伺服轴** 中，两份设备包分别绑定驱动和电机模型，组成 **Gouyuan.ServoAxis 1.0.0**。把目标从 90° 改为 −45°，即可看到反转时的位置与转速曲线。下载示例卡片上的 JSON 可带走相同的设备修订和模型版本。[直接试跑](https://lusipad.com/omg/?view=workbench&example=inovance-servo) · [打开工程预览](https://lusipad.com/omg/?view=resources&source=modelica/servo-axis.twin.json) · [原生 OpenModelica 复算教程](docs/Modelica伺服轴.md)
 
 SO-101 工作台可以直接导入上游 Markdown 采购表，装配新标定的 Follower 模型，并在浏览器中用 MuJoCo 运行六关节动作。运行后可回放三维姿态，观察关节实际位置、速度和夹爪末端轨迹。[试跑 SO-101 从臂](https://lusipad.com/omg/?view=workbench&example=so101-follower) · [操作指南](docs/SO-101从臂示例.md) · [已装配的工程文件](examples/so101-follower.twin.json)
 
@@ -48,7 +50,7 @@ SO-101 工作台可以直接导入上游 Markdown 采购表，装配新标定的
 
 ## 明确未完成
 
-- 指定 OpenModelica 版本的模型编译、仿真和数值回归：**阻断**。
+- 客户项目采用的模型仍需按实际部件、负载和工况完成数值对照与具名工程师复核。整体验收门槛保留为 **阻断**。Gouyuan.ServoAxis 的软件回归单独记录。[模型验证范围](docs/工程与验证边界.md)
 - 真实客户现场参考项目与实测验收：**待完成**。
 - 机械、电气、控制工程师具名复核：**待完成**。
 - 供应商最终选型、接口图纸、寿命、热、刚度、强度和安全验证：**待完成**。

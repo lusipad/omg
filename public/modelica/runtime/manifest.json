@@ -1,0 +1,26 @@
+{
+  "model": "Gouyuan.ServoAxis",
+  "version": "1.0.0",
+  "msl": "4.0.0",
+  "parameters": [
+    "targetDeg",
+    "loadInertiaRatio",
+    "rotorInertiaKgM2",
+    "ratedTorqueNm",
+    "ratedPowerW",
+    "ratedSpeedRpm",
+    "driveRatedCurrentA",
+    "motorRatedCurrentA"
+  ],
+  "integrator": {
+    "method": "RK4",
+    "stepUs": 50
+  },
+  "compiler": "OpenModelica 1.27.2",
+  "llvm": "18.1.3",
+  "sourceSha256": "bf0b3980597bb20a98f0b5730cfaec3b0e4fbd1fb14412a6df7bb709b6ee492e",
+  "librarySha256": "dec13601ed3e801e8fb54e6891ebf9791b3c4e3dd9750f3a321206eabbeea5e2",
+  "equationsSha256": "d2f70719384b53578714687824a32caa4d03eaecc63b012dbe15a1cac45c55a3",
+  "wasmSha256": "bbc00e2a0ecab09fcf3859f8a6fc7cd63885fbc69eed8e2f779fcc915147872d",
+  "wasmBytes": 1115
+}

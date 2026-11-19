@@ -6,6 +6,7 @@ import { emptyWorkspace, parseWorkspace, setInput } from "../contracts/twin-simu
 import { DEFAULT_SO101_MOTION, parseSo101Motion } from "../contracts/so101";
 import { applySo101BomImport } from "../contracts/import-apply";
 import { createDocumentMaterial } from "../contracts/material-import";
+import { getStudioExample } from "../contracts/studio-navigation";
 
 const file = (name: string) => readFileSync(new URL("../public/" + name, import.meta.url), "utf8");
 function fakeSources() {
@@ -15,6 +16,20 @@ function fakeSources() {
   }));
 }
 afterEach(() => vi.unstubAllGlobals());
+
+it("示例库从可下载工程试跑有版本的轴，加入旧工程前展示型号修订和求解模型", async () => {
+  fakeSources();
+  const sample = (await loadStudioExample("servo", new AbortController().signal)).workspace;
+  const download = getStudioExample("inovance-servo")?.download;
+  expect(download).toBe("modelica/servo-axis.twin.json");
+  expect(sample).toEqual(parseWorkspace(JSON.parse(file(download!))));
+  expect(sample.servoAxis?.modelRef).toEqual({ id: "Gouyuan.ServoAxis", version: "1.0.0" });
+  const previous = createServoDemo();
+  const change = prepareStudioExampleJoin("servo", previous, sample);
+  expect(change.replacement).toMatch(/工作台刚性轴模型.*v0.6-modelica.1.*Gouyuan.ServoAxis @ 1.0.0/);
+  expect(change.next.servoAxis).toEqual(sample.servoAxis);
+  expect(previous.servoAxis).not.toHaveProperty("modelRef");
+});
 
 describe("四个工作台示例", () => {
   it("独立加载本站从臂 BOM 及 Milo 实际采购表、三轴与圆槽 NC", async () => {

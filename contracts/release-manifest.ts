@@ -39,11 +39,18 @@ export const RELEASE_MANIFEST: { release: string; name: string; checks: ReleaseC
       boundary: "来源已记录不等于供应商确认或工程师复核",
     },
     {
+      key: "modelica-servo-axis",
+      title: "Gouyuan.ServoAxis 1.0.0 软件回归",
+      status: "passed",
+      evidence: "OpenModelica 1.27.2 与标准库 4.0.0 完成原生编译，11 个伺服工况通过。90° 指令、负载比 1 在 100 ms 时达到 62.2403°、78.3803 rpm。",
+      boundary: "验证范围为平均转矩与刚性负载的离线响应，厂家控制整定和现场轨迹由实测核对。",
+    },
+    {
       key: "modelica",
-      title: "OpenModelica 编译与数值回归",
+      title: "客户工程 Modelica 验收",
       status: "blocked",
-      evidence: "当前交付环境未安装 omc，本版本未执行编译",
-      boundary: "不得将参数化三维或旧演示生成器描述为已验证 Modelica 模型",
+      evidence: "客户项目仍需提交具体部件、负载与工况的模型对照和具名工程师复核。",
+      boundary: "单轴示例的回归仅适用于记录的模型与版本。",
     },
     {
       key: "reference-project",

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { packageKey, readTwinData, type DevicePackage } from "./twin-device";
+import { modelRefSchema, packageKey, readTwinData, type DevicePackage } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
 
 export const SERVO_AXIS_MODEL = {
@@ -12,6 +12,7 @@ export const servoAxisConfigSchema = z.strictObject({
   driveKey: z.string().min(1).max(4096), motorKey: z.string().min(1).max(4096),
   targetDeg: z.number().finite().min(-3600).max(3600),
   loadInertiaRatio: z.number().finite().min(0).max(100).default(SERVO_AXIS_MODEL.referenceLoadInertiaRatio),
+  modelRef: modelRefSchema.optional(),
 });
 export type ServoAxisConfig = z.infer<typeof servoAxisConfigSchema>;
 export interface ServoAxisSample { timeMs: number; positionDeg: number; speedRpm: number }
@@ -28,7 +29,7 @@ export function isCompatibleServoPair(drive: DevicePackage, motor: DevicePackage
     drive.manufacturer === motor.manufacturer && motor.servo.compatibleDriveModels.includes(drive.model);
 }
 
-function axisDevices(ws: TwinWorkspace, config: ServoAxisConfig) {
+export function servoAxisDevices(ws: TwinWorkspace, config: ServoAxisConfig) {
   const drive = ws.packages.find((pkg) => packageKey(pkg) === config.driveKey);
   const motor = ws.packages.find((pkg) => packageKey(pkg) === config.motorKey);
   if (drive?.servo?.kind !== "drive") throw new Error("请选择已安装的伺服驱动器修订");
@@ -39,7 +40,7 @@ function axisDevices(ws: TwinWorkspace, config: ServoAxisConfig) {
 
 export function assembleServoAxis(ws: TwinWorkspace, config: z.input<typeof servoAxisConfigSchema>): TwinWorkspace {
   const servoAxis = readTwinData(servoAxisConfigSchema, config, "伺服轴参数");
-  axisDevices(ws, servoAxis);
+  servoAxisDevices(ws, servoAxis);
   return { ...ws, servoAxis };
 }
 
@@ -52,7 +53,8 @@ function limit(value: number, magnitude: number) {
 export function simulateServoAxis(ws: TwinWorkspace): ServoAxisResult {
   if (!ws.servoAxis) throw new Error("请先装配伺服轴");
   const config = readTwinData(servoAxisConfigSchema, ws.servoAxis, "伺服轴参数");
-  const { drive, motor } = axisDevices(ws, config);
+  if (config.modelRef) throw new Error(`此工况选择了模型 ${config.modelRef.id} @ ${config.modelRef.version}，请从对应的模型入口运行。`);
+  const { drive, motor } = servoAxisDevices(ws, config);
   const effectiveCurrentRatio = motor.ratedCurrentA === undefined ? 1 : Math.min(1, drive.ratedCurrentA / motor.ratedCurrentA);
   const limits = { torqueNm: motor.ratedTorqueNm * effectiveCurrentRatio, powerW: motor.ratedPowerW, speedRpm: motor.ratedSpeedRpm };
   const inertiaKgM2 = motor.rotorInertiaKgM2 * (1 + config.loadInertiaRatio);

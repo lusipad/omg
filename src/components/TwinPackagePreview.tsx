@@ -32,6 +32,8 @@ export function ServoRatings({ servo }: { servo: NonNullable<DevicePackage["serv
       ["配套驱动型号", servo.compatibleDriveModels.join("、")],
     ];
   return <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-2 text-xs">
+    {servo.modelRef && <><dt className="text-muted-foreground">绑定模型</dt>
+      <dd className="mono break-all">{servo.modelRef.id} @ {servo.modelRef.version}</dd></>}
     {rows.map(([label, value]) => <div key={label} className="contents">
       <dt className="text-muted-foreground">{label}</dt><dd className="mono break-words">{value}</dd>
     </div>)}

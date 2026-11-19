@@ -1,0 +1,45 @@
+{
+  "package": "Gouyuan",
+  "version": "1.0.0",
+  "source": "Gouyuan.mo",
+  "uses": { "Modelica": "4.0.0" },
+  "assembly": {
+    "id": "Gouyuan.ServoAxis",
+    "parameters": {
+      "targetDeg": { "field": "targetDeg", "unit": "deg" },
+      "loadInertiaRatio": { "field": "loadInertiaRatio", "unit": "1" }
+    },
+    "outputs": { "angleDeg": "deg", "speedRpm": "rpm", "torqueNm": "N.m" }
+  },
+  "components": {
+    "drive": {
+      "id": "Gouyuan.PositionDrive",
+      "inputs": { "targetAngleRad": "rad", "angleRad": "rad", "speedRadS": "rad/s" },
+      "outputs": { "currentCommandA": "A" },
+      "parameters": { "driveRatedCurrentA": { "field": "ratedCurrentA", "unit": "A" } }
+    },
+    "motor": {
+      "id": "Gouyuan.RatedTorqueMotor",
+      "inputs": { "currentA": "A" },
+      "outputs": { "torqueNm": "N.m" },
+      "connectors": { "shaft": "Modelica.Mechanics.Rotational.Interfaces.Flange_b" },
+      "parameters": {
+        "rotorInertiaKgM2": { "field": "rotorInertiaKgM2", "unit": "kg.m2" },
+        "ratedTorqueNm": { "field": "ratedTorqueNm", "unit": "N.m" },
+        "ratedPowerW": { "field": "ratedPowerW", "unit": "W" },
+        "ratedSpeedRpm": { "field": "ratedSpeedRpm", "unit": "rpm" },
+        "motorRatedCurrentA": { "field": "ratedCurrentA", "unit": "A", "whenMissingUse": "driveRatedCurrentA" }
+      }
+    }
+  },
+  "transmission": {
+    "id": "Gouyuan.IdealLeadScrew",
+    "standardComponent": "Modelica.Mechanics.Rotational.Components.IdealGearR2T",
+    "parameters": { "leadMmPerRev": { "unit": "mm/rev" } },
+    "connectors": {
+      "shaft": "Modelica.Mechanics.Rotational.Interfaces.Flange_a",
+      "carriage": "Modelica.Mechanics.Translational.Interfaces.Flange_b"
+    },
+    "verificationModel": "Gouyuan.IdealLeadScrewBench"
+  }
+}

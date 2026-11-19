@@ -1,0 +1,36 @@
+// From a scratch directory containing Gouyuan.mo, run: omc /path/to/check-build.mos
+if getVersion() <> "OpenModelica 1.27.2" then
+  print("Expected OpenModelica 1.27.2, found " + getVersion() + "\n");
+  exit(1);
+end if;
+if not loadModel(Modelica, {"4.0.0"}, requireExactVersion=true) then
+  print(getErrorString());
+  exit(1);
+end if;
+if getVersion(Modelica) <> "4.0.0" then
+  print("Expected MSL 4.0.0, found " + getVersion(Modelica) + "\n");
+  exit(1);
+end if;
+if not loadFile("Gouyuan.mo") then
+  print(getErrorString());
+  exit(1);
+end if;
+print("GOUYUAN_VERSIONS " + getVersion() + " / Modelica " + getVersion(Modelica) + " / Gouyuan " + getVersion(Gouyuan) + "\n");
+print("GOUYUAN_MSL_FILE " + getSourceFile(Modelica) + "\n");
+checkModel(Gouyuan.PositionDrive);
+checkModel(Gouyuan.RatedTorqueMotor);
+checkModel(Gouyuan.ServoAxis);
+checkModel(Gouyuan.IdealLeadScrew);
+checkModel(Gouyuan.IdealLeadScrewBench);
+checkModel(Modelica.Electrical.Machines.Examples.SynchronousMachines.SMPM_VoltageSource);
+getErrorString();
+buildModel(Gouyuan.ServoAxis, startTime=0, stopTime=8, numberOfIntervals=800,
+  method="dassl", tolerance=1e-8, outputFormat="csv", variableFilter="angleDeg|speedRpm|torqueNm");
+getErrorString();
+buildModel(Gouyuan.IdealLeadScrewBench, startTime=0, stopTime=1, numberOfIntervals=100,
+  method="dassl", tolerance=1e-8, outputFormat="csv", variableFilter="positionMm|speedMmS|driveTorqueNm|source.flange.tau|axialForceN|shaftPowerW|linearPowerW");
+getErrorString();
+buildModel(Modelica.Electrical.Machines.Examples.SynchronousMachines.SMPM_VoltageSource,
+  startTime=0, stopTime=2, numberOfIntervals=20000, method="dassl", tolerance=1e-6,
+  outputFormat="csv", variableFilter="inertiaLoad.w|multiSensor.tau|currentQuasiRMSSensor.I");
+getErrorString();

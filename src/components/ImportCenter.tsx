@@ -134,7 +134,8 @@ function projectResources(workspace: TwinWorkspace) {
   if (servoAxis) {
     const models = new Map(workspace.packages.map((device) => [packageKey(device), device.model]));
     rows.push({ id: "system:servo", kind: "system", system: "servo", section: "system", category: "伺服装配", name: "伺服单轴",
-      detail: [models.get(servoAxis.driveKey), models.get(servoAxis.motorKey), `目标 ${servoAxis.targetDeg}°`].filter(Boolean).join(" · "), action: "打开伺服轴" });
+      detail: [models.get(servoAxis.driveKey), models.get(servoAxis.motorKey), `目标 ${servoAxis.targetDeg}°`,
+        servoAxis.modelRef && `${servoAxis.modelRef.id} @ ${servoAxis.modelRef.version}`].filter(Boolean).join(" · "), action: "打开伺服轴" });
   }
   for (const device of workspace.packages) {
     const kind = device.mechanics ? (device.mechanics.kind === "assembly" ? "机械子装配" : "机械部件")

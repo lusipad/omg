@@ -1,0 +1,517 @@
+{
+  "passed": true,
+  "toolchain": "OpenModelica 1.27.2 / Modelica 4.0.0 / Gouyuan 1.0.0",
+  "mslRevision": "6626538a236a34a390655b55d5e8c906bfe31772",
+  "verifiedMslFiles": {
+    "Mechanics/Rotational/Components/Inertia.mo": "f3686d31c0612222f93a9e6f548731c3bb1f51e4b25305c2c152c68684d10c6a",
+    "Mechanics/Rotational/Components/IdealGearR2T.mo": "a73f9f7b0852325ed26f7be3a331c41c15a2ead83755dc154bc2b39482306e83",
+    "Electrical/Machines/Examples/SynchronousMachines/SMPM_VoltageSource.mo": "478a8121e00e39d5c0cfa5f60f78190827c48630834f1b504f3bbef72a922c5c"
+  },
+  "sourceSha256": "bf0b3980597bb20a98f0b5730cfaec3b0e4fbd1fb14412a6df7bb709b6ee492e",
+  "mosSha256": "0d223d23eb2f94e55007c6f0e114f7c3362362681b2d5bfa83b12191b3706b1e",
+  "verifierSha256": "e8b6d7e7f564b7464c20adcd94f3e4b15dbdcf63ff232e65005fe29646df823b",
+  "buildLogSha256": "1bb511eb7fbbbaa7aa16b6803d752115d0ed75b897ba5f648be9c5da0501d1f0",
+  "checkedClasses": [
+    "Gouyuan.PositionDrive",
+    "Gouyuan.RatedTorqueMotor",
+    "Gouyuan.ServoAxis",
+    "Gouyuan.IdealLeadScrew",
+    "Gouyuan.IdealLeadScrewBench",
+    "Modelica.Electrical.Machines.Examples.SynchronousMachines.SMPM_VoltageSource"
+  ],
+  "compilerWarnings": [
+    "Warning: This version of ModelicaServices does not appear to be patched for use with OpenModelica, consider using a version distributed by OpenModelica instead to avoid compatibility issues."
+  ],
+  "solver": "DASSL",
+  "servoTolerance": 1e-08,
+  "smpmTolerance": 1e-06,
+  "servoCases": {
+    "normal": {
+      "samples": 801,
+      "csv": "servo-normal.csv",
+      "csvSha256": "061cc6820018d342088b320082b2782b5c2566fd300b1ada704f7899cc4db603",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetDeg": 90,
+        "loadInertiaRatio": 1,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": 62.2403072866558,
+        "speedRpm": 78.38030619574391,
+        "torqueNm": -0.003332434114445647
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": 90.0,
+        "speedRpm": 8.991804997082517e-16,
+        "torqueNm": -1.310734507390474e-19
+      },
+      "maxAbsTorqueNm": 0.02623858184278195,
+      "maxAbsPowerW": 0.11164389001859298,
+      "maxAbsSpeedRpm": 132.3277805543673,
+      "settledAtS": 0.43,
+      "analyticMaxAbsError": {
+        "angleDeg": 1.1933130892316512e-06,
+        "speedRpm": 6.275436632563469e-06,
+        "torqueNm": 5.668715045981099e-10
+      }
+    },
+    "negative": {
+      "samples": 801,
+      "csv": "servo-negative.csv",
+      "csvSha256": "db7379c5394e50a997f09eaf9d5ad64bc8518b22c90bcbb3c5996f3bf81ef197",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetDeg": -90,
+        "loadInertiaRatio": 1,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": -62.2403072866558,
+        "speedRpm": -78.38030619574394,
+        "torqueNm": 0.003332434114445652
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": -90.0,
+        "speedRpm": -7.277879835055227e-16,
+        "torqueNm": 1.060895809411272e-19
+      },
+      "maxAbsTorqueNm": 0.02623858184278195,
+      "maxAbsPowerW": 0.11164389001859297,
+      "maxAbsSpeedRpm": 132.3277805543673,
+      "settledAtS": 0.43,
+      "analyticMaxAbsError": {
+        "angleDeg": 1.1933130821262239e-06,
+        "speedRpm": 6.275436533087486e-06,
+        "torqueNm": 5.668715024297055e-10
+      }
+    },
+    "load-5": {
+      "samples": 801,
+      "csv": "servo-load-5.csv",
+      "csvSha256": "2d3a8307b686417a6e4a3b3e16abde811dea457fdc9a04af2313cf35d4a52f81",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetDeg": 90,
+        "loadInertiaRatio": 5,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": 46.91772268837746,
+        "speedRpm": 103.5139045539998,
+        "torqueNm": -0.002529012989317618
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": 89.99999999999991,
+        "speedRpm": 1.608693541379548e-13,
+        "torqueNm": 2.513322039428508e-18
+      },
+      "maxAbsTorqueNm": 0.02623858184278195,
+      "maxAbsPowerW": 0.10195228757248484,
+      "maxAbsSpeedRpm": 105.5672991122821,
+      "settledAtS": 0.93,
+      "analyticMaxAbsError": {
+        "angleDeg": 3.1362282442159994e-06,
+        "speedRpm": 5.390631073964869e-06,
+        "torqueNm": 5.506175697680971e-10
+      }
+    },
+    "low-current": {
+      "samples": 801,
+      "csv": "servo-low-current.csv",
+      "csvSha256": "103d289528135440e7b69a490c039fe29c2315ee1973e4f3e15eb54d037b9908",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetDeg": 90,
+        "loadInertiaRatio": 1,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 0.02,
+        "motorRatedCurrentA": 2.8
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": 56.02270216376344,
+        "speedRpm": 91.36697029490877,
+        "torqueNm": -0.003412819487025826
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": 90.0,
+        "speedRpm": -1.181406099844374e-15,
+        "torqueNm": 1.722134480018246e-19
+      },
+      "maxAbsTorqueNm": 0.009071428571428572,
+      "maxAbsPowerW": 0.0851284306826179,
+      "maxAbsSpeedRpm": 126.9452597713126,
+      "settledAtS": 0.45
+    },
+    "zero": {
+      "samples": 801,
+      "csv": "servo-zero.csv",
+      "csvSha256": "0f5e4ac974ae2ac48cc90a57b5fe24bbb7e6182fc0cb695e6fb514418c963be3",
+      "logSha256": "97b68e49dd4b08ef2e3d5d02b48a0c72d5680da1e76d3329a4e5b9833d0433c6",
+      "parameters": {
+        "targetDeg": 0,
+        "loadInertiaRatio": 1,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0,
+        "torqueNm": 0.0
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": 0.0,
+        "speedRpm": 0.0,
+        "torqueNm": 0.0
+      },
+      "maxAbsTorqueNm": 0.0,
+      "maxAbsPowerW": 0.0,
+      "maxAbsSpeedRpm": 0.0,
+      "settledAtS": 0.05
+    },
+    "zero-load": {
+      "samples": 801,
+      "csv": "servo-zero-load.csv",
+      "csvSha256": "d1b77d809eaac4100e601c9d817b8f20a0d115116f37f60ed92f978de232aa0c",
+      "logSha256": "a42c6d9f22d2a5818c43b3eabd2f1d5bae025a2a71569ca132eb05122eff827d",
+      "parameters": {
+        "targetDeg": 90,
+        "loadInertiaRatio": 0,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": 63.37221426452182,
+        "speedRpm": 62.3345199532591,
+        "torqueNm": -0.001323437404440565
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": 89.99999999999999,
+        "speedRpm": 1.887323462110326e-14,
+        "torqueNm": 9.578835737574801e-19
+      },
+      "maxAbsTorqueNm": 0.02623858184278195,
+      "maxAbsPowerW": 0.10541970993133637,
+      "maxAbsSpeedRpm": 145.1750239998716,
+      "settledAtS": 0.55,
+      "analyticMaxAbsError": {
+        "angleDeg": 1.1055793009973058e-06,
+        "speedRpm": 5.01225312632414e-06,
+        "torqueNm": 6.23797436231574e-10
+      }
+    },
+    "speed-limit": {
+      "samples": 801,
+      "csv": "servo-speed-limit.csv",
+      "csvSha256": "2251d5f569beb068c00341a54017ff4a408d274d131e4cb84ec6d40cc3e001db",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetDeg": 3600,
+        "loadInertiaRatio": 1,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 60,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": 28.56172329564831,
+        "speedRpm": 59.50621363481311,
+        "torqueNm": 7.19791886433681e-05
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": 2872.5,
+        "speedRpm": 60.0,
+        "torqueNm": 0.0
+      },
+      "maxAbsTorqueNm": 0.008746193947593985,
+      "maxAbsPowerW": 0.01298484650164951,
+      "maxAbsSpeedRpm": 60.0,
+      "settledAtS": null
+    },
+    "power-limit": {
+      "samples": 801,
+      "csv": "servo-power-limit.csv",
+      "csvSha256": "dace4acf4ad9c7a3d68ceecbb18213aef1e937ba2ccc32b6fe06ec918958fd36",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetDeg": 3600,
+        "loadInertiaRatio": 1,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 4,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": 631.5048066902056,
+        "speedRpm": 1583.57107909472,
+        "torqueNm": 0.02412091686082766
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": 3600.0,
+        "speedRpm": 1.230690956617764e-14,
+        "torqueNm": -1.793976966021489e-18
+      },
+      "maxAbsTorqueNm": 0.4373096973796992,
+      "maxAbsPowerW": 4.000000000000003,
+      "maxAbsSpeedRpm": 2452.114298474505,
+      "settledAtS": 1.06
+    },
+    "torque-limit": {
+      "samples": 801,
+      "csv": "servo-torque-limit.csv",
+      "csvSha256": "ee8a87e3f58b13bc5f64c9822da7a9517d5a8a51de149791a20e8428845dcaf4",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetDeg": 3600,
+        "loadInertiaRatio": 1,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 0.1,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 2.8,
+        "motorRatedCurrentA": 2.8
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": 957.753287502995,
+        "speedRpm": 2835.321814218941,
+        "torqueNm": 0.02400512252965093
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": 3600.0,
+        "speedRpm": -1.899827186833767e-14,
+        "torqueNm": 2.769376173826665e-18
+      },
+      "maxAbsTorqueNm": 0.09999999999999999,
+      "maxAbsPowerW": 24.137931034482747,
+      "maxAbsSpeedRpm": 2990.755805142605,
+      "settledAtS": 0.7
+    },
+    "double-rotor": {
+      "samples": 801,
+      "csv": "servo-double-rotor.csv",
+      "csvSha256": "606d3111b0a57e6d6e851d5496e21b2f66ca329c505dfc56b4a334309ae4d72d",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetDeg": 90,
+        "loadInertiaRatio": 1,
+        "rotorInertiaKgM2": 2.9e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 0.02,
+        "motorRatedCurrentA": 2.8
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": 42.1918137504983,
+        "speedRpm": 109.6371741775768,
+        "torqueNm": -0.004087621692718467
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": 90.0,
+        "speedRpm": -5.319346305205134e-16,
+        "torqueNm": 1.550801148658052e-19
+      },
+      "maxAbsTorqueNm": 0.009071428571428572,
+      "maxAbsPowerW": 0.09931650246305423,
+      "maxAbsSpeedRpm": 114.4813741245631,
+      "settledAtS": 0.47
+    },
+    "motor-current": {
+      "samples": 801,
+      "csv": "servo-motor-current.csv",
+      "csvSha256": "472cbaaa85712d8b2c97ed648e63423243f33d85017e6da3e58eef2bd83640d8",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "targetDeg": 90,
+        "loadInertiaRatio": 1,
+        "rotorInertiaKgM2": 1.45e-05,
+        "ratedTorqueNm": 1.27,
+        "ratedPowerW": 400,
+        "ratedSpeedRpm": 3000,
+        "driveRatedCurrentA": 0.02,
+        "motorRatedCurrentA": 1.4
+      },
+      "at100ms": {
+        "time": 0.1,
+        "angleDeg": 61.56160560740211,
+        "speedRpm": 79.92807899643996,
+        "torqueNm": -0.003360184248830273
+      },
+      "final": {
+        "time": 8.0,
+        "angleDeg": 90.0,
+        "speedRpm": -1.691632763318315e-16,
+        "torqueNm": 2.465891372681055e-20
+      },
+      "maxAbsTorqueNm": 0.01814285714285714,
+      "maxAbsPowerW": 0.10621541373700728,
+      "maxAbsSpeedRpm": 131.7674545596362,
+      "settledAtS": 0.44
+    }
+  },
+  "screwCases": {
+    "screw-5mm-120rpm": {
+      "samples": 101,
+      "csv": "screw-5mm-120rpm.csv",
+      "csvSha256": "1ea7d237fc5e95d459bfd5e4bcc90b4206897cc9476f0835cab980a620878795",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "leadMmPerRev": 5,
+        "inputSpeedRpm": 120,
+        "loadN": 100
+      },
+      "atOneRevolution": {
+        "time": 0.5,
+        "axialForceN": 100.0,
+        "driveTorqueNm": 0.07957747154594767,
+        "linearPowerW": 1.0,
+        "positionMm": 5.0,
+        "shaftPowerW": 1.0,
+        "speedMmS": 10.0,
+        "source.flange.tau": -0.07957747154594767
+      },
+      "maxAbsPowerImbalanceW": 0.0,
+      "analyticMaxAbsError": {
+        "positionMm": 1.7763568394002505e-15,
+        "speedMmS": 0,
+        "driveTorqueNm": 0,
+        "source.flange.tau": 0,
+        "axialForceN": 0,
+        "shaftPowerW": 0,
+        "linearPowerW": 0
+      }
+    },
+    "screw-10mm-120rpm": {
+      "samples": 101,
+      "csv": "screw-10mm-120rpm.csv",
+      "csvSha256": "ae0df480140ba1d3686351b9f1fd3c62ce37c8bb730fad8dbdc5659f0ca555ec",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "leadMmPerRev": 10,
+        "inputSpeedRpm": 120,
+        "loadN": 100
+      },
+      "atOneRevolution": {
+        "time": 0.5,
+        "axialForceN": 100.0,
+        "driveTorqueNm": 0.1591549430918953,
+        "linearPowerW": 2.0,
+        "positionMm": 10.0,
+        "shaftPowerW": 2.0,
+        "speedMmS": 20.0,
+        "source.flange.tau": -0.1591549430918953
+      },
+      "maxAbsPowerImbalanceW": 0.0,
+      "analyticMaxAbsError": {
+        "positionMm": 3.552713678800501e-15,
+        "speedMmS": 0,
+        "driveTorqueNm": 5.551115123125783e-17,
+        "source.flange.tau": 5.551115123125783e-17,
+        "axialForceN": 0,
+        "shaftPowerW": 0,
+        "linearPowerW": 0
+      }
+    },
+    "screw-5mm--120rpm": {
+      "samples": 101,
+      "csv": "screw-5mm--120rpm.csv",
+      "csvSha256": "fbf022604bea8aad170d23a9937c3e571512f5c79b88bb11024f003774351577",
+      "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+      "parameters": {
+        "leadMmPerRev": 5,
+        "inputSpeedRpm": -120,
+        "loadN": 100
+      },
+      "atOneRevolution": {
+        "time": 0.5,
+        "axialForceN": 100.0,
+        "driveTorqueNm": 0.07957747154594767,
+        "linearPowerW": -1.0,
+        "positionMm": -5.0,
+        "shaftPowerW": -1.0,
+        "speedMmS": -10.0,
+        "source.flange.tau": -0.07957747154594767
+      },
+      "maxAbsPowerImbalanceW": 0.0,
+      "analyticMaxAbsError": {
+        "positionMm": 1.7763568394002505e-15,
+        "speedMmS": 0,
+        "driveTorqueNm": 0,
+        "source.flange.tau": 0,
+        "axialForceN": 0,
+        "shaftPowerW": 0,
+        "linearPowerW": 0
+      }
+    }
+  },
+  "standardExample": {
+    "samples": 20001,
+    "csv": "msl-smpm-voltage-source.csv",
+    "csvSha256": "18a1b0ab13a905c05b6adce766b38c9aef38635a302b5486d4e07f7978eaed22",
+    "logSha256": "5a85889a51668a4914b30b01757a9f0dd6aa37c67b5ee8ba869f384a5451b06a",
+    "model": "Modelica.Electrical.Machines.Examples.SynchronousMachines.SMPM_VoltageSource",
+    "nativeDefaults": true,
+    "final": {
+      "time": 2.0,
+      "smpm.inertiaRotor.w": 156.9754969239241,
+      "currentQuasiRMSSensor.I": 100.0965159734338,
+      "smpm.tauShaft": 181.3121427020767,
+      "inertiaLoad.w": 156.9754969239241,
+      "multiSensor.tau": 181.3121427020767
+    },
+    "nominalSpeedRadS": 157.07963267948966,
+    "loadInertiaKgM2": 0.29,
+    "nominalLoadTorqueNm": 181.4,
+    "maxLoadBalanceResidualNm": 0.0004465605496193348
+  }
+}

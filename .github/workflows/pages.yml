@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -24,6 +24,36 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - name: 缓存经过校验的 OpenModelica 和标准库下载
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/omc-downloads
+          key: openmodelica-noble-amd64-${{ hashFiles('scripts/modelica/bootstrap-linux.sh') }}
+      - name: 安装模型编译前置工具
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get install -y --no-install-recommends build-essential clang-18 lld-18 cmake curl ca-certificates unzip libexpat1-dev
+          bash scripts/modelica/bootstrap-linux.sh "$RUNNER_TEMP/omc" "$RUNNER_TEMP/omc-downloads"
+      - name: 编译模型并对照原生和浏览器运行结果
+        env:
+          CLANG: clang-18
+          WASM_LD: wasm-ld-18
+        run: |
+          source "$RUNNER_TEMP/omc/env.sh"
+          python3 scripts/modelica/verify.py --omc omc --out "$RUNNER_TEMP/gouyuan-modelica-native"
+          python3 scripts/modelica/build-web.py --check
+          node scripts/modelica/compare-web.mjs "$RUNNER_TEMP/gouyuan-modelica-native"
+      - name: 保存原生回归日志与采样
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: modelica-verification
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/gouyuan-modelica-native/**/*.log
+            ${{ runner.temp }}/gouyuan-modelica-native/**/*.csv
+            ${{ runner.temp }}/gouyuan-modelica-native/native-results.json
+            ${{ runner.temp }}/gouyuan-modelica-native/web-comparison.json
       - run: npm run build:pages
       - uses: actions/upload-pages-artifact@v5
         with:

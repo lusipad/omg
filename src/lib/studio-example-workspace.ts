@@ -4,8 +4,8 @@ import { planMiloProgram, type MiloMotionPlan } from "@contracts/milo-motion";
 import { parseMiloWorkspace } from "@contracts/milo-workspace";
 import { assembleServoAxis } from "@contracts/servo-axis";
 import { DEFAULT_SO101_MOTION, parseSo101Assembly, SO101_MODEL_ID } from "@contracts/so101";
-import type { StudioExampleKind } from "@contracts/studio-navigation";
-import { createServoDemo, createTwinDemo } from "@contracts/twin-demo";
+import { modelicaServoProjectPath, type StudioExampleKind } from "@contracts/studio-navigation";
+import { createTwinDemo } from "@contracts/twin-demo";
 import { packageKey } from "@contracts/twin-device";
 import { emptyWorkspace, installPackage, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
 import { decodeImportUtf8, parseImportText } from "@contracts/workbench-import";
@@ -48,7 +48,12 @@ export async function loadStudioExample(kind: StudioBenchKind, signal: AbortSign
   signal.throwIfAborted();
   switch (kind) {
     case "wiring": return { workspace: createTwinDemo() };
-    case "servo": return { workspace: createServoDemo() };
+    case "servo": {
+      const text = await readStudioExampleText(import.meta.env.BASE_URL + modelicaServoProjectPath, signal);
+      const result = parseImportText(text, modelicaServoProjectPath);
+      if (result.kind !== "project" || !result.workspace.servoAxis) throw new Error("示例工程中缺少已装配的伺服轴。");
+      return { workspace: result.workspace };
+    }
     case "so101": {
       const bom = await readSo101ExampleBom(signal);
       const so101 = parseSo101Assembly({ modelId: SO101_MODEL_ID, bom, waypoints: DEFAULT_SO101_MOTION });
@@ -94,7 +99,10 @@ export function prepareStudioExampleJoin(kind: StudioBenchKind, project: TwinWor
       const next = assembleServoAxis(base, axis);
       if (same(project.servoAxis, next.servoAxis)) return { next: base };
       const deviceNames = new Map(base.packages.map(device => [packageKey(device), `${device.model} · ${device.revision}`]));
-      const describe = (config: typeof axis) => `${deviceNames.get(config.driveKey)} / ${deviceNames.get(config.motorKey)}，目标 ${config.targetDeg}°，负载惯量比 ${config.loadInertiaRatio}`;
+      const describe = (config: typeof axis) => [
+        `${deviceNames.get(config.driveKey)} / ${deviceNames.get(config.motorKey)}`, `目标 ${config.targetDeg}°`, `负载惯量比 ${config.loadInertiaRatio}`,
+        config.modelRef ? `${config.modelRef.id} @ ${config.modelRef.version}` : "工作台刚性轴模型",
+      ].join("，");
       const replacement = project.servoAxis
         ? `当前伺服轴（${describe(project.servoAxis)}）将被示例配置（${describe(axis)}）替换。` : undefined;
       return { next, replacement };
