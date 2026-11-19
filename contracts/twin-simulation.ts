@@ -4,11 +4,13 @@ import { parseSo101Assembly, type So101Assembly } from "./so101";
 import { parseMiloWorkspace, type MiloWorkspaceState } from "./milo-workspace";
 import { parseImportCatalog, type ImportCatalog } from "./import-catalog";
 import { linearAssemblyListSchema, type LinearAssembly } from "./linear-assembly";
+import { factoryListSchema, type FactoryLayout } from "./factory";
 import { mechanismListSchema, type MechanicalAssembly } from "./mechanical-types";
 import { packageKey, parseDevicePackage, readTwinData, signalIdSchema, type DevicePackage, type SignalPort } from "./twin-device";
 
 export type SignalValue = number | boolean;
-const maxPackages = 128, maxInstances = 256, maxConnections = 2048;
+export const maxPackages = 128;
+const maxInstances = 256, maxConnections = 2048;
 const nameSchema = z.string().trim().min(1).max(160);
 const endpointSchema = z.strictObject({ instanceId: signalIdSchema, portId: signalIdSchema });
 const connectionSchema = z.strictObject({ from: endpointSchema, to: endpointSchema });
@@ -26,6 +28,7 @@ const workspaceSchema = z.strictObject({
   catalog: z.unknown().optional(),
   assemblies: linearAssemblyListSchema.optional(),
   mechanisms: mechanismListSchema.optional(),
+  factories: factoryListSchema.optional(),
 });
 
 export type TwinInstance = z.infer<typeof instanceSchema>;
@@ -41,6 +44,7 @@ export interface TwinWorkspace {
   catalog?: ImportCatalog;
   assemblies?: LinearAssembly[];
   mechanisms?: MechanicalAssembly[];
+  factories?: FactoryLayout[];
 }
 export interface SimulationState {
   timeMs: number;
@@ -85,6 +89,7 @@ function evaluationOrder(ws: TwinWorkspace): NodePlan[] {
     if (nodes.has(instance.id)) throw new Error(`重复的实例标识 ${instance.id}`);
     const definition = catalog.get(instance.packageKey);
     if (!definition) throw new Error(`实例「${instance.name}」引用的设备修订尚未安装`);
+    if (definition.pkg.factory) throw new Error("请将工厂设备用于产线工序或运输装配。");
     if (definition.pkg.servo) throw new Error("请将伺服设备装配到伺服轴");
     if (definition.pkg.feed) throw new Error("请将丝杠或工作台用于直线轴装配。");
     if (!definition.pkg.ports.length) throw new Error("纯机械设备没有信号端口，请使用机械装配。");
@@ -140,6 +145,7 @@ export function installPackage(ws: TwinWorkspace, value: unknown): TwinWorkspace
 export function addInstance(ws: TwinWorkspace, key: string, name: string): TwinWorkspace {
   const pkg = ws.packages.find((entry) => packageKey(entry) === key);
   if (!pkg) throw new Error("请先安装设备包");
+  if (pkg.factory) throw new Error("请将工厂设备用于产线工序或运输装配。");
   if (pkg.servo) throw new Error("请将伺服设备装配到伺服轴");
   if (pkg.feed) throw new Error("请将丝杠或工作台用于直线轴装配。");
   if (!pkg.ports.length) throw new Error("纯机械设备没有信号端口，请使用机械装配。");

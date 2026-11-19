@@ -1,0 +1,511 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-HANDLER-4S",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 标准上下料单元 · CELL-HANDLER-4S",
+        "excerpt": "每件上下料或交接操作占用 4 s。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.PickPlace",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "handlingS": 4
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-HANDLER-2S",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 快速上下料单元 · CELL-HANDLER-2S",
+        "excerpt": "每件上下料或交接操作占用 2 s。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.PickPlace",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "handlingS": 2
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-BELT-100",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 标准输送带 · CELL-BELT-100",
+        "excerpt": "单件占用输送带，从起点到终点的匀速为 1 m/s。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.BeltConveyor",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "speedMps": 1
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-BELT-200",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 快速输送带 · CELL-BELT-200",
+        "excerpt": "单件占用输送带，从起点到终点的匀速为 2 m/s。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.BeltConveyor",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "speedMps": 2
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-AMR-100",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 标准移动机器人 · CELL-AMR-100",
+        "excerpt": "单车一次搬一件。空驶 1.6 m/s、载货 1 m/s、取件 1.5 s、放件 1 s。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.MobileRobot",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "dropTimeS": 1,
+          "emptySpeedMps": 1.6,
+          "loadedSpeedMps": 1,
+          "pickTimeS": 1.5
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-AMR-180",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 快速移动机器人 · CELL-AMR-180",
+        "excerpt": "单车一次搬一件。空驶 2.4 m/s、载货 1.8 m/s、取件 1.2 s、放件 0.8 s。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.MobileRobot",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "dropTimeS": 0.8,
+          "emptySpeedMps": 2.4,
+          "loadedSpeedMps": 1.8,
+          "pickTimeS": 1.2
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-CNC-60S",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 定节拍数控机床 · CELL-CNC-60S",
+        "excerpt": "每件在机床内的加工及辅助动作合计 60 s。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.CycleCNC",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "cycleS": 60
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-CNC-F900",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 进给节拍数控机床 · CELL-CNC-F900",
+        "excerpt": "每件刀程 450 mm、切削进给 900 mm/min、装夹及辅助时间 6 s，合计 36 s。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.FeedCNC",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "clampS": 6,
+          "cutLengthMm": 450,
+          "feedMmMin": 900
+        }
+      }
+    }
+  ],
+  "instances": [],
+  "connections": [],
+  "factories": [
+    {
+      "schemaVersion": 1,
+      "kind": "factory-layout",
+      "id": "cnc-factory",
+      "name": "双线数控车间",
+      "resources": [
+        {
+          "id": "load",
+          "name": "主线上料位",
+          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+          "positionM": [
+            0,
+            0
+          ],
+          "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+        },
+        {
+          "id": "belt",
+          "name": "主线输送带",
+          "packageKey": "[\"构元教学件\",\"CELL-BELT-100\",\"1\"]",
+          "positionM": [
+            2,
+            0
+          ],
+          "materialId": "bom-c47731c551eb430637502d2ef9776760"
+        },
+        {
+          "id": "handoff",
+          "name": "线尾接驳位",
+          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-2S\",\"1\"]",
+          "positionM": [
+            4,
+            0
+          ],
+          "materialId": "bom-73ea1663c68c63ca0fe4e0c87f7722a9"
+        },
+        {
+          "id": "aux-load",
+          "name": "辅线上料位",
+          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+          "positionM": [
+            2,
+            -4
+          ],
+          "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+        },
+        {
+          "id": "amr",
+          "name": "共享移动机器人",
+          "packageKey": "[\"构元教学件\",\"CELL-AMR-100\",\"1\"]",
+          "positionM": [
+            4,
+            -2
+          ],
+          "materialId": "bom-dd6f274e8d2b49dfd6e4a6d45ba1d2ff"
+        },
+        {
+          "id": "cnc-a",
+          "name": "CNC-A",
+          "packageKey": "[\"构元教学件\",\"CELL-CNC-60S\",\"1\"]",
+          "positionM": [
+            8,
+            2
+          ],
+          "materialId": "bom-d9a7b4b5428024f81a87207e80b08816"
+        },
+        {
+          "id": "cnc-b",
+          "name": "CNC-B",
+          "packageKey": "[\"构元教学件\",\"CELL-CNC-F900\",\"1\"]",
+          "positionM": [
+            8,
+            -2
+          ],
+          "materialId": "bom-a3e4226b18002b4a54d7c155599f80f6"
+        },
+        {
+          "id": "unload",
+          "name": "共享下料位",
+          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+          "positionM": [
+            12,
+            0
+          ],
+          "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+        }
+      ],
+      "lines": [
+        {
+          "id": "main",
+          "name": "主加工线",
+          "batch": {
+            "quantity": 6,
+            "releaseIntervalS": 5
+          },
+          "stages": [
+            {
+              "id": "main-load",
+              "name": "上料",
+              "operation": "handle",
+              "stations": [
+                "load"
+              ],
+              "carriers": []
+            },
+            {
+              "id": "main-handoff",
+              "name": "输送至接驳位",
+              "operation": "handle",
+              "stations": [
+                "handoff"
+              ],
+              "carriers": [
+                "belt"
+              ]
+            },
+            {
+              "id": "main-machine",
+              "name": "并行数控加工",
+              "operation": "machine",
+              "stations": [
+                "cnc-a",
+                "cnc-b"
+              ],
+              "carriers": [
+                "amr"
+              ]
+            },
+            {
+              "id": "main-unload",
+              "name": "下料",
+              "operation": "handle",
+              "stations": [
+                "unload"
+              ],
+              "carriers": [
+                "amr"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "aux",
+          "name": "补料线",
+          "batch": {
+            "quantity": 3,
+            "releaseIntervalS": 17
+          },
+          "stages": [
+            {
+              "id": "aux-load-step",
+              "name": "补料上料",
+              "operation": "handle",
+              "stations": [
+                "aux-load"
+              ],
+              "carriers": []
+            },
+            {
+              "id": "aux-machine",
+              "name": "共用数控加工",
+              "operation": "machine",
+              "stations": [
+                "cnc-a",
+                "cnc-b"
+              ],
+              "carriers": [
+                "amr"
+              ]
+            },
+            {
+              "id": "aux-unload",
+              "name": "下料",
+              "operation": "handle",
+              "stations": [
+                "unload"
+              ],
+              "carriers": [
+                "amr"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "catalog": {
+    "models": [],
+    "materials": [
+      {
+        "id": "bom-30564a6221d7a773772cec16388dfe93",
+        "name": "标准上下料单元",
+        "quantity": 4,
+        "unit": "套",
+        "manufacturer": "构元教学件",
+        "model": "CELL-HANDLER-4S",
+        "source": "双线数控车间教学设计",
+        "notes": "主线上料、辅线上料、共享下料使用此修订",
+        "binding": {
+          "kind": "device",
+          "key": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]"
+        }
+      },
+      {
+        "id": "bom-73ea1663c68c63ca0fe4e0c87f7722a9",
+        "name": "快速上下料单元",
+        "quantity": 4,
+        "unit": "套",
+        "manufacturer": "构元教学件",
+        "model": "CELL-HANDLER-2S",
+        "source": "双线数控车间教学设计",
+        "notes": "主线接驳位使用此修订，另有可替换件",
+        "binding": {
+          "kind": "device",
+          "key": "[\"构元教学件\",\"CELL-HANDLER-2S\",\"1\"]"
+        }
+      },
+      {
+        "id": "bom-c47731c551eb430637502d2ef9776760",
+        "name": "标准输送带",
+        "quantity": 1,
+        "unit": "条",
+        "manufacturer": "构元教学件",
+        "model": "CELL-BELT-100",
+        "source": "双线数控车间教学设计",
+        "notes": "主线上料位至接驳位，沿正向输送",
+        "binding": {
+          "kind": "device",
+          "key": "[\"构元教学件\",\"CELL-BELT-100\",\"1\"]"
+        }
+      },
+      {
+        "id": "bom-bb6707efbf4d45bc6016bba5c99fa51c",
+        "name": "快速输送带",
+        "quantity": 1,
+        "unit": "条",
+        "manufacturer": "构元教学件",
+        "model": "CELL-BELT-200",
+        "source": "双线数控车间教学设计",
+        "notes": "同一路段的替换设备",
+        "binding": {
+          "kind": "device",
+          "key": "[\"构元教学件\",\"CELL-BELT-200\",\"1\"]"
+        }
+      },
+      {
+        "id": "bom-dd6f274e8d2b49dfd6e4a6d45ba1d2ff",
+        "name": "标准移动机器人",
+        "quantity": 1,
+        "unit": "台",
+        "manufacturer": "构元教学件",
+        "model": "CELL-AMR-100",
+        "source": "双线数控车间教学设计",
+        "notes": "两条线往返机床与下料位共用",
+        "binding": {
+          "kind": "device",
+          "key": "[\"构元教学件\",\"CELL-AMR-100\",\"1\"]"
+        }
+      },
+      {
+        "id": "bom-5f076d686d101463952a05a7584ba8e1",
+        "name": "快速移动机器人",
+        "quantity": 1,
+        "unit": "台",
+        "manufacturer": "构元教学件",
+        "model": "CELL-AMR-180",
+        "source": "双线数控车间教学设计",
+        "notes": "可替换共享移动机器人，保留起点与两线派工关系",
+        "binding": {
+          "kind": "device",
+          "key": "[\"构元教学件\",\"CELL-AMR-180\",\"1\"]"
+        }
+      },
+      {
+        "id": "bom-d9a7b4b5428024f81a87207e80b08816",
+        "name": "定节拍数控机床",
+        "quantity": 2,
+        "unit": "台",
+        "manufacturer": "构元教学件",
+        "model": "CELL-CNC-60S",
+        "source": "双线数控车间教学设计",
+        "notes": "CNC-A 初始机型，数量包含可替换 CNC-B 的设备",
+        "binding": {
+          "kind": "device",
+          "key": "[\"构元教学件\",\"CELL-CNC-60S\",\"1\"]"
+        }
+      },
+      {
+        "id": "bom-a3e4226b18002b4a54d7c155599f80f6",
+        "name": "进给节拍数控机床",
+        "quantity": 2,
+        "unit": "台",
+        "manufacturer": "构元教学件",
+        "model": "CELL-CNC-F900",
+        "source": "双线数控车间教学设计",
+        "notes": "CNC-B 初始机型，数量包含可替换 CNC-A 的设备",
+        "binding": {
+          "kind": "device",
+          "key": "[\"构元教学件\",\"CELL-CNC-F900\",\"1\"]"
+        }
+      }
+    ]
+  }
+}

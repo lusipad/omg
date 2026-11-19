@@ -448,7 +448,7 @@ export async function getModelBundle(id: string, signal?: AbortSignal): Promise<
   return bundle;
 }
 
-function archiveBlob(files: ModelFile[]): Blob {
+export function archiveBlob(files: ModelFile[]): Blob {
   const zipped = Object.create(null) as Record<string, Uint8Array>;
   for (const f of files) zipped[f.path] = f.data;
   return new Blob([zipSync(zipped, { level: 0 })], { type: "application/zip" });

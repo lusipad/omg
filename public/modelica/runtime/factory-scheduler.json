@@ -1,0 +1,42 @@
+{
+  "model": "GouyuanFactory.schedule",
+  "version": "1.0.0",
+  "llvm": "18.1.3",
+  "sourceSha256": "c31e5b25b96855b6d03f97db52f437e7c8932f0fed8cd1f0f3b9af5cb1e5d868",
+  "wrapperSha256": "14273e79b1e68df80c80fdbcfc29ef89e7cf8c794675823e727751cd69b7fe00",
+  "wasmBytes": 5113,
+  "wasmSha256": "37722893e154f58c6d7b6f1b781df3a6cd4756ffb0c8e89b818b66793f9bb077",
+  "limits": {
+    "resources": 32,
+    "stages": 16,
+    "jobs": 64
+  },
+  "jobColumns": [
+    "firstStage",
+    "lastStage",
+    "releaseS"
+  ],
+  "resourceColumns": [
+    "role",
+    "xM",
+    "yM",
+    "serviceS",
+    "emptySPerM",
+    "loadedSPerM",
+    "pickS",
+    "dropS"
+  ],
+  "recordColumns": [
+    "station",
+    "carrier",
+    "fromStation",
+    "carrierOrigin",
+    "readyS",
+    "dispatchS",
+    "pickupStartS",
+    "loadedStartS",
+    "dropStartS",
+    "serviceStartS",
+    "finishS"
+  ]
+}

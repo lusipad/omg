@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元教学件",
+  "model": "CELL-HANDLER-2S",
+  "revision": "1",
+  "source": {
+    "kind": "local",
+    "title": "双线数控车间教学设计",
+    "url": "",
+    "locator": "BOM · 快速上下料单元 · CELL-HANDLER-2S",
+    "excerpt": "每件上下料或交接操作占用 2 s。"
+  },
+  "ports": [],
+  "rules": [],
+  "factory": {
+    "modelRef": {
+      "id": "GouyuanFactory.PickPlace",
+      "version": "1.0.0"
+    },
+    "parameters": {
+      "handlingS": 2
+    }
+  }
+}

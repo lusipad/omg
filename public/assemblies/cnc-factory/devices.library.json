@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 1,
+  "kind": "device-library",
+  "packages": [
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-HANDLER-4S",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 标准上下料单元 · CELL-HANDLER-4S",
+        "excerpt": "每件上下料或交接操作占用 4 s。"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.PickPlace",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "handlingS": 4
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-HANDLER-2S",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 快速上下料单元 · CELL-HANDLER-2S",
+        "excerpt": "每件上下料或交接操作占用 2 s。"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.PickPlace",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "handlingS": 2
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-BELT-100",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 标准输送带 · CELL-BELT-100",
+        "excerpt": "单件占用输送带，从起点到终点的匀速为 1 m/s。"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.BeltConveyor",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "speedMps": 1
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-BELT-200",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 快速输送带 · CELL-BELT-200",
+        "excerpt": "单件占用输送带，从起点到终点的匀速为 2 m/s。"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.BeltConveyor",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "speedMps": 2
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-AMR-100",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 标准移动机器人 · CELL-AMR-100",
+        "excerpt": "单车一次搬一件。空驶 1.6 m/s、载货 1 m/s、取件 1.5 s、放件 1 s。"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.MobileRobot",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "emptySpeedMps": 1.6,
+          "loadedSpeedMps": 1,
+          "pickTimeS": 1.5,
+          "dropTimeS": 1
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-AMR-180",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 快速移动机器人 · CELL-AMR-180",
+        "excerpt": "单车一次搬一件。空驶 2.4 m/s、载货 1.8 m/s、取件 1.2 s、放件 0.8 s。"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.MobileRobot",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "emptySpeedMps": 2.4,
+          "loadedSpeedMps": 1.8,
+          "pickTimeS": 1.2,
+          "dropTimeS": 0.8
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-CNC-60S",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 定节拍数控机床 · CELL-CNC-60S",
+        "excerpt": "每件在机床内的加工及辅助动作合计 60 s。"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.CycleCNC",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "cycleS": 60
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-CNC-F900",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学设计",
+        "url": "",
+        "locator": "BOM · 进给节拍数控机床 · CELL-CNC-F900",
+        "excerpt": "每件刀程 450 mm、切削进给 900 mm/min、装夹及辅助时间 6 s，合计 36 s。"
+      },
+      "ports": [],
+      "rules": [],
+      "factory": {
+        "modelRef": {
+          "id": "GouyuanFactory.FeedCNC",
+          "version": "1.0.0"
+        },
+        "parameters": {
+          "clampS": 6,
+          "cutLengthMm": 450,
+          "feedMmMin": 900
+        }
+      }
+    }
+  ]
+}

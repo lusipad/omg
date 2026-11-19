@@ -53,11 +53,18 @@ export const RELEASE_MANIFEST: { release: string; name: string; checks: ReleaseC
       boundary: "水平无损丝杠与刚性工作台，丝杠导程和移动质量取自选定的 BOM 部件。",
     },
     {
+      key: "modelica-factory",
+      title: "GouyuanFactory 1.0.0 整厂过程回归",
+      status: "passed",
+      evidence: "两条线共享移动机器人与数控机床，9 件完成 33 道工序。4 种设备配置的原生 Modelica 导出与浏览器逐项核对派工记录和设备占用。",
+      boundary: "工厂模型使用单件运输、固定工艺路线和标定节拍。现场通行能力和设备节拍需要实测。",
+    },
+    {
       key: "modelica",
       title: "客户工程 Modelica 验收",
       status: "blocked",
       evidence: "客户项目仍需提交具体部件、负载与工况的模型对照和具名工程师复核。",
-      boundary: "单轴示例的回归仅适用于记录的模型与版本。",
+      boundary: "软件回归的结论限于记录的模型版本和工况。",
     },
     {
       key: "reference-project",

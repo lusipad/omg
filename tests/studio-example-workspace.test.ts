@@ -18,6 +18,25 @@ function fakeSources() {
 }
 afterEach(() => vi.unstubAllGlobals());
 
+it("工厂试用与加入共用同一份工程，替换已有布局时需确认，既有轴和备用设备随工程保留", async () => {
+  fakeSources();
+  const example = getStudioExample("cnc-factory")!;
+  const trial = (await loadStudioExample("factory", new AbortController().signal, example.download)).workspace;
+  const previous = createServoDemo();
+  const change = prepareStudioExampleJoin("factory", previous, trial);
+  expect(previous.factories).toBeUndefined();
+  expect(change.replacement).toBeUndefined();
+  expect(change.next.factories).toEqual(trial.factories);
+  expect(change.next.servoAxis).toEqual(previous.servoAxis);
+  expect(change.next.packages).toHaveLength(previous.packages.length + trial.packages.length);
+  expect(prepareStudioExampleJoin("factory", change.next, trial).replacement).toBeUndefined();
+  const revised = structuredClone(trial);
+  revised.factories![0].lines[0].batch.quantity = 3;
+  const replacing = prepareStudioExampleJoin("factory", change.next, revised);
+  expect(replacing.replacement).toContain(trial.factories![0].name);
+  expect(replacing.next.factories![0].lines[0].batch.quantity).toBe(3);
+});
+
 it("试用的进给轴可以连同可换丝杠和工作台加入工程，既有物料和装配保留", async () => {
   fakeSources();
   const example = getStudioExample("modelica-feed-axis");

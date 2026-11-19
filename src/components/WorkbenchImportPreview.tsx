@@ -2,19 +2,20 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { applyMiloBomImport, importedServoPair } from "@contracts/import-apply";
 import type { MaterialRow } from "@contracts/import-catalog";
+import { inspectFactoryLayout, type FactoryLayout } from "@contracts/factory";
 import { inspectLinearAssembly, type LinearAssembly } from "@contracts/linear-assembly";
 import { inspectMechanicalAssembly, installMechanicalBundle, type MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { matchMaterials } from "@contracts/material-import";
 import type { MiloAxisId } from "@contracts/milo-bom";
 import { isSo101ServoPart, so101BomNotes } from "@contracts/so101-bom";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
-import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { installPackage, type TwinWorkspace } from "@contracts/twin-simulation";
 import { importMaterialRows, type ImportOverrides, type WorkbenchImportCandidate } from "@/lib/workbench-import";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import TwinPackagePreview, { DeviceSourceEvidence, FeedRatings, MechanicalDefinitionDetails, MechanicalDetails, ServoRatings } from "./TwinPackagePreview";
+import TwinPackagePreview, { DeviceSourceEvidence, FactoryRatings, FeedRatings, MechanicalDefinitionDetails, MechanicalDetails, ServoRatings } from "./TwinPackagePreview";
 
 type Props = {
   candidate: WorkbenchImportCandidate;
@@ -25,11 +26,12 @@ type Props = {
   onConfirm: (overrides?: ImportOverrides) => void;
   onUseManual: (overrides: ImportOverrides) => void;
   onClose: () => void;
-  onAssemble: (device: DevicePackage) => void;
+  onAssemble: (device: DevicePackage, mode?: "factory") => void;
 };
 const labels = {
   project: ["核对工程", "确认替换工程"],
   assembly: ["核对直线轴装配", "保存装配定义"],
+  factory: ["核对工厂布局", "保存工厂布局"],
   mechanism: ["核对机械装配", "保存机械装配"],
   "mechanical-bundle": ["核对可复用机械包", "增量安装机械包"],
   devices: ["核对批量设备包", "确认批量安装"],
@@ -60,6 +62,10 @@ function ProjectSummary({ candidate, current }: { candidate: Extract<WorkbenchIm
     ["机械装配", current.mechanisms?.length ?? 0, next.mechanisms?.length ?? 0],
   ];
   const packaged = (ws: TwinWorkspace) => ws.packages.filter((pkg) => pkg.mechanics?.kind === "assembly").length;
+  if (current.factories?.length || next.factories?.length) {
+    const summary = (ws: TwinWorkspace) => ws.factories?.map(f => `${f.name}（${f.lines.length} 条产线，${f.resources.length} 台设备）`).join("、") || "—";
+    rows.push(["工厂布局", summary(current), summary(next)]);
+  }
   const beforePackaged = packaged(current), afterPackaged = packaged(next);
   if (beforePackaged || afterPackaged) rows.push(["已封装机械装配包", beforePackaged, afterPackaged]);
   const feedModels = (ws: TwinWorkspace) => ws.assemblies?.flatMap(assembly => assembly.modelRef
@@ -146,6 +152,18 @@ function MechanismSummary({ definition, workspace }: { definition: MechanicalAss
   </>;
 }
 
+function FactorySummary({ layout, workspace }: { layout: FactoryLayout; workspace: TwinWorkspace }) {
+  const issues = inspectFactoryLayout(workspace, layout), old = workspace.factories?.find(f => f.id === layout.id);
+  return <div className="space-y-3">
+    <h3 className="break-words font-semibold">{layout.name}</h3>
+    <p className="text-sm">{layout.resources.length} 台设备 · {layout.lines.length} 条产线 · 投放 {layout.lines.reduce((sum, l) => sum + l.batch.quantity, 0)} 件</p>
+    <ul className="space-y-1 text-xs">{layout.lines.map(line => <li key={line.id}>{line.name} · {line.stages.map(s => s.name).join(" → ")}</li>)}</ul>
+    {old && <p className="text-xs text-amber-300">确认后会替换“{old.name}”的设备布置、工艺路线和批次。</p>}
+    {issues.length > 0 && <details className="text-xs text-amber-300"><summary>运行前待补 {issues.length} 项，可先保存布局</summary>
+      <ul className="mt-2 space-y-1">{issues.map(issue => <li key={issue}>{issue}</li>)}</ul></details>}
+  </div>;
+}
+
 function PackageList({ devices, rootKey }: { devices: DevicePackage[]; rootKey?: string }) {
   return <ul aria-label="待安装设备包" className="max-h-72 divide-y overflow-auto rounded-md border px-3">
     {devices.map((device) => {
@@ -155,6 +173,7 @@ function PackageList({ devices, rootKey }: { devices: DevicePackage[]; rootKey?:
         <div className="mt-2 space-y-2"><DeviceSourceEvidence source={device.source} />
           {device.mechanics && <MechanicalDetails mechanics={device.mechanics} />}
           {device.feed && <FeedRatings feed={device.feed} />}
+          {device.factory && <FactoryRatings station={device.factory} />}
           {device.servo && <ServoRatings servo={device.servo} />}
           {device.ports.length > 0 && <p className="text-xs text-muted-foreground">{device.ports.length} 个端口 · {device.rules.length} 条行为规则</p>}
         </div>
@@ -220,7 +239,8 @@ export default function WorkbenchImportPreview({ candidate, workspace, busy, con
     try {
       const rows = candidate.kind === "materials" || candidate.kind === "manual" ? matchMaterials(importMaterialRows(candidate, { title, source, text }), workspace) : [];
       const kept = candidate.kind === "milo-bom" ? applyMiloBomImport(workspace, candidate.bom, candidate.source || candidate.name).milo.assembled : undefined;
-      const added = candidate.kind === "mechanical-bundle" ? installMechanicalBundle(workspace, candidate.bundle).packages.length - workspace.packages.length : undefined;
+      const added = candidate.kind === "mechanical-bundle" ? installMechanicalBundle(workspace, candidate.bundle).packages.length - workspace.packages.length
+        : candidate.kind === "devices" ? candidate.devices.reduce(installPackage, workspace).packages.length - workspace.packages.length : undefined;
       return { rows, kept, added, issue: "" };
     }
     catch (cause) { return { rows: [], issue: cause instanceof Error ? cause.message : "请检查资料标题和来源。" }; }
@@ -234,13 +254,14 @@ export default function WorkbenchImportPreview({ candidate, workspace, busy, con
     }
   }}>
     <TwinPackagePreview device={candidate.device} workspace={workspace} installed={confirmed} error={error} onClose={close}
-      onInstall={() => { if (!busy && !confirmed) onConfirm(); }} onAssemble={() => { if (!busy && confirmed) onAssemble(candidate.device); }} />
+      onInstall={() => { if (!busy && !confirmed) onConfirm(); }} onAssemble={mode => { if (!busy && confirmed) onAssemble(candidate.device, mode); }} />
   </div>;
 
   const [heading, defaultAction] = labels[candidate.kind];
   const replacing = (candidate.kind === "assembly" && workspace.assemblies?.some((item) => item.id === candidate.assembly.id)) ||
     (candidate.kind === "mechanism" && workspace.mechanisms?.some((item) => item.id === candidate.assembly.id));
-  const action = replacing ? "确认替换装配" : defaultAction;
+  const action = candidate.kind === "factory" && workspace.factories?.some(f => f.id === candidate.layout.id)
+    ? "确认替换工厂布局" : replacing ? "确认替换装配" : defaultAction;
   const editable = candidate.kind === "manual" || candidate.kind === "materials";
   const waiting = editable && (draft.title !== title || draft.source !== source || draft.text !== text);
   const unavailable = busy || confirmed || waiting || !!checked.issue;
@@ -248,6 +269,7 @@ export default function WorkbenchImportPreview({ candidate, workspace, busy, con
     <DialogContent showCloseButton={!busy} className="max-h-[90dvh] min-w-0 overflow-y-auto sm:max-w-[690px]">
       <DialogHeader><DialogTitle>{heading}</DialogTitle><DialogDescription className="break-all">{candidate.name || "粘贴内容"}</DialogDescription></DialogHeader>
       {candidate.kind === "project" && <ProjectSummary current={workspace} candidate={candidate} />}
+      {candidate.kind === "factory" && <FactorySummary layout={candidate.layout} workspace={workspace} />}
       {candidate.kind === "assembly" && <AssemblySummary definition={candidate.assembly} workspace={workspace} />}
       {candidate.kind === "mechanism" && <MechanismSummary definition={candidate.assembly} workspace={workspace} />}
       {candidate.kind === "mechanical-bundle" && <>

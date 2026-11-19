@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "kind": "factory-layout",
+  "id": "cnc-factory",
+  "name": "双线数控车间",
+  "resources": [
+    {
+      "id": "load",
+      "name": "主线上料位",
+      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+      "positionM": [
+        0,
+        0
+      ],
+      "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+    },
+    {
+      "id": "belt",
+      "name": "主线输送带",
+      "packageKey": "[\"构元教学件\",\"CELL-BELT-100\",\"1\"]",
+      "positionM": [
+        2,
+        0
+      ],
+      "materialId": "bom-c47731c551eb430637502d2ef9776760"
+    },
+    {
+      "id": "handoff",
+      "name": "线尾接驳位",
+      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-2S\",\"1\"]",
+      "positionM": [
+        4,
+        0
+      ],
+      "materialId": "bom-73ea1663c68c63ca0fe4e0c87f7722a9"
+    },
+    {
+      "id": "aux-load",
+      "name": "辅线上料位",
+      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+      "positionM": [
+        2,
+        -4
+      ],
+      "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+    },
+    {
+      "id": "amr",
+      "name": "共享移动机器人",
+      "packageKey": "[\"构元教学件\",\"CELL-AMR-100\",\"1\"]",
+      "positionM": [
+        4,
+        -2
+      ],
+      "materialId": "bom-dd6f274e8d2b49dfd6e4a6d45ba1d2ff"
+    },
+    {
+      "id": "cnc-a",
+      "name": "CNC-A",
+      "packageKey": "[\"构元教学件\",\"CELL-CNC-60S\",\"1\"]",
+      "positionM": [
+        8,
+        2
+      ],
+      "materialId": "bom-d9a7b4b5428024f81a87207e80b08816"
+    },
+    {
+      "id": "cnc-b",
+      "name": "CNC-B",
+      "packageKey": "[\"构元教学件\",\"CELL-CNC-F900\",\"1\"]",
+      "positionM": [
+        8,
+        -2
+      ],
+      "materialId": "bom-a3e4226b18002b4a54d7c155599f80f6"
+    },
+    {
+      "id": "unload",
+      "name": "共享下料位",
+      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+      "positionM": [
+        12,
+        0
+      ],
+      "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+    }
+  ],
+  "lines": [
+    {
+      "id": "main",
+      "name": "主加工线",
+      "batch": {
+        "quantity": 6,
+        "releaseIntervalS": 5
+      },
+      "stages": [
+        {
+          "id": "main-load",
+          "name": "上料",
+          "operation": "handle",
+          "stations": [
+            "load"
+          ],
+          "carriers": []
+        },
+        {
+          "id": "main-handoff",
+          "name": "输送至接驳位",
+          "operation": "handle",
+          "stations": [
+            "handoff"
+          ],
+          "carriers": [
+            "belt"
+          ]
+        },
+        {
+          "id": "main-machine",
+          "name": "并行数控加工",
+          "operation": "machine",
+          "stations": [
+            "cnc-a",
+            "cnc-b"
+          ],
+          "carriers": [
+            "amr"
+          ]
+        },
+        {
+          "id": "main-unload",
+          "name": "下料",
+          "operation": "handle",
+          "stations": [
+            "unload"
+          ],
+          "carriers": [
+            "amr"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aux",
+      "name": "补料线",
+      "batch": {
+        "quantity": 3,
+        "releaseIntervalS": 17
+      },
+      "stages": [
+        {
+          "id": "aux-load-step",
+          "name": "补料上料",
+          "operation": "handle",
+          "stations": [
+            "aux-load"
+          ],
+          "carriers": []
+        },
+        {
+          "id": "aux-machine",
+          "name": "共用数控加工",
+          "operation": "machine",
+          "stations": [
+            "cnc-a",
+            "cnc-b"
+          ],
+          "carriers": [
+            "amr"
+          ]
+        },
+        {
+          "id": "aux-unload",
+          "name": "下料",
+          "operation": "handle",
+          "stations": [
+            "unload"
+          ],
+          "carriers": [
+            "amr"
+          ]
+        }
+      ]
+    }
+  ]
+}

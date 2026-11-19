@@ -12,6 +12,8 @@ public/machines/milo-v1-5/*.nc text eol=lf
 public/modelica/**/*.json text eol=lf
 public/modelica/*.json text eol=lf
 public/modelica/*.mo text eol=lf
+public/modelica/GouyuanFactory/package.mo text eol=lf
+public/modelica/GouyuanFactory/Resources/Include/*.h text eol=lf
 public/modelica/MSL-LICENSE.txt -text
 public/modelica/runtime/*.wasm binary
 scripts/modelica/** text eol=lf

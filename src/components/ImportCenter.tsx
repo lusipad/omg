@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import MaterialDetails, { MaterialIntake, type MaterialIntakeProps } from "./ImportCenterMaterials";
 
 const acceptedSuffixes = WORKBENCH_FILE_ACCEPT.split(",").filter((entry) => entry.startsWith("."));
-type System = "so101" | "milo" | "servo" | "wiring" | `assembly:${string}` | `mechanism:${string}`;
+type System = "so101" | "milo" | "servo" | "wiring" | `assembly:${string}` | `mechanism:${string}` | `factory:${string}`;
 type Props = MaterialIntakeProps & {
   workspace: TwinWorkspace;
   onChange: (next: TwinWorkspace) => void;
@@ -115,6 +115,10 @@ type Resource = { id: string; category: string; name: string; detail: string; se
 function projectResources(workspace: TwinWorkspace) {
   const rows: Resource[] = [];
   const { so101, milo, servoAxis } = workspace;
+  for (const factory of workspace.factories ?? []) {
+    rows.push({ id: `factory:${factory.id}`, kind: "system", system: `factory:${factory.id}`, section: "system",
+      category: "工厂装配", name: factory.name, detail: `${factory.lines.length} 条产线 · ${factory.resources.length} 台设备`, action: "打开工厂" });
+  }
   for (const assembly of workspace.mechanisms ?? []) {
     rows.push({ id: `mechanism:${assembly.id}`, kind: "system", system: `mechanism:${assembly.id}`, section: "system",
       category: "机械装配", name: assembly.name, detail: `${assembly.nodes.length} 个部件实例`, action: "打开装配" });
@@ -138,7 +142,8 @@ function projectResources(workspace: TwinWorkspace) {
         servoAxis.modelRef && `${servoAxis.modelRef.id} @ ${servoAxis.modelRef.version}`].filter(Boolean).join(" · "), action: "打开伺服轴" });
   }
   for (const device of workspace.packages) {
-    const kind = device.feed ? (device.feed.kind === "lead-screw" ? `丝杠 · ${device.feed.leadMmPerRev} mm/rev` : `移动工作台 · ${device.feed.massKg} kg`)
+    const kind = device.factory ? `工厂设备 · ${device.factory.modelRef.id} @ ${device.factory.modelRef.version}`
+      : device.feed ? (device.feed.kind === "lead-screw" ? `丝杠 · ${device.feed.leadMmPerRev} mm/rev` : `移动工作台 · ${device.feed.massKg} kg`)
       : device.mechanics ? (device.mechanics.kind === "assembly" ? "机械子装配" : "机械部件")
       : device.servo ? (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机") : `${device.ports.length} 个端口`;
     rows.push({ kind: "device", section: "device", id: "pkg:" + packageKey(device), category: "设备包", name: device.model,

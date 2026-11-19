@@ -1,0 +1,34 @@
+{
+  "package": "GouyuanFactory",
+  "version": "1.0.0",
+  "source": "GouyuanFactory/package.mo",
+  "uses": { "Modelica": "4.0.0" },
+  "outputs": ["serviceS", "emptySPerM", "loadedSPerM", "pickS", "dropS"],
+  "models": [
+    { "id": "GouyuanFactory.PickPlace", "code": 1, "role": "handle", "interface": "GouyuanFactory.HandlingStation", "label": "上下料节拍",
+      "parameters": [
+        { "key": "handlingS", "label": "每件处理时间", "unit": "s", "positive": true, "default": 3 }
+      ] },
+    { "id": "GouyuanFactory.BeltConveyor", "code": 2, "role": "conveyor", "interface": "GouyuanFactory.FixedConveyor", "label": "定速输送带",
+      "parameters": [
+        { "key": "speedMps", "label": "输送速度", "unit": "m/s", "positive": true, "default": 1 }
+      ] },
+    { "id": "GouyuanFactory.MobileRobot", "code": 3, "role": "mobile", "interface": "GouyuanFactory.MobileCarrier", "label": "移动搬运机器人",
+      "parameters": [
+        { "key": "emptySpeedMps", "label": "空驶速度", "unit": "m/s", "positive": true, "default": 1.5 },
+        { "key": "loadedSpeedMps", "label": "载货速度", "unit": "m/s", "positive": true, "default": 1 },
+        { "key": "pickTimeS", "label": "取件时间", "unit": "s", "positive": false, "default": 1 },
+        { "key": "dropTimeS", "label": "放件时间", "unit": "s", "positive": false, "default": 1 }
+      ] },
+    { "id": "GouyuanFactory.CycleCNC", "code": 4, "role": "machine", "interface": "GouyuanFactory.MachineStation", "label": "固定节拍数控机床",
+      "parameters": [
+        { "key": "cycleS", "label": "单件加工时间", "unit": "s", "positive": true, "default": 30 }
+      ] },
+    { "id": "GouyuanFactory.FeedCNC", "code": 5, "role": "machine", "interface": "GouyuanFactory.MachineStation", "label": "按刀程与进给计算的数控机床",
+      "parameters": [
+        { "key": "clampS", "label": "装夹及辅助时间", "unit": "s", "positive": false, "default": 4 },
+        { "key": "cutLengthMm", "label": "单件切削长度", "unit": "mm", "positive": true, "default": 160 },
+        { "key": "feedMmMin", "label": "切削进给", "unit": "mm/min", "positive": true, "default": 600 }
+      ] }
+  ]
+}

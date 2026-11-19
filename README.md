@@ -12,6 +12,8 @@
 
 **直驱丝杠伺服轴** 从 BOM 选取驱动器、电机、丝杠和工作台，用 Modelica 计算毫米指令下的位移、进给速度、电机转矩和轴向推力。试着把 5 kg 工作台换成 20 kg，或将丝杠导程从 5 mm/rev 换成 10 mm/rev。同一轴模块可沿不同方向装配，回放时各轴共用一条时间轴。[试跑直线进给轴](https://lusipad.com/omg/?view=workbench&example=modelica-feed-axis) · [从 BOM 逐件装配](docs/Modelica直线进给轴.md) · [双轴定位台工况](docs/直线轴装配.md)
 
+**工厂与生产线** 支持从设备库布置上下料站、输送带、移动机器人和多台数控机床，为每条线安排工序、候选机床与搬运设备。示例的两条线共用一辆车和两台机床。在 30 s 选择 CNC-A 和 CNC-B，可看到它们在加工不同产线的工件。切换设备修订后可重新派工，导出的 Modelica 工程可在 OpenModelica 独立复算。[试跑数控工厂](https://lusipad.com/omg/?view=workbench&example=cnc-factory) · [从空工程搭建](docs/Modelica工厂.md) · [空白工厂工作台](https://lusipad.com/omg/?view=workbench&target=factory-new)
+
 例如，可以在 Milo 上分三层铣出 Ø30 × 3 mm 的平底槽，或用 UR5e、2F-85 夹爪及独立方块组装取放工位。试用中可调整程序或工况。[Milo 圆槽](https://lusipad.com/omg/?view=workbench&example=milo-v1-5) · [UR5e 取放工位](https://lusipad.com/omg/?view=workbench&example=ur5e-pick-place) · [下载圆槽 G 代码](public/machines/milo-v1-5/circular-pocket.nc)
 
 公开站点在浏览器内运行模型。轻量工程可导出 JSON，包含用户物理模型的工程可导出带原始资源的 ZIP。客户项目、数据库、官网资料提取、PDF 转换和在线 AI 生成使用下文的完整服务部署。`npm run build:pages` 生成 `dist/pages`，推送到 `main` 后 GitHub Actions 会构建并发布这个目录。[导入格式与操作步骤](docs/通用模型与资料导入.md)

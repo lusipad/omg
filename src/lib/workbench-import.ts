@@ -1,7 +1,6 @@
 import { MODEL_LIMITS, type MaterialRow } from "@contracts/import-catalog";
 import { createDocumentMaterial } from "@contracts/material-import";
 import { emptyWorkspace, installPackage } from "@contracts/twin-simulation";
-import type { DevicePackage } from "@contracts/twin-device";
 import { canReadOfficialSource, MAX_SOURCE_DOCUMENT_BYTES } from "@contracts/twin-source-url";
 import {
   decodeImportUtf8, GCODE_FILE_EXTENSIONS, IMPORT_TEXT_ACCEPT, IMPORT_TEXT_LIMITS, outerFence, parseImportText,
@@ -18,7 +17,6 @@ export type WorkbenchImportCandidate = Origin & (
   | Exclude<ParsedTextImport, { kind: "materials" | "project" }>
   | (Extract<ParsedTextImport, { kind: "materials" }> & { text: string })
   | (Extract<ParsedTextImport, { kind: "project" }> & { models?: StoredModel[] })
-  | { kind: "devices"; devices: DevicePackage[] }
   | { kind: "source-link"; url: string }
 );
 export type WorkbenchImportResult = WorkbenchImportCandidate | (Origin & { kind: "model"; selection: ModelSelection });
@@ -142,8 +140,9 @@ export async function inspectWorkbenchFiles(files: File[], options: WorkbenchImp
       let batch = emptyWorkspace();
       for (const file of files) {
         const item = await inspectOne(file, options, signal);
-        if (item.kind !== "device") throw new Error("完整工程、装配定义和含依赖的机械包需要单独导入。多个设备包 JSON 可以一起选择。");
-        batch = installPackage(batch, item.device);
+        if (item.kind === "device") batch = installPackage(batch, item.device);
+        else if (item.kind === "devices") batch = item.devices.reduce(installPackage, batch);
+        else throw new Error("完整工程、装配定义和含依赖的机械包需要单独导入。多个设备包 JSON 可以一起选择。");
       }
       return { kind: "devices", name: `${files.length} 个 JSON 文件`, devices: batch.packages };
     }

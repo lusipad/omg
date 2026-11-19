@@ -4,7 +4,7 @@ import { PICK_PLACE_EXAMPLE, ROBOT_EXAMPLES } from "./robot-examples";
 import { signalIdSchema } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
 
-export type StudioExampleKind = "wiring" | "servo" | "linear-assembly" | "so101" | "milo" | "physics";
+export type StudioExampleKind = "wiring" | "servo" | "linear-assembly" | "factory" | "so101" | "milo" | "physics";
 export interface StudioExample {
   id: string;
   name: string;
@@ -25,6 +25,10 @@ export interface StudioExample {
 export const modelicaServoProjectPath = "modelica/servo-axis.twin.json";
 
 export const STUDIO_EXAMPLES: readonly StudioExample[] = [
+  { id: "cnc-factory", kind: "factory", name: "数控加工工厂", category: "工厂物流",
+    description: "让两条产线共用移动机器人和数控机床，跟踪每件工件，试换设备并比较批次完工时间。",
+    preview: "assemblies/cnc-factory/preview.webp", download: "assemblies/cnc-factory/project.twin.json",
+    source: "https://github.com/lusipad/omg/blob/main/docs/Modelica工厂.md" },
   { id: "wiring-demo", kind: "wiring", name: "信号接线", category: "数字量输入",
     description: "将可调电压源接入汇川 GL10 输入模块，改变电压并观察 10 ms 滤波后的通道状态。",
     preview: "examples/previews/wiring.webp", source: digitalModule.source.url },
@@ -61,8 +65,8 @@ export function getStudioExample(id: string | null | undefined): StudioExample |
 }
 
 export type StudioResourceSection = "device" | "material" | "physics" | "system" | "author";
-export type StudioTarget = "wiring" | "servo" | "so101" | "milo" | "incoming" | "assembly-new" | "mechanism-new"
-  | `model:${string}` | `assembly:${string}` | `mechanism:${string}`;
+export type StudioTarget = "wiring" | "servo" | "so101" | "milo" | "incoming" | "assembly-new" | "mechanism-new" | "factory-new"
+  | `model:${string}` | `assembly:${string}` | `mechanism:${string}` | `factory:${string}`;
 export type StudioRoute =
   | { view: "resources"; section?: StudioResourceSection; source?: string }
   | { view: "examples" }
@@ -85,11 +89,11 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
     if (exampleId !== null) return { view, exampleId };
     if (target === null) return { view };
     if (target === "wiring" || target === "servo" || target === "so101" || target === "milo" || target === "incoming") return { view, target };
-    if (target === "mechanism-new" || target === "assembly-new") {
+    if (target === "mechanism-new" || target === "assembly-new" || target === "factory-new") {
       const part = params.get("part");
       return part ? { view, target, part } : { view, target };
     }
-    for (const prefix of ["assembly:", "mechanism:"] as const) {
+    for (const prefix of ["assembly:", "mechanism:", "factory:"] as const) {
       if (!target.startsWith(prefix)) continue;
       const id = signalIdSchema.safeParse(target.slice(prefix.length));
       if (id.success) return { view, target: `${prefix}${id.data}` };
@@ -124,7 +128,7 @@ export function studioHref(route: StudioRoute, hash = ""): string {
     if (route.exampleId !== undefined) params.set("example", route.exampleId);
     else if (route.target !== undefined) {
       params.set("target", route.target);
-      if ((route.target === "mechanism-new" || route.target === "assembly-new") && route.part) params.set("part", route.part);
+      if ((route.target === "mechanism-new" || route.target === "assembly-new" || route.target === "factory-new") && route.part) params.set("part", route.part);
     }
     else if (route.unavailableTarget !== undefined) params.set("target", route.unavailableTarget);
   }
@@ -151,10 +155,12 @@ export function getWorkbenchTargets(workspace: TwinWorkspace): StudioTargetOptio
   if (workspace.milo?.assembled.length) targets.push(milo);
   for (const assembly of workspace.mechanisms ?? []) targets.push({ id: `mechanism:${assembly.id}`, name: assembly.name });
   for (const assembly of workspace.assemblies ?? []) targets.push({ id: `assembly:${assembly.id}`, name: assembly.name });
+  for (const layout of workspace.factories ?? []) targets.push({ id: `factory:${layout.id}`, name: layout.name });
   for (const model of workspace.catalog?.models ?? []) targets.push({ id: `model:${model.id}`, name: model.name });
   if (workspace.milo && !workspace.milo.assembled.length && (workspace.milo.bom?.length || workspace.milo.program.trim())) targets.push(milo);
   if (!workspace.mechanisms?.length && workspace.packages.some(p => p.mechanics)) targets.push({ id: "mechanism-new", name: "用机械部件新建装配" });
   if (!workspace.assemblies?.length && workspace.packages.some(p => p.feed)) targets.push({ id: "assembly-new", name: "用进给部件新建直线轴" });
+  if (!workspace.factories?.length && workspace.packages.some(p => p.factory)) targets.push({ id: "factory-new", name: "用已装设备搭建工厂" });
   if (!workspace.instances.length && workspace.packages.some((p) => !p.servo && p.ports.length > 0)) targets.push(wiring);
   if (!workspace.servoAxis && workspace.packages.some((p) => p.servo)) targets.push(servo);
   return targets;

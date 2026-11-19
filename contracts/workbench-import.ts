@@ -1,4 +1,5 @@
 import { MAX_PROJECT_JSON_BYTES, type MaterialRow } from "./import-catalog";
+import { parseFactoryLayout, type FactoryLayout } from "./factory";
 import { parseLinearAssembly, type LinearAssembly } from "./linear-assembly";
 import { parseMechanicalAssembly, parseMechanicalBundle, type MechanicalAssembly, type MechanicalBundle } from "./mechanical-assembly";
 import { hasMaterialTableHeader, parseMarkdownMaterialTable, parseMaterialTable } from "./material-import";
@@ -6,12 +7,14 @@ import { parseMiloBom, type MiloBom } from "./milo-bom";
 import { MILO_MAX_PROGRAM_CHARS } from "./milo-motion";
 import { parseSo101Bom, type So101BomRow } from "./so101-bom";
 import { parseDevicePackage, type DevicePackage } from "./twin-device";
-import { hasWorkspaceShape, parseWorkspace, type TwinWorkspace } from "./twin-simulation";
+import { emptyWorkspace, hasWorkspaceShape, installPackage, maxPackages, parseWorkspace, type TwinWorkspace } from "./twin-simulation";
 
 export type TextImportHint = "auto" | "manual" | "bom" | "gcode" | "json";
 export type ParsedTextImport =
   | { kind: "device"; device: DevicePackage }
+  | { kind: "devices"; devices: DevicePackage[] }
   | { kind: "assembly"; assembly: LinearAssembly }
+  | { kind: "factory"; layout: FactoryLayout }
   | { kind: "mechanism"; assembly: MechanicalAssembly }
   | { kind: "mechanical-bundle"; bundle: MechanicalBundle }
   | { kind: "project"; workspace: TwinWorkspace }
@@ -160,7 +163,7 @@ export function parseImportText(text: string, name: string, options: { hint?: Te
   const inferredJson = /^\s*(?:\{\s*(?:["}]|$)|\[\s*(?:\{|\]))/.test(body) || fence?.language === "json";
   const asJson = format === "json" || (format === "auto" && inferredJson);
   const mechanicalMarker = !asJson && (/^\s*\{/.test(body) || fence?.language === "json") &&
-    /"kind"\s*:\s*"(?:linear-axis-assembly|mechanical-assembly|mechanical-package)"|"mechanics"\s*:/.test(body);
+    /"kind"\s*:\s*"(?:device-library|factory-layout|linear-axis-assembly|mechanical-assembly|mechanical-package)"|"mechanics"\s*:/.test(body);
   if (asJson || mechanicalMarker) {
     byteLimit(text, true);
     if (fence && fence.body === undefined) throw new Error("JSON 代码围栏未闭合。");
@@ -168,6 +171,14 @@ export function parseImportText(text: string, name: string, options: { hint?: Te
     try { raw = JSON.parse(body.trim()); } catch { throw new Error("JSON 格式有误，请检查括号、引号和内容完整性。"); }
     if (raw && typeof raw === "object") {
       if ("kind" in raw) {
+        if (raw.kind === "device-library") {
+          if (!("schemaVersion" in raw) || raw.schemaVersion !== 1 || !("packages" in raw) || !Array.isArray(raw.packages) || !raw.packages.length) {
+            throw new Error("设备库须声明 schemaVersion 1 并包含设备包列表。");
+          }
+          if (raw.packages.length > maxPackages) throw new Error(`一份设备库最多包含 ${maxPackages} 个设备修订。`);
+          return { kind: "devices", devices: raw.packages.reduce<TwinWorkspace>(installPackage, emptyWorkspace()).packages };
+        }
+        if (raw.kind === "factory-layout") return { kind: "factory", layout: parseFactoryLayout(raw) };
         if (raw.kind === "linear-axis-assembly") return { kind: "assembly", assembly: parseLinearAssembly(raw) };
         if (raw.kind === "mechanical-assembly") return { kind: "mechanism", assembly: parseMechanicalAssembly(raw) };
         if (raw.kind === "mechanical-package") return { kind: "mechanical-bundle", bundle: parseMechanicalBundle(raw) };

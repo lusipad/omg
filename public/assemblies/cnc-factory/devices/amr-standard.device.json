@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元教学件",
+  "model": "CELL-AMR-100",
+  "revision": "1",
+  "source": {
+    "kind": "local",
+    "title": "双线数控车间教学设计",
+    "url": "",
+    "locator": "BOM · 标准移动机器人 · CELL-AMR-100",
+    "excerpt": "单车一次搬一件。空驶 1.6 m/s、载货 1 m/s、取件 1.5 s、放件 1 s。"
+  },
+  "ports": [],
+  "rules": [],
+  "factory": {
+    "modelRef": {
+      "id": "GouyuanFactory.MobileRobot",
+      "version": "1.0.0"
+    },
+    "parameters": {
+      "emptySpeedMps": 1.6,
+      "loadedSpeedMps": 1,
+      "pickTimeS": 1.5,
+      "dropTimeS": 1
+    }
+  }
+}

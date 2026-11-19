@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { mechanicsSchema, signalIdSchema } from "./mechanical-types";
+import { factoryParameterIssues, factoryParametersSchema, getFactoryModel } from "./factory-model";
 export { signalIdSchema } from "./mechanical-types";
 
 const text = (limit: number) => z.string().trim().min(1).max(limit);
@@ -44,6 +45,7 @@ const packageSchema = z.strictObject({
   }).refine(source => source.kind === "local" ? !source.url && !source.productUrl : Boolean(source.url),
     "本地资料请标为 local 并留空链接，在线资料须提供 HTTP 或 HTTPS 来源链接"),
   ports: z.array(portSchema).max(256), rules: z.array(ruleSchema).max(128), servo: servoSchema.optional(), feed: feedSchema.optional(),
+  factory: z.strictObject({ modelRef: modelRefSchema, parameters: factoryParametersSchema }).optional(),
   calibration: calibrationSchema.optional(), mechanics: mechanicsSchema.optional(),
 });
 
@@ -75,6 +77,14 @@ export function packageKey(pkg: Pick<DevicePackage, "manufacturer" | "model" | "
 export function parseDevicePackage(value: unknown): DevicePackage {
   const model = value && typeof value === "object" && "mechanics" in value && "model" in value && typeof value.model === "string" ? value.model.trim().slice(0, 160) : "";
   const pkg = readTwinData(packageSchema, value, model ? `设备包“${model}”` : "设备包");
+  if (pkg.factory) {
+    if (pkg.ports.length || pkg.rules.length) throw new Error("工厂设备使用工艺工位或搬运接口，请将信号端口和规则留空。");
+    const template = getFactoryModel(pkg.factory.modelRef);
+    if (template) {
+      const issues = factoryParameterIssues(template, pkg.factory.parameters, false);
+      if (issues.length) throw new Error(`设备包“${pkg.model}”的工厂模型参数有误。\n${issues.join("\n")}`);
+    }
+  }
   if (pkg.feed && pkg.servo) throw new Error("设备修订只能声明一种轴角色，请分别提供伺服设备包和进给部件包。");
   if (pkg.feed && (pkg.ports.length || pkg.rules.length)) throw new Error("进给部件通过机械接口连接，请将信号端口和规则留空。");
   if (pkg.calibration) {
@@ -97,7 +107,7 @@ export function parseDevicePackage(value: unknown): DevicePackage {
     if (/[*?□…]/u.test(pkg.model)) throw new Error("伺服设备需要完整型号");
     return pkg;
   }
-  if (pkg.ports.length === 0 && !pkg.mechanics && !pkg.feed) throw new Error("信号设备至少需要一个端口");
+  if (pkg.ports.length === 0 && !pkg.mechanics && !pkg.feed && !pkg.factory) throw new Error("信号设备至少需要一个端口");
   const ports = new Map(pkg.ports.map((port) => [port.id, port]));
   if (ports.size !== pkg.ports.length) throw new Error("设备包内的端口标识必须唯一");
   for (const port of pkg.ports) {

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元教学件",
+  "model": "CELL-BELT-100",
+  "revision": "1",
+  "source": {
+    "kind": "local",
+    "title": "双线数控车间教学设计",
+    "url": "",
+    "locator": "BOM · 标准输送带 · CELL-BELT-100",
+    "excerpt": "单件占用输送带，从起点到终点的匀速为 1 m/s。"
+  },
+  "ports": [],
+  "rules": [],
+  "factory": {
+    "modelRef": {
+      "id": "GouyuanFactory.BeltConveyor",
+      "version": "1.0.0"
+    },
+    "parameters": {
+      "speedMps": 1
+    }
+  }
+}

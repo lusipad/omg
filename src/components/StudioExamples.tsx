@@ -8,11 +8,12 @@ const filters = [
   { id: "all", label: "全部" },
   { id: "physics", label: "机器人与物理模型" },
   { id: "machining", label: "数控加工" },
+  { id: "factory", label: "工厂物流" },
   { id: "automation", label: "伺服与信号" },
 ] as const;
 type Filter = typeof filters[number]["id"];
 const group: Record<StudioExample["kind"], Exclude<Filter, "all">> = {
-  physics: "physics", so101: "physics", milo: "machining", "linear-assembly": "automation", servo: "automation", wiring: "automation",
+  physics: "physics", so101: "physics", milo: "machining", factory: "factory", "linear-assembly": "automation", servo: "automation", wiring: "automation",
 };
 
 function assetUrl(path: string) {

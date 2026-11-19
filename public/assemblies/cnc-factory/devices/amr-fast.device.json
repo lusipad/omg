@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元教学件",
+  "model": "CELL-AMR-180",
+  "revision": "1",
+  "source": {
+    "kind": "local",
+    "title": "双线数控车间教学设计",
+    "url": "",
+    "locator": "BOM · 快速移动机器人 · CELL-AMR-180",
+    "excerpt": "单车一次搬一件。空驶 2.4 m/s、载货 1.8 m/s、取件 1.2 s、放件 0.8 s。"
+  },
+  "ports": [],
+  "rules": [],
+  "factory": {
+    "modelRef": {
+      "id": "GouyuanFactory.MobileRobot",
+      "version": "1.0.0"
+    },
+    "parameters": {
+      "emptySpeedMps": 2.4,
+      "loadedSpeedMps": 1.8,
+      "pickTimeS": 1.2,
+      "dropTimeS": 0.8
+    }
+  }
+}

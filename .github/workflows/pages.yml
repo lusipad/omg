@@ -42,6 +42,17 @@ jobs:
           python3 scripts/modelica/build-web.py --check
           node scripts/modelica/compare-web.mjs "$RUNNER_TEMP/gouyuan-modelica-native"
           node scripts/modelica/compare-web.mjs "$RUNNER_TEMP/gouyuan-modelica-native" feed
+      - name: 复算整厂设备、批次和共享资源的调度
+        env:
+          CLANG: clang-18
+          WASM_LD: wasm-ld-18
+        run: |
+          source "$RUNNER_TEMP/omc/env.sh"
+          python3 -B scripts/modelica/build-factory-models.py --check
+          python3 -B scripts/modelica/build-factory-scheduler.py --check
+          node scripts/modelica/test-factory-scheduler.mjs --native
+          npx tsx scripts/modelica/prepare-factory-cases.ts "$RUNNER_TEMP/gouyuan-modelica-native"
+          python3 -B scripts/modelica/verify-factory-export.py --omc omc --out "$RUNNER_TEMP/gouyuan-modelica-native"
       - name: 保存原生回归日志与采样
         if: always()
         uses: actions/upload-artifact@v7
@@ -55,6 +66,8 @@ jobs:
             ${{ runner.temp }}/gouyuan-modelica-native/web-comparison.json
             ${{ runner.temp }}/gouyuan-modelica-native/feed-native-results.json
             ${{ runner.temp }}/gouyuan-modelica-native/feed-web-comparison.json
+            ${{ runner.temp }}/gouyuan-modelica-native/factory-comparison.json
+            ${{ runner.temp }}/gouyuan-modelica-native/factory-cases/
       - run: npm run build:pages
       - uses: actions/upload-pages-artifact@v5
         with:

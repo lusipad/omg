@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元教学件",
+  "model": "CELL-CNC-60S",
+  "revision": "1",
+  "source": {
+    "kind": "local",
+    "title": "双线数控车间教学设计",
+    "url": "",
+    "locator": "BOM · 定节拍数控机床 · CELL-CNC-60S",
+    "excerpt": "每件在机床内的加工及辅助动作合计 60 s。"
+  },
+  "ports": [],
+  "rules": [],
+  "factory": {
+    "modelRef": {
+      "id": "GouyuanFactory.CycleCNC",
+      "version": "1.0.0"
+    },
+    "parameters": {
+      "cycleS": 60
+    }
+  }
+}

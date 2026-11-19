@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元教学件",
+  "model": "CELL-CNC-F900",
+  "revision": "1",
+  "source": {
+    "kind": "local",
+    "title": "双线数控车间教学设计",
+    "url": "",
+    "locator": "BOM · 进给节拍数控机床 · CELL-CNC-F900",
+    "excerpt": "每件刀程 450 mm、切削进给 900 mm/min、装夹及辅助时间 6 s，合计 36 s。"
+  },
+  "ports": [],
+  "rules": [],
+  "factory": {
+    "modelRef": {
+      "id": "GouyuanFactory.FeedCNC",
+      "version": "1.0.0"
+    },
+    "parameters": {
+      "clampS": 6,
+      "cutLengthMm": 450,
+      "feedMmMin": 900
+    }
+  }
+}

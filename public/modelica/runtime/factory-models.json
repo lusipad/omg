@@ -1,0 +1,20 @@
+{
+  "model": "GouyuanFactory",
+  "version": "1.0.0",
+  "compiler": "OpenModelica 1.27.2",
+  "llvm": "18.1.3",
+  "msl": "4.0.0",
+  "parameterSlots": 4,
+  "outputs": [
+    "serviceS",
+    "emptySPerM",
+    "loadedSPerM",
+    "pickS",
+    "dropS"
+  ],
+  "sourceSha256": "fd2a244c2fe14436afaf89160f5eb46927c4315401c791a001a897ac63859fbc",
+  "librarySha256": "ee071fbf08ef411710ae066a19c1c58d1d71c51e7206e4dacbd3ed60f3614b23",
+  "equationsSha256": "0c78e9036eea8409e1720c79df839ce8965391cdc7923a78b896aa72c0fc8112",
+  "wasmSha256": "43a41071934299294fd804438cd32afbba1523ef861ca4627ed3957b70d115e6",
+  "wasmBytes": 2700
+}

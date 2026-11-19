@@ -9,6 +9,7 @@ import { matchMaterials } from "@contracts/material-import";
 import { applyMiloBomImport, applySo101BomImport, importedServoPair, mergeImportedMaterials } from "@contracts/import-apply";
 import { initialMiloWorkspace } from "@contracts/milo-workspace";
 import { upsertLinearAssembly, type LinearAssembly } from "@contracts/linear-assembly";
+import { upsertFactoryLayout, type FactoryLayout } from "@contracts/factory";
 import { installMechanicalBundle, upsertMechanicalAssembly, type MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { deviceSourceFromMaterial, type DeviceSourceInput } from "@contracts/twin-extract";
 import { getWorkbenchTargets, publishedStudioFile, readStudioRoute, studioHref, type StudioRoute, type StudioTarget } from "@contracts/studio-navigation";
@@ -78,8 +79,8 @@ export default function TwinStudio() {
   const remembered = targets.find(item => item.id === lastTarget)?.id;
   const workbenchTarget = route.view === "workbench" && route.exampleId === undefined && route.unavailableTarget === undefined
     ? route.target ?? remembered ?? targets[0]?.id : undefined;
-  const editingAssembly = workbenchTarget === "assembly-new" || workbenchTarget === "mechanism-new" ||
-    ((workbenchTarget?.startsWith("assembly:") || workbenchTarget?.startsWith("mechanism:")) && targets.some(item => item.id === workbenchTarget));
+  const editingAssembly = workbenchTarget === "assembly-new" || workbenchTarget === "mechanism-new" || workbenchTarget === "factory-new" ||
+    ((workbenchTarget?.startsWith("assembly:") || workbenchTarget?.startsWith("mechanism:") || workbenchTarget?.startsWith("factory:")) && targets.some(item => item.id === workbenchTarget));
   const intake = useWorkbenchImport((model, onInstalled) => {
     setIncomingModel({ selection: model, token: ++modelToken.current, onInstalled });
     go({ view: "workbench", target: "incoming" });
@@ -158,7 +159,7 @@ export default function TwinStudio() {
       next = { ...next, catalog: parseImportCatalog(catalog, next.packages) };
     }
     const raw = JSON.stringify(next);
-    if ((next.catalog || next.assemblies?.length || next.mechanisms?.length || next.packages.some(p => p.mechanics)) &&
+    if ((next.catalog || next.assemblies?.length || next.mechanisms?.length || next.factories?.length || next.packages.some(p => p.mechanics || p.factory)) &&
       new TextEncoder().encode(raw).byteLength > MAX_PROJECT_JSON_BYTES) {
       throw new Error("工程文字资料超过 8 MiB，请将本次清单拆分到单独工程。");
     }
@@ -213,7 +214,7 @@ export default function TwinStudio() {
   }
 
   function confirmOpen(label: string) {
-    const occupied = workspace.packages.length || workspace.so101 || workspace.milo || workspace.assemblies?.length || workspace.mechanisms?.length || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
+    const occupied = workspace.packages.length || workspace.so101 || workspace.milo || workspace.assemblies?.length || workspace.mechanisms?.length || workspace.factories?.length || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
     return !occupied || window.confirm(`用“${label}”替换当前本机工程？如需保留当前工程，请先取消并导出备份。`);
   }
 
@@ -225,7 +226,8 @@ export default function TwinStudio() {
     setOpenedProject((value) => value + 1);
     setSelection({ version: 0 });
     setLastTarget(undefined); setShowPairSource(false);
-    if ((next.mechanisms?.length ?? 0) + (next.assemblies?.length ?? 0) > 1) go({ view: "resources", section: "system" }, message);
+    if ((next.mechanisms?.length ?? 0) + (next.assemblies?.length ?? 0) + (next.factories?.length ?? 0) > 1) go({ view: "resources", section: "system" }, message);
+    else if (next.factories?.length) go({ view: "workbench", target: `factory:${next.factories[0].id}` }, message);
     else if (next.mechanisms?.length) go({ view: "workbench", target: `mechanism:${next.mechanisms[0].id}` }, message);
     else if (next.assemblies?.length) go({ view: "workbench", target: `assembly:${next.assemblies[0].id}` }, message);
     else if (next.milo) go({ view: "workbench", target: "milo" }, message);
@@ -282,6 +284,10 @@ export default function TwinStudio() {
           else go({ view: "resources", section: "device" }, message);
           break;
         }
+        case "factory":
+          persist(upsertFactoryLayout(workspace, item.layout));
+          go({ view: "workbench", target: `factory:${item.layout.id}` }, `已导入工厂布局“${item.layout.name}”。`);
+          break;
         case "assembly":
           persist(upsertLinearAssembly(workspace, item.assembly));
           go({ view: "workbench", target: `assembly:${item.assembly.id}` }, `已导入装配“${item.assembly.name}”。`);
@@ -355,7 +361,11 @@ export default function TwinStudio() {
     go({ view: "resources", section: "author" }, `已带入“${row.name}”的资料。请核对身份、定位和规格后生成草案。`);
   }
 
-  function assemble(pkg: DevicePackage) {
+  function assemble(pkg: DevicePackage, mode?: "factory") {
+    if (pkg.factory && (mode === "factory" || (!pkg.feed && !pkg.mechanics && !pkg.servo))) {
+      go({ view: "workbench", target: "factory-new", part: packageKey(pkg) });
+      return;
+    }
     if (pkg.feed) {
       go({ view: "workbench", target: "assembly-new", part: packageKey(pkg) });
       return;
@@ -392,6 +402,11 @@ export default function TwinStudio() {
   function saveAssembly(assembly: LinearAssembly) {
     save(upsertLinearAssembly(workspace, assembly));
     go({ view: "workbench", target: `assembly:${assembly.id}` }, "", target === "assembly-new");
+  }
+
+  function saveFactory(layout: FactoryLayout) {
+    save(upsertFactoryLayout(workspace, layout));
+    go({ view: "workbench", target: `factory:${layout.id}` }, "", target === "factory-new");
   }
 
   function saveMechanism(assembly: MechanicalAssembly) {
@@ -453,7 +468,7 @@ export default function TwinStudio() {
         </Dialog>}
         {intake.state.phase === "preview" && <WorkbenchImportPreview key={intake.state.candidate.name} candidate={intake.state.candidate} workspace={workspace}
           confirmed={intake.state.confirmed} busy={intake.state.busy} error={intake.state.error} onClose={cancelImport}
-          onConfirm={confirmImport} onUseManual={overrides => confirmImport(overrides, true)} onAssemble={device => run(() => assemble(device))} />}
+          onConfirm={confirmImport} onUseManual={overrides => confirmImport(overrides, true)} onAssemble={(device, mode) => run(() => assemble(device, mode))} />}
         {notice && <div role="status" className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs">
           <span>{notice}</span><button type="button" className="shrink-0 text-muted-foreground hover:underline" onClick={() => setNotice("")}>关闭提示</button>
         </div>}
@@ -478,7 +493,7 @@ export default function TwinStudio() {
         </section>
         <StudioRunArea route={route.view === "workbench" ? route : null} workspace={workspace} generation={generation} openedProject={openedProject}
           bomRevision={bomRevision} servoChoice={selection} targets={targets} target={workbenchTarget} incoming={incomingModel}
-          onChange={save} onSaveAssembly={saveAssembly} onSaveMechanism={saveMechanism}
+          onChange={save} onSaveAssembly={saveAssembly} onSaveFactory={saveFactory} onOpenImport={() => importInput.current?.click()} onSaveMechanism={saveMechanism}
           onInstallBundle={bundle => save(installMechanicalBundle(workspace, bundle))} onNavigate={go}
           onApplyExample={applyExample} onImportFile={importFile} onImportText={importText} />
         {route.view === "examples" && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开示例库…</p>}>

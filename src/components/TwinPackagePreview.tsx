@@ -6,6 +6,18 @@ import { downloadJson } from "@/lib/download";
 import { bundleMechanicalDevice, type MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { packageKey, type DevicePackage, type ModelReference } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { getFactoryModel } from "@contracts/factory-model";
+
+export function FactoryRatings({ station }: { station: NonNullable<DevicePackage["factory"]> }) {
+  const model = getFactoryModel(station.modelRef);
+  return <div className="space-y-1 break-words text-sm">
+    <p className="font-medium">{model?.label ?? "尚未安装的工厂模型"}</p>
+    <p className="mono break-all text-xs text-muted-foreground">{station.modelRef.id} @ {station.modelRef.version}</p>
+    {model ? <dl className="grid grid-cols-2 gap-2">{model.parameters.map(p => <div key={p.key}><dt className="text-xs text-muted-foreground">{p.label}</dt>
+      <dd>{Object.hasOwn(station.parameters, p.key) ? `${station.parameters[p.key]} ${p.unit}` : "待补参数"}</dd></div>)}</dl>
+      : Object.entries(station.parameters).map(([key, value]) => <p key={key} className="text-xs">{key} · {value}</p>)}
+  </div>;
+}
 
 function describeRule(rule: DevicePackage["rules"][number], unit?: string) {
   switch (rule.op) {
@@ -119,12 +131,13 @@ export default function TwinPackagePreview({ device, workspace, installed, error
   error: string;
   onClose: () => void;
   onInstall: () => void;
-  onAssemble: () => void;
+  onAssemble: (mode?: "factory") => void;
 }) {
   const [failedExport, setFailedExport] = useState<{ device: DevicePackage; workspace: TwinWorkspace; message: string } | null>(null);
   const exportError = failedExport?.device === device && failedExport.workspace === workspace ? failedExport.message : "";
   const ports = new Map(device.ports.map((port) => [port.id, port]));
   const capabilities = [
+    device.factory && "工厂设备",
     device.mechanics && (device.mechanics.kind === "part" ? "机械部件" : "可复用机械装配"),
     device.servo && (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机"),
     device.feed && (device.feed.kind === "lead-screw" ? "丝杠" : "移动工作台"),
@@ -152,6 +165,7 @@ export default function TwinPackagePreview({ device, workspace, installed, error
           <DialogDescription>{device.manufacturer} · 设备包版本 {device.revision} · {capabilities}</DialogDescription>
         </DialogHeader>
         <DeviceSourceEvidence source={device.source} />
+        {device.factory && <section aria-label="工厂设备模型" className="surface-inset p-3"><FactoryRatings station={device.factory} /></section>}
         {device.calibration && <p className="surface-inset p-3 text-xs">
           已记录的两组标定值为 {device.calibration.inputPoints[0]} → {device.calibration.outputPoints[0]} 和 {device.calibration.inputPoints[1]} → {device.calibration.outputPoints[1]}，范围外按同一条直线外推。
         </p>}
@@ -186,9 +200,10 @@ export default function TwinPackagePreview({ device, workspace, installed, error
         {(error || exportError) && <p role="alert" className="whitespace-pre-line break-words text-sm text-destructive">{[error, exportError].filter(Boolean).join("\n")}</p>}
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={exportPackage}><Download />{device.mechanics?.kind === "assembly" ? "导出含依赖机械包" : "导出设备包"}</Button>
-          {installed
-            ? <Button onClick={onAssemble}><Plus />{device.feed ? "用于直线轴装配" : device.mechanics ? "用于机械装配" : device.servo ? "用于伺服仿真" : "添加到仿真装配"}</Button>
-            : <Button onClick={onInstall}><PackageCheck />确认安装</Button>}
+          {installed && device.factory && <Button onClick={() => onAssemble("factory")}><Plus />用于工厂装配</Button>}
+          {installed && (!device.factory || device.feed || device.mechanics || device.servo) && <Button onClick={() => onAssemble()}><Plus />
+            {device.feed ? "用于直线轴装配" : device.mechanics ? "用于机械装配" : device.servo ? "用于伺服仿真" : "添加到仿真装配"}</Button>}
+          {!installed && <Button onClick={onInstall}><PackageCheck />确认安装</Button>}
         </div>
       </DialogContent>
     </Dialog>

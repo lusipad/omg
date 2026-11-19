@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { FolderInput } from "lucide-react";
 import type { StudioExample, StudioTarget } from "@contracts/studio-navigation";
 import { upsertLinearAssembly } from "@contracts/linear-assembly";
+import { upsertFactoryLayout } from "@contracts/factory";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { loadStudioExample, prepareStudioExampleJoin, type LoadedStudioExample, type StudioBenchKind } from "@/lib/studio-example-workspace";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 const Wiring = lazy(() => import("./TwinSimulation"));
 const Servo = lazy(() => import("./ServoAxisBench"));
 const Linear = lazy(() => import("./LinearAssemblyBench"));
+const Factory = lazy(() => import("./FactoryBench"));
 const Follower = lazy(() => import("./So101MotionBench"));
 const Mill = lazy(() => import("./MiloWorkbench"));
 type ProjectProps = { workspace: TwinWorkspace; onApply: (next: TwinWorkspace, target: StudioTarget) => void };
@@ -20,7 +22,7 @@ function ExampleSession({ kind, download, workspace, onApply }: ProjectProps & {
   const [loaded, setLoaded] = useState<LoadedStudioExample | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
-  const [feedReady, setFeedReady] = useState(false);
+  const [assemblyReady, setAssemblyReady] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
 
   useEffect(() => {
@@ -38,6 +40,12 @@ function ExampleSession({ kind, download, workspace, onApply }: ProjectProps & {
     setError(""); setConfirmation(null);
   }
   function apply(next: TwinWorkspace, sample: TwinWorkspace) {
+    if (kind === "factory") {
+      const layout = sample.factories?.[0];
+      if (!layout) throw new Error("请先载入工厂布局。");
+      onApply(next, `factory:${layout.id}`);
+      return;
+    }
     if (kind !== "linear-assembly") { onApply(next, kind); return; }
     const assembly = sample.assemblies?.[0];
     if (!assembly) throw new Error("请先载入直线装配。");
@@ -70,18 +78,21 @@ function ExampleSession({ kind, download, workspace, onApply }: ProjectProps & {
 
   const sample = loaded.workspace;
   const follower = sample.so101;
+  const unapplied = (kind === "linear-assembly" || kind === "factory") && !assemblyReady;
   return <div className="min-w-0 space-y-4">
     <div className="flex flex-wrap items-center justify-end gap-2">
       {kind === "servo" && <p className="mr-auto text-xs text-muted-foreground">修改伺服参数后，请先组轴并运行。</p>}
-      {kind === "linear-assembly" && !feedReady && <p className="mr-auto text-xs text-muted-foreground">运行或应用当前设置后可加入工程。</p>}
-      <Button size="sm" onClick={join} disabled={kind === "linear-assembly" && !feedReady}><FolderInput />加入当前工程</Button>
+      {unapplied && <p className="mr-auto text-xs text-muted-foreground">运行或应用当前设置后可加入工程。</p>}
+      <Button size="sm" onClick={join} disabled={unapplied}><FolderInput />加入当前工程</Button>
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开运行台…</p>}>
       {kind === "wiring" && <Wiring workspace={sample} onChange={edit} />}
       {kind === "servo" && <Servo workspace={sample} onChange={edit} />}
-      {kind === "linear-assembly" && <Linear trial workspace={sample} assembly={sample.assemblies?.[0]} onTrialReady={setFeedReady}
+      {kind === "linear-assembly" && <Linear trial workspace={sample} assembly={sample.assemblies?.[0]} onTrialReady={setAssemblyReady}
         onSave={assembly => edit(upsertLinearAssembly(sample, assembly))} />}
+      {kind === "factory" && <Factory trial workspace={sample} layout={sample.factories?.[0]} onTrialReady={setAssemblyReady}
+        onSave={layout => edit(upsertFactoryLayout(sample, layout))} />}
       {kind === "so101" && follower && <Follower waypoints={follower.waypoints}
         onChange={waypoints => edit({ ...sample, so101: { ...follower, waypoints } })} />}
       {kind === "milo" && <Mill workspace={sample} initialPlan={loaded.plan} onChange={edit} />}
