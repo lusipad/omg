@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { MaterialRow } from "./import-catalog";
+import { isMeasuredMaterialUnit } from "./material-import";
 import { isCompatibleServoPair, servoAxisConfigSchema, simulateServoAxis, type ServoAxisConfig } from "./servo-axis";
 import { packageKey, readTwinData, signalIdSchema } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
@@ -105,7 +106,9 @@ function resolveAxes(workspace: TwinWorkspace, assembly: LinearAssembly) {
     }
     const drive = device("drive"), motor = device("motor"), screw = part("screw");
     if (drive && motor && !isCompatibleServoPair(drive, motor)) issues.add(`模块 ${mod.id} 的 ${drive.model} 与 ${motor.model} 不在同厂配套清单中，请核对绑定型号。`);
-    if (screw?.binding?.kind === "device") issues.add(`模块 ${mod.id} 的“${screw.name}”已绑定电气设备，丝杠应选机械 BOM 行。`);
+    if (screw?.binding?.kind === "device" && !packages.get(screw.binding.key)?.mechanics) {
+      issues.add(`模块 ${mod.id} 的“${screw.name}”已绑定电气设备，丝杠应选机械 BOM 行。`);
+    }
     const lead = screw?.leadMmPerRev ?? mod.leadMmPerRev;
     if (lead === null) issues.add(`模块 ${mod.id} 缺少丝杠导程，请在 BOM 或模块中填写 mm/rev。`);
     if (screw && lead !== null) {
@@ -119,9 +122,8 @@ function resolveAxes(workspace: TwinWorkspace, assembly: LinearAssembly) {
   }
   for (const { row, count, roles: usedRoles } of usage.values()) {
     if (usedRoles.size > 1) issues.add(`物料“${row.name}”不能同时用作${[...usedRoles].map((role) => roles[role]).join("和")}。`);
-    const unit = row.unit?.trim().normalize("NFKC") ?? "";
-    if (/^(?:[cmk]?m[23]?|[mk]?g|t|ml|l|米|毫米|厘米|千米|克|公斤|千克|吨|毫升|升|平方米|立方米)$/i.test(unit)) {
-      issues.add(`物料“${row.name}”的数量单位为 ${unit}，请补充可用部件的件数。`);
+    if (isMeasuredMaterialUnit(row.unit)) {
+      issues.add(`物料“${row.name}”的数量单位为 ${row.unit}，请补充可用部件的件数。`);
     } else if (row.quantity < count) issues.add(`物料“${row.name}”库存不足：按轴实例需 ${count} 件，BOM 数量为 ${row.quantity}。`);
   }
   for (const axis of assembly.axes) {

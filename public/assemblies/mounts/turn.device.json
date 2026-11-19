@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元示教",
+  "model": "RZ-转台",
+  "revision": "1.0",
+  "source": {
+    "kind": "local",
+    "url": "",
+    "title": "机械安装点示教件设计记录",
+    "locator": "SOURCE.md / RZ-转台",
+    "excerpt": "铰链绕本地 Z 轴旋转，范围 −180° 至 180°，输入、输出安装点均在轴心。"
+  },
+  "ports": [],
+  "rules": [],
+  "mechanics": {
+    "kind": "part",
+    "input": {
+      "positionMm": [0, 0, 0],
+      "quatWxyz": [1, 0, 0, 0]
+    },
+    "joint": {
+      "type": "hinge",
+      "axis": [0, 0, 1],
+      "unit": "deg",
+      "range": [-180, 180]
+    },
+    "outputs": [
+      {
+        "id": "out",
+        "positionMm": [0, 0, 0],
+        "quatWxyz": [1, 0, 0, 0]
+      }
+    ]
+  }
+}

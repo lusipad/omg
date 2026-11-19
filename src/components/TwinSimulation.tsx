@@ -209,7 +209,7 @@ export default function TwinSimulation({ workspace, onChange }: WorkspaceProps) 
   const [choice, setChoice] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
-  const signalPackages = workspace.packages.filter((device) => !device.servo);
+  const signalPackages = workspace.packages.filter((device) => !device.servo && device.ports.length > 0);
   const packages = new Map(signalPackages.map((device) => [packageKey(device), device]));
   const device = packages.get(choice) ?? signalPackages[0];
   const selected = (count > selection.count ? workspace.instances[count - 1]

@@ -15,6 +15,11 @@ const pkg = generateDevicePackage(inovanceSource);
 const project = { ...emptyWorkspace(), packages: [pkg] };
 
 describe("文本导入的格式和诊断", () => {
+  it.each(["mechanical-assembly", "mechanical-package"])("显式 %s 标记优先于工程文件名和 AI missing 回执", (kind) => {
+    const broken = JSON.stringify({ schemaVersion: 1, kind, packages: [], instances: [], missing: ["额定电流"] });
+    expect(() => parseImportText(broken, "workspace.json")).toThrow(/机械/);
+    expect(() => parseImportText("~~~json\n" + broken + "\n~~~", "手册.md", { hint: "manual" })).toThrow(/机械/);
+  });
   it("装配类型标记优先于文件名、工程形状和 AI 待补资料", () => {
     const marked = JSON.stringify({ kind: "linear-axis-assembly", schemaVersion: 1, packages: [], instances: [], missing: ["电流"] });
     expect(() => parseImportText(marked, "workspace.json")).toThrow(/装配/);

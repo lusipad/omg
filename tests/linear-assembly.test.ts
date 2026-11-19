@@ -94,6 +94,15 @@ describe("可复用线性模组的结构与库存", () => {
     const wrong = { ...servoExampleMotor, manufacturer: "测试异厂" };
     expect(inspectLinearAssembly(base(servoExampleDrive, wrong), linear).join(" ")).toMatch(/配套|兼容/);
   });
+  it("丝杠 BOM 行可保留自身机械设备包的安装资料", () => {
+    const ws = base(), frame = { positionMm: [0, 0, 0], quatWxyz: [1, 0, 0, 0] };
+    const screw = parseDevicePackage({ schemaVersion: 1, manufacturer: "测试", model: "螺杆", revision: "1",
+      source: { kind: "local", url: "", title: "装配图", locator: "图1", excerpt: "端部测绘" }, ports: [], rules: [],
+      mechanics: { kind: "part", input: frame, joint: { type: "fixed" }, outputs: [{ id: "end", ...frame }] } });
+    ws.packages.push(screw);
+    ws.catalog!.materials[2].binding = { kind: "device", key: packageKey(screw) };
+    expect(inspectLinearAssembly(ws, linear)).toEqual([]);
+  });
   it("手填的两个不同导程不能同时描述同一实际丝杠行", () => {
     const ws = base();
     delete ws.catalog!.materials[2].leadMmPerRev;

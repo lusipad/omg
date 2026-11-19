@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { getStudioExample, studioHref, type StudioRoute, type StudioTarget, type StudioTargetOption } from "@contracts/studio-navigation";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import type { LinearAssembly } from "@contracts/linear-assembly";
+import type { MechanicalAssembly, MechanicalBundle } from "@contracts/mechanical-assembly";
 import { Button } from "@/components/ui/button";
 import type { IncomingWorkbenchModel, WorkbenchImportOptions } from "@/lib/workbench-import";
 import TwinSimulation from "./TwinSimulation";
@@ -14,6 +15,7 @@ const Follower = lazy(() => import("./So101Workbench"));
 const Mill = lazy(() => import("./MiloWorkbench"));
 const ExampleBench = lazy(() => import("./StudioExampleBench"));
 const LinearAssemblyBench = lazy(() => import("./LinearAssemblyBench"));
+const MechanicalAssemblyBench = lazy(() => import("./MechanicalAssemblyBench"));
 
 type Props = {
   route: Extract<StudioRoute, { view: "workbench" }> | null;
@@ -27,6 +29,8 @@ type Props = {
   incoming: IncomingWorkbenchModel | null;
   onChange: (next: TwinWorkspace) => void;
   onSaveAssembly: (assembly: LinearAssembly) => void;
+  onSaveMechanism: (assembly: MechanicalAssembly) => void;
+  onInstallBundle: (bundle: MechanicalBundle) => void;
   onNavigate: (route: StudioRoute, message?: string, replace?: boolean) => void;
   onApplyExample: (next: TwinWorkspace, target: StudioTarget, name: string) => void;
   onImportFile: (file: File, hint?: WorkbenchImportOptions["hint"]) => void;
@@ -35,19 +39,20 @@ type Props = {
 
 const editorNames = { wiring: "信号接线", servo: "伺服轴", so101: "SO-101 从臂", milo: "Milo v1.5 三轴铣床" };
 
-export default function StudioRunArea({ route, workspace, generation, openedProject, bomRevision, servoChoice, target, targets, incoming, onChange, onSaveAssembly, onNavigate, onApplyExample, onImportFile, onImportText }: Props) {
+export default function StudioRunArea({ route, workspace, generation, openedProject, bomRevision, servoChoice, target, targets, incoming, onChange, onSaveAssembly, onSaveMechanism, onInstallBundle, onNavigate, onApplyExample, onImportFile, onImportText }: Props) {
   const isExample = route?.exampleId !== undefined;
   const example = getStudioExample(route?.exampleId);
   const exampleTarget = example?.kind === "physics" ? undefined : example?.kind;
   const model = target?.startsWith("model:") ? workspace.catalog?.models.find(item => `model:${item.id}` === target) : undefined;
   const assembly = target?.startsWith("assembly:") ? workspace.assemblies?.find(item => `assembly:${item.id}` === target) : undefined;
-  const creatingAssembly = target === "assembly-new";
+  const mechanism = target?.startsWith("mechanism:") ? workspace.mechanisms?.find(item => `mechanism:${item.id}` === target) : undefined;
+  const creatingAssembly = target === "assembly-new" || target === "mechanism-new";
   const missing = isExample && !example ? "没有找到这个示例。"
-    : route?.unavailableTarget !== undefined || (target?.startsWith("model:") && !model) || (target?.startsWith("assembly:") && !assembly) ? "当前工程中没有这个对象。"
+    : route?.unavailableTarget !== undefined || (target?.startsWith("model:") && !model) || (target?.startsWith("assembly:") && !assembly) || (target?.startsWith("mechanism:") && !mechanism) ? "当前工程中没有这个对象。"
     : target === "incoming" && !incoming ? "本次预览的模型文件已关闭，请重新选择文件。"
     : undefined;
   const [wiringRevision, setWiringRevision] = useState(0);
-  const options = targets.slice();
+  const options = targets.filter(item => !creatingAssembly || item.id !== "mechanism-new");
   if (target && !missing && !targets.some(item => item.id === target)) {
     if (target === "incoming") options.push({ id: target, name: "待安装的物理模型" });
     else if (target in editorNames) options.push({ id: target, name: editorNames[target as keyof typeof editorNames] });
@@ -63,15 +68,21 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
         {example && <p className="mt-1 text-xs text-muted-foreground">可在此试跑和调整，点“加入当前工程”后保存。</p>}
       </div>
       {!isExample && <div className="flex max-w-full flex-wrap items-center gap-3">
-        {!missing && target && (!creatingAssembly || targets.length > 0) && <label className="flex max-w-full flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {!missing && target && (!creatingAssembly || options.length > 0) && <label className="flex max-w-full flex-wrap items-center gap-2 text-xs text-muted-foreground">
           当前工程对象
           <select aria-label="当前工程对象" className="h-9 max-w-full rounded border bg-background px-2 text-sm text-foreground"
             value={target} onChange={event => { const choice = options.find(item => item.id === event.target.value); if (choice) onNavigate({ view: "workbench", target: choice.id }); }}>
-            {creatingAssembly && <option value="assembly-new">新装配草稿</option>}
+            {creatingAssembly && <option value={target}>新装配草稿</option>}
             {options.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>}
-        {!creatingAssembly && <Button size="sm" variant="outline" asChild><Link to={studioHref({ view: "workbench", target: "assembly-new" })}><Plus />新建装配</Link></Button>}
+        {creatingAssembly ? <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          装配方式
+          <select aria-label="装配方式" className="h-9 rounded border bg-background px-2 text-sm text-foreground" value={target}
+            onChange={event => onNavigate({ view: "workbench", target: event.target.value === "assembly-new" ? "assembly-new" : "mechanism-new" })}>
+            <option value="mechanism-new">安装点与关节</option><option value="assembly-new">直驱丝杠伺服轴</option>
+          </select>
+        </label> : <Button size="sm" variant="outline" asChild><Link to={studioHref({ view: "workbench", target: assembly ? "assembly-new" : "mechanism-new" })}><Plus />新建装配</Link></Button>}
       </div>}
     </header>}
     {route && (missing || (!target && !isExample)) && <div className="surface space-y-3 p-5">
@@ -94,8 +105,10 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
       {target === "servo" && <Servo key={`${generation}-${servoChoice.version}`} workspace={workspace} onChange={onChange} preferred={servoChoice} />}
       {target === "so101" && <Follower key={`${generation}-${bomRevision}`} workspace={workspace} onChange={onChange} onImportFile={onImportFile} onImportText={onImportText} />}
       {target === "milo" && <Mill key={`${generation}-${bomRevision}`} workspace={workspace} onChange={onChange} onImportFile={onImportFile} onImportText={onImportText} />}
-      {(creatingAssembly || assembly) && <LinearAssemblyBench key={openedProject}
+      {(target === "assembly-new" || assembly) && <LinearAssemblyBench key={openedProject}
         workspace={workspace} assembly={assembly} onSave={onSaveAssembly} />}
+      {(target === "mechanism-new" || mechanism) && <MechanicalAssemblyBench key={openedProject} workspace={workspace} assembly={mechanism}
+        initialPackageKey={route.target === "mechanism-new" ? route.part : undefined} onSave={onSaveMechanism} onInstallBundle={onInstallBundle} />}
     </Suspense>}
     <div hidden={target !== "wiring"}>
       <TwinSimulation key={`${generation}-${wiringRevision}`} workspace={workspace} onChange={onChange} />

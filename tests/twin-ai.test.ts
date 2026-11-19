@@ -97,6 +97,27 @@ describe("可选 AI 设备草案", () => {
     await expect(member.generate(input)).rejects.toThrow(/双链接入口/);
   });
 
+  it("单体机械草案保留安装资料，未声明的关节单位指出具体字段", async () => {
+    const text = "安装基准和输出在零位重合，位置 (0,0,0) mm，朝向四元数 WXYZ (1,0,0,0)。滑块沿本地 X 移动，范围 0 至 80 mm。";
+    const source = { ...input, title: "滑台安装说明", text };
+    const frame = { positionMm: [0, 0, 0], quatWxyz: [1, 0, 0, 0] };
+    const part = { kind: "part", input: frame, outputs: [{ id: "out", ...frame }],
+      joint: { type: "slide", axis: [1, 0, 0], unit: "mm", range: [0, 80] } };
+    const draft = { ...device, ports: [], rules: [], source: { ...device.source, title: source.title, excerpt: text }, mechanics: part };
+    modelReturns(draft);
+    expect((await member.generate(source)).device).toEqual(draft);
+    const sent = JSON.parse(String(modelFetch.mock.calls[0]?.[1]?.body));
+    expect(sent.messages[1].content).toContain("quatWxyz");
+    modelReturns({ ...draft, mechanics: { ...part, joint: { ...part.joint, unit: undefined } } });
+    await expect(member.generate(source)).rejects.toThrow(/unit|单位/);
+  });
+  it("单体资料入口保留对依赖设备和连接关系的装配核对", async () => {
+    const assembly = { schemaVersion: 1, kind: "mechanical-assembly", id: "probe", name: "复合设备",
+      nodes: [{ id: "fixture", parent: null, packageKey: JSON.stringify(["测试工坊", "底座", "1"]) }], output: { node: "fixture", mount: "out" }, commands: {} };
+    modelReturns({ ...device, ports: [], rules: [], mechanics: { kind: "assembly", assembly } });
+    await expect(member.generate(input)).rejects.toThrow(/子装配/);
+  });
+
   it("数字量输入草案的数值须符合已识别的原文规格", async () => {
     const official = generateDevicePackage(inovanceSource);
     modelReturns({ ...official, rules: official.rules.map(rule => ({ ...rule, onAbove: 50 })) });

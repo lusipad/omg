@@ -4,6 +4,9 @@ import { importMaterialRows, inspectWorkbenchFiles, inspectWorkbenchText } from 
 import { deviceSourceFromMaterial, inovanceSource } from "../contracts/twin-extract";
 import { miloBomSource } from "../src/lib/bom-sources";
 import { importedServoPair } from "../contracts/import-apply";
+import { packageKey } from "../contracts/twin-device";
+import { parseWorkspace } from "../contracts/twin-simulation";
+import { exportProjectArchive } from "../src/lib/model-files";
 
 const fixture = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const device = fixture("../examples/GL10-1600END-A03.device.json");
@@ -14,6 +17,60 @@ const assembly = fixture("../public/assemblies/xy-stage/assembly.json");
 const xml = '<mujoco model="滑台"><worldbody><body><geom type="box" size="1 1 1"/></body></worldbody></mujoco>';
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("机械部件与可复用装配导入", () => {
+  const mountFile = (name: string) => fixture("../public/assemblies/mounts/" + name);
+  const parts = ["turn", "slide", "tool"].map((name) => JSON.parse(mountFile(name + ".device.json")));
+  const definition = JSON.parse(mountFile("turn-slide.assembly.json"));
+  const reusable = { ...parts[0], model: "可复用定位头", mechanics: { kind: "assembly", assembly: definition } };
+  const bundle = { kind: "mechanical-package", schemaVersion: 1, rootKey: packageKey(reusable), packages: [reusable, ...parts] };
+
+  it.each([["mechanism", definition], ["mechanical-bundle", bundle]] as const)(
+    "独立文件、代码围栏和 JSON 直链接受同一 %s；文件名不会触发整工程恢复", async (kind, raw) => {
+      const json = JSON.stringify(raw), fenced = "\uFEFF~~~json\n" + json + "\n~~~";
+      const local = await inspectWorkbenchFiles([new File([json], "workspace.json")]);
+      expect(local.kind).toBe(kind);
+      const paste = await inspectWorkbenchText(fenced, "workspace.json");
+      expect(paste).toEqual(local);
+      const url = "https://example.org/stations/workspace.json";
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(fenced, { headers: { "content-type": "application/json" } })));
+      expect(await inspectWorkbenchText(url, "设备入口")).toEqual({ ...local, source: url });
+      expect((await inspectWorkbenchText(fenced, "手册.md", { hint: "manual" })).kind).toBe(kind);
+    },
+  );
+
+  it("机械部件和嵌套装配部件保留设备身份，单个 JSON 和混合批次都可导入", async () => {
+    for (const pkg of [parts[0], reusable]) {
+      const single = await inspectWorkbenchText(JSON.stringify(pkg), "workspace.json");
+      expect(single.kind === "device" && packageKey(single.device)).toBe(packageKey(pkg));
+    }
+    const all = await inspectWorkbenchFiles([new File([device], "普通设备.json"), ...parts.map((p) => new File([JSON.stringify(p)], p.model + ".json"))]);
+    expect(all.kind === "devices" && all.devices.map((p) => p.model)).toEqual([JSON.parse(device).model, ...parts.map((p) => p.model)]);
+    await expect(inspectWorkbenchFiles([new File([device], "a.json"), new File([JSON.stringify(bundle)], "含依赖.json")])).rejects.toThrow(/单独/);
+  });
+
+  it.each(["axis", "unit", "input"])("机械设备缺 %s 时指出型号和具体字段", async (field) => {
+    const invalid = structuredClone(parts[0]);
+    if (field === "input") delete invalid.mechanics.input;
+    else delete invalid.mechanics.joint[field];
+    const message = new RegExp(invalid.model + ".*" + field, "s");
+    await expect(inspectWorkbenchText(JSON.stringify(invalid), "workspace.json")).rejects.toThrow(message);
+    await expect(inspectWorkbenchFiles([new File([device], "正常.json"), new File([JSON.stringify(invalid)], "错误.json")])).rejects.toThrow(message);
+  });
+
+  it("含依赖的机械包能定位到缺少轴向的具体成员", async () => {
+    const invalid = structuredClone(bundle);
+    delete invalid.packages[2].mechanics.joint.axis;
+    await expect(inspectWorkbenchText(JSON.stringify(invalid), "封装.json")).rejects.toThrow(new RegExp(invalid.packages[2].model + ".*axis", "s"));
+  });
+
+  it("完整工程的机械设备和装配可通过现有 ZIP 入口恢复", async () => {
+    const workspace = parseWorkspace(JSON.parse(mountFile("project.twin.json")));
+    const restored = await inspectWorkbenchFiles([new File([await exportProjectArchive(workspace)], "机械工程.zip")]);
+    expect(restored.kind === "project" && restored.workspace).toEqual(workspace);
+    expect(workspace.mechanisms?.length).toBeGreaterThan(0);
+  });
+});
 
 describe("同一工作台导入路径", () => {
   it("同一装配从 JSON 原件、代码围栏、粘贴及文件直链得到相同定义", async () => {

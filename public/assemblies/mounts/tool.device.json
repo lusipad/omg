@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元示教",
+  "model": "T20-工具",
+  "revision": "1.0",
+  "source": {
+    "kind": "local",
+    "url": "",
+    "title": "机械安装点示教件设计记录",
+    "locator": "SOURCE.md / T20-工具",
+    "excerpt": "工具与父件刚性连接，从自身原点沿本地 X 正向 20 mm 处观察工具尖端。"
+  },
+  "ports": [],
+  "rules": [],
+  "mechanics": {
+    "kind": "part",
+    "input": {
+      "positionMm": [0, 0, 0],
+      "quatWxyz": [1, 0, 0, 0]
+    },
+    "joint": {
+      "type": "fixed"
+    },
+    "outputs": [
+      {
+        "id": "tip",
+        "positionMm": [20, 0, 0],
+        "quatWxyz": [1, 0, 0, 0]
+      }
+    ]
+  }
+}

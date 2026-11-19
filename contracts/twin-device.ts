@@ -1,8 +1,8 @@
 import { z } from "zod";
+import { mechanicsSchema, signalIdSchema } from "./mechanical-types";
+export { signalIdSchema } from "./mechanical-types";
 
 const text = (limit: number) => z.string().trim().min(1).max(limit);
-export const signalIdSchema = z.string().max(80).regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/, "标识只支持字母、数字、连字符与下划线")
-  .refine((id) => id !== "prototype" && !Object.hasOwn(Object.prototype, id), "标识使用了保留属性名");
 
 const portSchema = z.strictObject({
   id: signalIdSchema, label: text(160), direction: z.enum(["input", "output"]),
@@ -38,7 +38,7 @@ const packageSchema = z.strictObject({
   }).refine(source => source.kind === "local" ? !source.url && !source.productUrl : Boolean(source.url),
     "本地资料请标为 local 并留空链接，在线资料须提供 HTTP 或 HTTPS 来源链接"),
   ports: z.array(portSchema).max(256), rules: z.array(ruleSchema).max(128), servo: servoSchema.optional(),
-  calibration: calibrationSchema.optional(),
+  calibration: calibrationSchema.optional(), mechanics: mechanicsSchema.optional(),
 });
 
 export type SignalPort = z.infer<typeof portSchema>;
@@ -67,7 +67,8 @@ export function packageKey(pkg: Pick<DevicePackage, "manufacturer" | "model" | "
 }
 
 export function parseDevicePackage(value: unknown): DevicePackage {
-  const pkg = readTwinData(packageSchema, value, "设备包");
+  const model = value && typeof value === "object" && "mechanics" in value && "model" in value && typeof value.model === "string" ? value.model.trim().slice(0, 160) : "";
+  const pkg = readTwinData(packageSchema, value, model ? `设备包“${model}”` : "设备包");
   if (pkg.calibration) {
     const { gain, offset } = linearCoefficients(pkg.calibration);
     const [rule] = pkg.rules;
@@ -88,7 +89,7 @@ export function parseDevicePackage(value: unknown): DevicePackage {
     if (/[*?□…]/u.test(pkg.model)) throw new Error("伺服设备需要完整型号");
     return pkg;
   }
-  if (pkg.ports.length === 0) throw new Error("信号设备至少需要一个端口");
+  if (pkg.ports.length === 0 && !pkg.mechanics) throw new Error("信号设备至少需要一个端口");
   const ports = new Map(pkg.ports.map((port) => [port.id, port]));
   if (ports.size !== pkg.ports.length) throw new Error("设备包内的端口标识必须唯一");
   for (const port of pkg.ports) {

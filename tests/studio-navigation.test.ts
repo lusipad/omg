@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PICK_PLACE_EXAMPLE, ROBOT_EXAMPLES } from "../contracts/robot-examples";
 import { createServoDemo, createTwinDemo } from "../contracts/twin-demo";
 import { emptyWorkspace, parseWorkspace } from "../contracts/twin-simulation";
-import { getStudioExample, getWorkbenchTargets, readStudioRoute, STUDIO_EXAMPLES, studioHref, type StudioRoute } from "../contracts/studio-navigation";
+import { getStudioExample, getWorkbenchTargets, publishedStudioFile, readStudioRoute, STUDIO_EXAMPLES, studioHref, type StudioRoute } from "../contracts/studio-navigation";
 
 const hash = "a".repeat(64);
 describe("工作台路由", () => {
@@ -12,6 +12,30 @@ describe("工作台路由", () => {
     expect(readStudioRoute("?view=resources")).toEqual({ view: "resources" });
     expect(readStudioRoute("?view=workbench")).toEqual({ view: "workbench" });
     expect(readStudioRoute("?view=examples")).toEqual({ view: "examples" });
+  });
+  it("站内分享链接指向当前部署下的资源，可在统一入口核对", () => {
+    const route = { view: "resources", source: "assemblies/mounts/用户装配.json" } as const;
+    expect(readStudioRoute(studioHref(route))).toEqual(route);
+    expect(decodeURI(publishedStudioFile(route.source, "https://example.com/omg/"))).toBe("https://example.com/omg/assemblies/mounts/用户装配.json");
+    for (const bad of ["/another.json", "https://example.org/model.json", "assemblies/../index.html", "devices/%2e%2e/other.json", "api/project.json"]) {
+      expect(() => publishedStudioFile(bad, "https://example.com/omg/")).toThrow();
+    }
+  });
+  it("任意机械部件从同一入口开始装配，安装点装配按工程 ID 打开", () => {
+    const frame = { positionMm: [0, 0, 0], quatWxyz: [1, 0, 0, 0] };
+    const device = { schemaVersion: 1, manufacturer: "用户工坊", model: "夹具 / A", revision: "1",
+      source: { kind: "local", title: "夹具测绘", url: "", locator: "尺寸记录", excerpt: "同轴安装" }, ports: [], rules: [],
+      mechanics: { kind: "part", input: frame, joint: { type: "fixed" }, outputs: [{ id: "pin", ...frame }] } };
+    const key = JSON.stringify([device.manufacturer, device.model, device.revision]);
+    const start = { view: "workbench", target: "mechanism-new", part: key } as const;
+    expect(readStudioRoute(studioHref(start))).toEqual(start);
+    const ws = parseWorkspace({ ...emptyWorkspace(), packages: [device] });
+    expect(getWorkbenchTargets(ws).map(o => o.id)).toEqual(["mechanism-new"]);
+    const work = parseWorkspace({ ...ws, mechanisms: [{ kind: "mechanical-assembly", schemaVersion: 1, id: "other-fixture", name: "用户检具",
+      nodes: [{ id: "body", packageKey: key, parent: null }], commands: {}, output: { node: "body", mount: "pin" } }] });
+    expect(getWorkbenchTargets(work)).toEqual([{ id: "mechanism:other-fixture", name: "用户检具" }]);
+    expect(readStudioRoute("?view=workbench&target=mechanism:other-fixture")).toEqual({ view: "workbench", target: "mechanism:other-fixture" });
+    expect(readStudioRoute("?view=workbench&target=mechanism:constructor")).toEqual({ view: "workbench", unavailableTarget: "mechanism:constructor" });
   });
   it("可新建装配或按工程中的装配 ID 打开，不依赖机型目录", () => {
     const definition = { schemaVersion: 1, kind: "linear-axis-assembly", id: "unlisted-feed", name: "用户送料机构",

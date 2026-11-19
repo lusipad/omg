@@ -55,12 +55,13 @@ export function getStudioExample(id: string | null | undefined): StudioExample |
 }
 
 export type StudioResourceSection = "device" | "material" | "physics" | "system" | "author";
-export type StudioTarget = "wiring" | "servo" | "so101" | "milo" | "incoming" | "assembly-new" | `model:${string}` | `assembly:${string}`;
+export type StudioTarget = "wiring" | "servo" | "so101" | "milo" | "incoming" | "assembly-new" | "mechanism-new"
+  | `model:${string}` | `assembly:${string}` | `mechanism:${string}`;
 export type StudioRoute =
-  | { view: "resources"; section?: StudioResourceSection }
+  | { view: "resources"; section?: StudioResourceSection; source?: string }
   | { view: "examples" }
   | ({ view: "workbench" } & (
-    | { target?: StudioTarget; exampleId?: never; unavailableTarget?: never }
+    | { target?: StudioTarget; part?: string; exampleId?: never; unavailableTarget?: never }
     | { exampleId: string; target?: never; unavailableTarget?: never }
     | { unavailableTarget: string; target?: never; exampleId?: never }
   ));
@@ -78,9 +79,14 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
     if (exampleId !== null) return { view, exampleId };
     if (target === null) return { view };
     if (target === "wiring" || target === "servo" || target === "so101" || target === "milo" || target === "incoming" || target === "assembly-new") return { view, target };
-    if (target.startsWith("assembly:")) {
-      const id = signalIdSchema.safeParse(target.slice("assembly:".length));
-      if (id.success) return { view, target: `assembly:${id.data}` };
+    if (target === "mechanism-new") {
+      const part = params.get("part");
+      return part ? { view, target, part } : { view, target };
+    }
+    for (const prefix of ["assembly:", "mechanism:"] as const) {
+      if (!target.startsWith(prefix)) continue;
+      const id = signalIdSchema.safeParse(target.slice(prefix.length));
+      if (id.success) return { view, target: `${prefix}${id.data}` };
     }
     if (/^model:[a-f0-9]{64}$/.test(target)) return { view, target: `model:${target.slice(6)}` };
     return { view, unavailableTarget: target };
@@ -94,8 +100,12 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
     if (robot !== null) return { view: "workbench", exampleId: robot };
   }
   if (view === "resources" || view === "import" || !view) {
+    const source = view === "resources" ? params.get("source") : null;
     const section = params.get("section");
-    if (section === "device" || section === "material" || section === "physics" || section === "system" || section === "author") return { view: "resources", section };
+    if (section === "device" || section === "material" || section === "physics" || section === "system" || section === "author") {
+      return { view: "resources", section, ...(source && { source }) };
+    }
+    if (source) return { view: "resources", source };
   }
   return { view: "resources" };
 }
@@ -103,12 +113,25 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
 export function studioHref(route: StudioRoute, hash = ""): string {
   const params = new URLSearchParams({ view: route.view });
   if (route.view === "resources" && route.section) params.set("section", route.section);
+  if (route.view === "resources" && route.source) params.set("source", route.source);
   if (route.view === "workbench") {
     if (route.exampleId !== undefined) params.set("example", route.exampleId);
-    else if (route.target !== undefined) params.set("target", route.target);
+    else if (route.target !== undefined) {
+      params.set("target", route.target);
+      if (route.target === "mechanism-new" && route.part) params.set("part", route.part);
+    }
     else if (route.unavailableTarget !== undefined) params.set("target", route.unavailableTarget);
   }
   return "?" + params.toString() + (hash ? "#" + hash.replace(/^#/, "") : "");
+}
+
+export function publishedStudioFile(path: string, base: string): string {
+  const parts = path.split("/");
+  if (parts.length < 2 || !["assemblies", "devices", "examples", "machines", "models", "robots", "workcells"].includes(parts[0]) ||
+    parts.some(part => !/^[\p{L}\p{N} _().-]+$/u.test(part) || part === "." || part === "..")) {
+    throw new Error("分享链接中的站内资料路径无效。可选择本地文件，或粘贴完整资料链接。");
+  }
+  return new URL(parts.map(encodeURIComponent).join("/"), base).href;
 }
 
 export interface StudioTargetOption { id: StudioTarget; name: string }
@@ -120,10 +143,12 @@ export function getWorkbenchTargets(workspace: TwinWorkspace): StudioTargetOptio
   if (workspace.servoAxis) targets.push(servo);
   if (workspace.so101) targets.push({ id: "so101", name: "SO-101 从臂" });
   if (workspace.milo?.assembled.length) targets.push(milo);
+  for (const assembly of workspace.mechanisms ?? []) targets.push({ id: `mechanism:${assembly.id}`, name: assembly.name });
   for (const assembly of workspace.assemblies ?? []) targets.push({ id: `assembly:${assembly.id}`, name: assembly.name });
   for (const model of workspace.catalog?.models ?? []) targets.push({ id: `model:${model.id}`, name: model.name });
   if (workspace.milo && !workspace.milo.assembled.length && (workspace.milo.bom?.length || workspace.milo.program.trim())) targets.push(milo);
-  if (!workspace.instances.length && workspace.packages.some((p) => !p.servo)) targets.push(wiring);
+  if (!workspace.mechanisms?.length && workspace.packages.some(p => p.mechanics)) targets.push({ id: "mechanism-new", name: "用机械部件新建装配" });
+  if (!workspace.instances.length && workspace.packages.some((p) => !p.servo && p.ports.length > 0)) targets.push(wiring);
   if (!workspace.servoAxis && workspace.packages.some((p) => p.servo)) targets.push(servo);
   return targets;
 }

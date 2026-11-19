@@ -142,7 +142,7 @@ export async function inspectWorkbenchFiles(files: File[], options: WorkbenchImp
       let batch = emptyWorkspace();
       for (const file of files) {
         const item = await inspectOne(file, options, signal);
-        if (item.kind !== "device") throw new Error("完整工程和装配定义需要单独导入。多个设备包 JSON 可以一起选择。");
+        if (item.kind !== "device") throw new Error("完整工程、装配定义和含依赖的机械包需要单独导入。多个设备包 JSON 可以一起选择。");
         batch = installPackage(batch, item.device);
       }
       return { kind: "devices", name: `${files.length} 个 JSON 文件`, devices: batch.packages };

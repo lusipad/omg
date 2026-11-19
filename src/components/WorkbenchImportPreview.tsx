@@ -3,6 +3,7 @@ import { ExternalLink, Loader2 } from "lucide-react";
 import { applyMiloBomImport, importedServoPair } from "@contracts/import-apply";
 import type { MaterialRow } from "@contracts/import-catalog";
 import { inspectLinearAssembly, type LinearAssembly } from "@contracts/linear-assembly";
+import { inspectMechanicalAssembly, installMechanicalBundle, type MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { matchMaterials } from "@contracts/material-import";
 import type { MiloAxisId } from "@contracts/milo-bom";
 import { isSo101ServoPart, so101BomNotes } from "@contracts/so101-bom";
@@ -13,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import TwinPackagePreview, { DeviceSourceEvidence, ServoRatings } from "./TwinPackagePreview";
+import TwinPackagePreview, { DeviceSourceEvidence, MechanicalDefinitionDetails, MechanicalDetails, ServoRatings } from "./TwinPackagePreview";
 
 type Props = {
   candidate: WorkbenchImportCandidate;
@@ -29,6 +30,8 @@ type Props = {
 const labels = {
   project: ["核对工程", "确认替换工程"],
   assembly: ["核对直线轴装配", "保存装配定义"],
+  mechanism: ["核对机械装配", "保存机械装配"],
+  "mechanical-bundle": ["核对可复用机械包", "增量安装机械包"],
   devices: ["核对批量设备包", "确认批量安装"],
   materials: ["核对物料清单", "保存物料资料"],
   manual: ["核对设备手册", "保存手册"],
@@ -54,7 +57,11 @@ function ProjectSummary({ candidate, current }: { candidate: Extract<WorkbenchIm
     ["物理模型", current.catalog?.models.length ?? 0, next.catalog?.models.length ?? 0],
     ["物料与手册", current.catalog?.materials.length ?? 0, next.catalog?.materials.length ?? 0],
     ["直线轴装配", current.assemblies?.length ?? 0, next.assemblies?.length ?? 0],
+    ["机械装配", current.mechanisms?.length ?? 0, next.mechanisms?.length ?? 0],
   ];
+  const packaged = (ws: TwinWorkspace) => ws.packages.filter((pkg) => pkg.mechanics?.kind === "assembly").length;
+  const beforePackaged = packaged(current), afterPackaged = packaged(next);
+  if (beforePackaged || afterPackaged) rows.push(["已封装机械装配包", beforePackaged, afterPackaged]);
   if (current.servoAxis || next.servoAxis) rows.push(["伺服轴", current.servoAxis ? "已组轴" : "—", next.servoAxis ? "已组轴" : "—"]);
   if (current.so101 || next.so101) rows.push(["SO-101 从臂", current.so101 ? `${current.so101.waypoints.length} 个关键帧` : "—", next.so101 ? `${next.so101.waypoints.length} 个关键帧` : "—"]);
   if (current.milo || next.milo) {
@@ -110,6 +117,39 @@ function AssemblySummary({ definition, workspace }: { definition: LinearAssembly
       <ul aria-label="装配待处理项" className="mt-1 max-h-36 list-disc overflow-auto pl-5">{issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul>
     </div> : <p className="text-xs text-muted-foreground">当前工程的物料和设备满足这份装配的运行检查。</p>}
   </>;
+}
+
+function MechanismSummary({ definition, workspace }: { definition: MechanicalAssembly; workspace: TwinWorkspace }) {
+  const previous = workspace.mechanisms?.find((item) => item.id === definition.id);
+  const issues = inspectMechanicalAssembly(workspace, definition);
+  return <>
+    <div><h3 className="break-words text-base font-semibold">{definition.name}</h3>
+      <p className="mt-1 break-all text-xs text-muted-foreground">ID {definition.id} · {definition.nodes.length} 个机械节点</p></div>
+    {previous && <p className="rounded-md border border-amber-400/30 bg-amber-400/5 p-3 text-sm leading-6">
+      当前工程已有同一 ID 的“{previous.name}”。{previous.name !== definition.name && <>新名称为“{definition.name}”。</>}本次替换范围仅限此机械装配的节点、安装关系、输出和控制量。
+    </p>}
+    <MechanicalDefinitionDetails definition={definition} packages={workspace.packages} />
+    {issues.length ? <div className="rounded-md border border-amber-400/30 bg-amber-400/5 p-3 text-xs leading-5">
+      <p className="font-semibold">运行前待处理 {issues.length} 项，可先保存装配草稿。</p>
+      <ul aria-label="机械装配待处理项" className="mt-1 max-h-36 list-disc overflow-auto pl-5">{issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul>
+    </div> : <p className="text-xs text-muted-foreground">当前工程已满足这份机械装配的接口与资源检查。</p>}
+  </>;
+}
+
+function PackageList({ devices, rootKey }: { devices: DevicePackage[]; rootKey?: string }) {
+  return <ul aria-label="待安装设备包" className="max-h-72 divide-y overflow-auto rounded-md border px-3">
+    {devices.map((device) => {
+      const key = packageKey(device);
+      return <li key={key} className="py-2"><details>
+        <summary className="cursor-pointer break-words text-sm"><strong>{device.model}</strong> · {device.manufacturer} · {device.revision}{key === rootKey && " · 根设备"}</summary>
+        <div className="mt-2 space-y-2"><DeviceSourceEvidence source={device.source} />
+          {device.mechanics && <MechanicalDetails mechanics={device.mechanics} />}
+          {device.servo && <ServoRatings servo={device.servo} />}
+          {device.ports.length > 0 && <p className="text-xs text-muted-foreground">{device.ports.length} 个端口 · {device.rules.length} 条行为规则</p>}
+        </div>
+      </details></li>;
+    })}
+  </ul>;
 }
 
 function BomTable({ rows }: { rows: { name: string; quantity: string | number }[] }) {
@@ -168,7 +208,8 @@ export default function WorkbenchImportPreview({ candidate, workspace, busy, con
     try {
       const rows = candidate.kind === "materials" || candidate.kind === "manual" ? matchMaterials(importMaterialRows(candidate, { title, source, text }), workspace) : [];
       const kept = candidate.kind === "milo-bom" ? applyMiloBomImport(workspace, candidate.bom, candidate.source || candidate.name).milo.assembled : undefined;
-      return { rows, kept, issue: "" };
+      const added = candidate.kind === "mechanical-bundle" ? installMechanicalBundle(workspace, candidate.bundle).packages.length - workspace.packages.length : undefined;
+      return { rows, kept, added, issue: "" };
     }
     catch (cause) { return { rows: [], issue: cause instanceof Error ? cause.message : "请检查资料标题和来源。" }; }
   }, [candidate, title, source, text, workspace]);
@@ -180,12 +221,14 @@ export default function WorkbenchImportPreview({ candidate, workspace, busy, con
       event.preventDefault(); event.stopPropagation();
     }
   }}>
-    <TwinPackagePreview device={candidate.device} installed={confirmed} error={error} onClose={close}
+    <TwinPackagePreview device={candidate.device} workspace={workspace} installed={confirmed} error={error} onClose={close}
       onInstall={() => { if (!busy && !confirmed) onConfirm(); }} onAssemble={() => { if (!busy && confirmed) onAssemble(candidate.device); }} />
   </div>;
 
   const [heading, defaultAction] = labels[candidate.kind];
-  const action = candidate.kind === "assembly" && workspace.assemblies?.some((item) => item.id === candidate.assembly.id) ? "确认替换装配" : defaultAction;
+  const replacing = (candidate.kind === "assembly" && workspace.assemblies?.some((item) => item.id === candidate.assembly.id)) ||
+    (candidate.kind === "mechanism" && workspace.mechanisms?.some((item) => item.id === candidate.assembly.id));
+  const action = replacing ? "确认替换装配" : defaultAction;
   const editable = candidate.kind === "manual" || candidate.kind === "materials";
   const waiting = editable && (draft.title !== title || draft.source !== source || draft.text !== text);
   const unavailable = busy || confirmed || waiting || !!checked.issue;
@@ -194,17 +237,16 @@ export default function WorkbenchImportPreview({ candidate, workspace, busy, con
       <DialogHeader><DialogTitle>{heading}</DialogTitle><DialogDescription className="break-all">{candidate.name || "粘贴内容"}</DialogDescription></DialogHeader>
       {candidate.kind === "project" && <ProjectSummary current={workspace} candidate={candidate} />}
       {candidate.kind === "assembly" && <AssemblySummary definition={candidate.assembly} workspace={workspace} />}
+      {candidate.kind === "mechanism" && <MechanismSummary definition={candidate.assembly} workspace={workspace} />}
+      {candidate.kind === "mechanical-bundle" && <>
+        <p className="text-sm leading-6">根设备和依赖共 {candidate.bundle.packages.length} 个设备修订，将增量安装到当前工程。相同修订可复用，任一同修订内容冲突会阻止整批安装。</p>
+        {checked.added !== undefined && <p className="text-xs text-muted-foreground">新增 {checked.added} 个 · 复用 {candidate.bundle.packages.length - checked.added} 个</p>}
+        <PackageList devices={candidate.bundle.packages} rootKey={candidate.bundle.rootKey} />
+      </>}
       {candidate.kind === "devices" && <>
         <p className="text-sm">确认后将这 {candidate.devices.length} 个设备包一起安装到当前工程。相同型号及修订出现内容冲突时，整批安装会停止。</p>
         <p className="text-xs text-muted-foreground">{importedServoPair(candidate.devices) ? "这组驱动器和电机已声明配套，可用于组装伺服轴。" : "安装后可在设备包列表逐个选用。"}</p>
-        <ul aria-label="待安装设备包" className="max-h-72 divide-y overflow-auto rounded-md border px-3">
-          {candidate.devices.map((device, i) => <li key={`${packageKey(device)}-${i}`} className="py-2"><details>
-            <summary className="cursor-pointer break-words text-sm"><strong>{device.model}</strong> · {device.manufacturer} · {device.revision}</summary>
-            <div className="mt-2 space-y-2"><DeviceSourceEvidence source={device.source} />
-              {device.servo ? <ServoRatings servo={device.servo} /> : <p className="text-xs text-muted-foreground">{device.ports.length} 个端口 · {device.rules.length} 条行为规则</p>}
-            </div>
-          </details></li>)}
-        </ul>
+        <PackageList devices={candidate.devices} />
       </>}
       {candidate.kind === "milo-bom" && <MiloSummary candidate={candidate} workspace={workspace} kept={checked.kept} />}
       {candidate.kind === "so101-bom" && <>

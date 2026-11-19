@@ -1,0 +1,120 @@
+{
+  "kind": "mechanical-package",
+  "schemaVersion": 1,
+  "rootKey": "[\"构元示教\",\"LX-T20-子装配\",\"1.0\"]",
+  "packages": [
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元示教",
+      "model": "LX-T20-子装配",
+      "revision": "1.0",
+      "source": {
+        "title": "转台 → 滑台 → 工具 · 机械装配",
+        "url": "",
+        "locator": "工程装配 turn-slide",
+        "excerpt": "装配包含 2 个直接实例，观察点为 tool/tip。部件参数和出处保留在各自的固定设备修订中。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "mechanics": {
+        "kind": "assembly",
+        "assembly": {
+          "schemaVersion": 1,
+          "kind": "mechanical-assembly",
+          "id": "turn-slide",
+          "name": "转台 → 滑台 → 工具",
+          "nodes": [
+            {
+              "id": "slide",
+              "packageKey": "[\"构元示教\",\"LX-滑台\",\"1.0\"]",
+              "parent": null
+            },
+            {
+              "id": "tool",
+              "packageKey": "[\"构元示教\",\"T20-工具\",\"1.0\"]",
+              "parent": {
+                "node": "slide",
+                "mount": "out"
+              }
+            }
+          ],
+          "output": {
+            "node": "tool",
+            "mount": "tip"
+          },
+          "commands": {
+            "slide": 40
+          }
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元示教",
+      "model": "LX-滑台",
+      "revision": "1.0",
+      "source": {
+        "title": "机械安装点示教件设计记录",
+        "url": "",
+        "locator": "SOURCE.md / LX-滑台",
+        "excerpt": "直线关节沿本地 X 正向移动，范围 0 至 100 mm，零位时输入和输出安装点重合。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "mechanics": {
+        "kind": "part",
+        "input": {
+          "positionMm": [0, 0, 0],
+          "quatWxyz": [1, 0, 0, 0]
+        },
+        "joint": {
+          "type": "slide",
+          "unit": "mm",
+          "axis": [1, 0, 0],
+          "range": [0, 100]
+        },
+        "outputs": [
+          {
+            "id": "out",
+            "positionMm": [0, 0, 0],
+            "quatWxyz": [1, 0, 0, 0]
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元示教",
+      "model": "T20-工具",
+      "revision": "1.0",
+      "source": {
+        "title": "机械安装点示教件设计记录",
+        "url": "",
+        "locator": "SOURCE.md / T20-工具",
+        "excerpt": "工具与父件刚性连接，从自身原点沿本地 X 正向 20 mm 处观察工具尖端。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "mechanics": {
+        "kind": "part",
+        "input": {
+          "positionMm": [0, 0, 0],
+          "quatWxyz": [1, 0, 0, 0]
+        },
+        "joint": {
+          "type": "fixed"
+        },
+        "outputs": [
+          {
+            "id": "tip",
+            "positionMm": [20, 0, 0],
+            "quatWxyz": [1, 0, 0, 0]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "schemaVersion": 1,
+      "manufacturer": "The Robot Studio / Hugging Face",
+      "model": "SO-101 base",
+      "revision": "a758567c3978",
+      "source": {
+        "title": "SO-101 Follower 新标定 MuJoCo 模型",
+        "url": "https://github.com/TheRobotStudio/SO-ARM100/blob/a758567c3978dfeefe282ede0500085a48fe8f78/Simulation/SO101/so101_new_calib.xml",
+        "locator": "body base / body shoulder",
+        "excerpt": "base 是场景中的固定基座。子刚体 shoulder 在父系中的 pos 为 0.0388353 -8.97657e-09 0.0624 m，quat(wxyz) 为 3.56167e-16 1.22818e-15 -1 -4.14635e-16。"
+      },
+      "ports": [],
+      "rules": [],
+      "mechanics": {
+        "kind": "part",
+        "input": {
+          "positionMm": [0, 0, 0],
+          "quatWxyz": [1, 0, 0, 0]
+        },
+        "joint": {
+          "type": "fixed"
+        },
+        "outputs": [
+          {
+            "id": "shoulder_pan",
+            "positionMm": [38.8353, -0.00000897657, 62.4],
+            "quatWxyz": [3.56167e-16, 1.22818e-15, -1, -4.14635e-16]
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "The Robot Studio / Hugging Face",
+      "model": "SO-101 shoulder_pan",
+      "revision": "a758567c3978",
+      "source": {
+        "title": "SO-101 Follower 新标定 MuJoCo 模型",
+        "url": "https://github.com/TheRobotStudio/SO-ARM100/blob/a758567c3978dfeefe282ede0500085a48fe8f78/Simulation/SO101/so101_new_calib.xml",
+        "locator": "body shoulder 内的 joint shoulder_pan 与子 body upper_arm",
+        "excerpt": "本地轴 0 0 1，原始关节限位 -1.9198621771937616 1.9198621771937634 rad。子刚体 upper_arm 在父系中的 pos 为 -0.0303992 -0.0182778 -0.0542 m，quat(wxyz) 为 0.5 -0.5 -0.5 -0.5。"
+      },
+      "ports": [],
+      "rules": [],
+      "mechanics": {
+        "kind": "part",
+        "input": {
+          "positionMm": [0, 0, 0],
+          "quatWxyz": [1, 0, 0, 0]
+        },
+        "joint": {
+          "type": "hinge",
+          "axis": [0, 0, 1],
+          "unit": "deg",
+          "range": [-110, 110]
+        },
+        "outputs": [
+          {
+            "id": "shoulder_lift",
+            "positionMm": [-30.3992, -18.2778, -54.2],
+            "quatWxyz": [0.5, -0.5, -0.5, -0.5]
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "The Robot Studio / Hugging Face",
+      "model": "SO-101 shoulder_lift",
+      "revision": "a758567c3978",
+      "source": {
+        "title": "SO-101 Follower 新标定 MuJoCo 模型",
+        "url": "https://github.com/TheRobotStudio/SO-ARM100/blob/a758567c3978dfeefe282ede0500085a48fe8f78/Simulation/SO101/so101_new_calib.xml",
+        "locator": "body upper_arm 内的 joint shoulder_lift 与子 body lower_arm",
+        "excerpt": "本地轴 0 0 1，原始关节限位 -1.7453292519943224 1.7453292519943366 rad。子刚体 lower_arm 在父系中的 pos 为 -0.11257 -0.028 1.73763e-16 m，quat(wxyz) 为 0.707107 -5.98613e-17 -2.58051e-17 0.707107。"
+      },
+      "ports": [],
+      "rules": [],
+      "mechanics": {
+        "kind": "part",
+        "input": {
+          "positionMm": [0, 0, 0],
+          "quatWxyz": [1, 0, 0, 0]
+        },
+        "joint": {
+          "type": "hinge",
+          "axis": [0, 0, 1],
+          "unit": "deg",
+          "range": [-100, 100]
+        },
+        "outputs": [
+          {
+            "id": "elbow_flex",
+            "positionMm": [-112.57, -28, 1.73763e-13],
+            "quatWxyz": [0.7071067811865475, -5.986128147598917e-17, -2.5805092014641316e-17, 0.7071067811865475]
+          }
+        ]
+      }
+    }
+  ],
+  "instances": [],
+  "connections": [],
+  "mechanisms": [
+    {
+      "schemaVersion": 1,
+      "kind": "mechanical-assembly",
+      "id": "so101-shoulder",
+      "name": "SO-101 肩部两关节 · 肘关节原点",
+      "nodes": [
+        {
+          "id": "base",
+          "packageKey": "[\"The Robot Studio / Hugging Face\",\"SO-101 base\",\"a758567c3978\"]",
+          "parent": null
+        },
+        {
+          "id": "shoulder_pan",
+          "packageKey": "[\"The Robot Studio / Hugging Face\",\"SO-101 shoulder_pan\",\"a758567c3978\"]",
+          "parent": {
+            "node": "base",
+            "mount": "shoulder_pan"
+          }
+        },
+        {
+          "id": "shoulder_lift",
+          "packageKey": "[\"The Robot Studio / Hugging Face\",\"SO-101 shoulder_lift\",\"a758567c3978\"]",
+          "parent": {
+            "node": "shoulder_pan",
+            "mount": "shoulder_lift"
+          }
+        }
+      ],
+      "output": {
+        "node": "shoulder_lift",
+        "mount": "elbow_flex"
+      },
+      "commands": {
+        "shoulder_pan": 30,
+        "shoulder_lift": -25
+      }
+    }
+  ]
+}

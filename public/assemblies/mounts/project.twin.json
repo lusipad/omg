@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元示教",
+      "model": "RZ-转台",
+      "revision": "1.0",
+      "source": {
+        "kind": "local",
+        "url": "",
+        "title": "机械安装点示教件设计记录",
+        "locator": "SOURCE.md / RZ-转台",
+        "excerpt": "铰链绕本地 Z 轴旋转，范围 −180° 至 180°，输入、输出安装点均在轴心。"
+      },
+      "ports": [],
+      "rules": [],
+      "mechanics": {
+        "kind": "part",
+        "input": {
+          "positionMm": [0, 0, 0],
+          "quatWxyz": [1, 0, 0, 0]
+        },
+        "joint": {
+          "type": "hinge",
+          "axis": [0, 0, 1],
+          "unit": "deg",
+          "range": [-180, 180]
+        },
+        "outputs": [
+          {
+            "id": "out",
+            "positionMm": [0, 0, 0],
+            "quatWxyz": [1, 0, 0, 0]
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元示教",
+      "model": "LX-滑台",
+      "revision": "1.0",
+      "source": {
+        "kind": "local",
+        "url": "",
+        "title": "机械安装点示教件设计记录",
+        "locator": "SOURCE.md / LX-滑台",
+        "excerpt": "直线关节沿本地 X 正向移动，范围 0 至 100 mm，零位时输入和输出安装点重合。"
+      },
+      "ports": [],
+      "rules": [],
+      "mechanics": {
+        "kind": "part",
+        "input": {
+          "positionMm": [0, 0, 0],
+          "quatWxyz": [1, 0, 0, 0]
+        },
+        "joint": {
+          "type": "slide",
+          "axis": [1, 0, 0],
+          "unit": "mm",
+          "range": [0, 100]
+        },
+        "outputs": [
+          {
+            "id": "out",
+            "positionMm": [0, 0, 0],
+            "quatWxyz": [1, 0, 0, 0]
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元示教",
+      "model": "T20-工具",
+      "revision": "1.0",
+      "source": {
+        "kind": "local",
+        "url": "",
+        "title": "机械安装点示教件设计记录",
+        "locator": "SOURCE.md / T20-工具",
+        "excerpt": "工具与父件刚性连接，从自身原点沿本地 X 正向 20 mm 处观察工具尖端。"
+      },
+      "ports": [],
+      "rules": [],
+      "mechanics": {
+        "kind": "part",
+        "input": {
+          "positionMm": [0, 0, 0],
+          "quatWxyz": [1, 0, 0, 0]
+        },
+        "joint": {
+          "type": "fixed"
+        },
+        "outputs": [
+          {
+            "id": "tip",
+            "positionMm": [20, 0, 0],
+            "quatWxyz": [1, 0, 0, 0]
+          }
+        ]
+      }
+    }
+  ],
+  "instances": [],
+  "connections": [],
+  "mechanisms": [
+    {
+      "schemaVersion": 1,
+      "kind": "mechanical-assembly",
+      "id": "turn-slide",
+      "name": "转台 → 滑台 → 工具",
+      "nodes": [
+        {
+          "id": "turn",
+          "packageKey": "[\"构元示教\",\"RZ-转台\",\"1.0\"]",
+          "parent": null
+        },
+        {
+          "id": "slide",
+          "packageKey": "[\"构元示教\",\"LX-滑台\",\"1.0\"]",
+          "parent": {
+            "node": "turn",
+            "mount": "out"
+          }
+        },
+        {
+          "id": "tool",
+          "packageKey": "[\"构元示教\",\"T20-工具\",\"1.0\"]",
+          "parent": {
+            "node": "slide",
+            "mount": "out"
+          }
+        }
+      ],
+      "output": {
+        "node": "tool",
+        "mount": "tip"
+      },
+      "commands": {
+        "turn": 90,
+        "slide": 40
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "kind": "mechanical-assembly",
+      "id": "slide-turn",
+      "name": "滑台 → 转台 → 工具",
+      "nodes": [
+        {
+          "id": "slide",
+          "packageKey": "[\"构元示教\",\"LX-滑台\",\"1.0\"]",
+          "parent": null
+        },
+        {
+          "id": "turn",
+          "packageKey": "[\"构元示教\",\"RZ-转台\",\"1.0\"]",
+          "parent": {
+            "node": "slide",
+            "mount": "out"
+          }
+        },
+        {
+          "id": "tool",
+          "packageKey": "[\"构元示教\",\"T20-工具\",\"1.0\"]",
+          "parent": {
+            "node": "turn",
+            "mount": "out"
+          }
+        }
+      ],
+      "output": {
+        "node": "tool",
+        "mount": "tip"
+      },
+      "commands": {
+        "turn": 90,
+        "slide": 40
+      }
+    }
+  ]
+}

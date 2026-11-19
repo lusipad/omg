@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元示教",
+  "model": "LX-滑台",
+  "revision": "1.0",
+  "source": {
+    "kind": "local",
+    "url": "",
+    "title": "机械安装点示教件设计记录",
+    "locator": "SOURCE.md / LX-滑台",
+    "excerpt": "直线关节沿本地 X 正向移动，范围 0 至 100 mm，零位时输入和输出安装点重合。"
+  },
+  "ports": [],
+  "rules": [],
+  "mechanics": {
+    "kind": "part",
+    "input": {
+      "positionMm": [0, 0, 0],
+      "quatWxyz": [1, 0, 0, 0]
+    },
+    "joint": {
+      "type": "slide",
+      "axis": [1, 0, 0],
+      "unit": "mm",
+      "range": [0, 100]
+    },
+    "outputs": [
+      {
+        "id": "out",
+        "positionMm": [0, 0, 0],
+        "quatWxyz": [1, 0, 0, 0]
+      }
+    ]
+  }
+}

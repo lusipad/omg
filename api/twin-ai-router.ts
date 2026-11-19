@@ -75,9 +75,10 @@ function verifyDraft(raw: unknown, source: DeviceSourceInput): DevicePackage {
   let device: DevicePackage;
   try {
     device = parseDevicePackage(raw);
-  } catch {
-    throw invalidDraft("模型草案未通过设备包校验，请核对模型使用的端口和声明式规则。");
+  } catch (cause) {
+    throw invalidDraft("模型草案未通过设备包校验。" + (cause instanceof Error ? cause.message : "请核对设备字段。"));
   }
+  if (device.mechanics?.kind === "assembly") throw invalidDraft("这份资料用于提取单个部件。封装子装配需要在装配工作台核对各部件的修订和连接。");
   if ("servo" in device) throw invalidDraft("伺服草案需要在双链接入口核对驱动器、电机和配套选型表。");
   if (device.manufacturer !== source.manufacturer || device.model !== source.model || device.revision !== source.revision) {
     throw invalidDraft("草案中的设备身份或修订与提交的资料不符。");

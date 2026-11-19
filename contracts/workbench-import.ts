@@ -1,5 +1,6 @@
 import { MAX_PROJECT_JSON_BYTES, type MaterialRow } from "./import-catalog";
 import { parseLinearAssembly, type LinearAssembly } from "./linear-assembly";
+import { parseMechanicalAssembly, parseMechanicalBundle, type MechanicalAssembly, type MechanicalBundle } from "./mechanical-assembly";
 import { hasMaterialTableHeader, parseMarkdownMaterialTable, parseMaterialTable } from "./material-import";
 import { parseMiloBom, type MiloBom } from "./milo-bom";
 import { MILO_MAX_PROGRAM_CHARS } from "./milo-motion";
@@ -11,6 +12,8 @@ export type TextImportHint = "auto" | "manual" | "bom" | "gcode" | "json";
 export type ParsedTextImport =
   | { kind: "device"; device: DevicePackage }
   | { kind: "assembly"; assembly: LinearAssembly }
+  | { kind: "mechanism"; assembly: MechanicalAssembly }
+  | { kind: "mechanical-bundle"; bundle: MechanicalBundle }
   | { kind: "project"; workspace: TwinWorkspace }
   | { kind: "milo-bom"; bom: MiloBom }
   | { kind: "so101-bom"; bom: So101BomRow[] }
@@ -156,14 +159,20 @@ export function parseImportText(text: string, name: string, options: { hint?: Te
   const fence = outerFence(plain), body = fence?.body ?? plain;
   const inferredJson = /^\s*(?:\{\s*(?:["}]|$)|\[\s*(?:\{|\]))/.test(body) || fence?.language === "json";
   const asJson = format === "json" || (format === "auto" && inferredJson);
-  const assemblyMarker = !asJson && (/^\s*\{/.test(body) || fence?.language === "json") && /"kind"\s*:\s*"linear-axis-assembly"/.test(body);
-  if (asJson || assemblyMarker) {
+  const mechanicalMarker = !asJson && (/^\s*\{/.test(body) || fence?.language === "json") &&
+    /"kind"\s*:\s*"(?:linear-axis-assembly|mechanical-assembly|mechanical-package)"|"mechanics"\s*:/.test(body);
+  if (asJson || mechanicalMarker) {
     byteLimit(text, true);
     if (fence && fence.body === undefined) throw new Error("JSON 代码围栏未闭合。");
     let raw: unknown;
     try { raw = JSON.parse(body.trim()); } catch { throw new Error("JSON 格式有误，请检查括号、引号和内容完整性。"); }
-    if (raw && typeof raw === "object" && "kind" in raw && raw.kind === "linear-axis-assembly") {
-      return { kind: "assembly", assembly: parseLinearAssembly(raw) };
+    if (raw && typeof raw === "object") {
+      if ("kind" in raw) {
+        if (raw.kind === "linear-axis-assembly") return { kind: "assembly", assembly: parseLinearAssembly(raw) };
+        if (raw.kind === "mechanical-assembly") return { kind: "mechanism", assembly: parseMechanicalAssembly(raw) };
+        if (raw.kind === "mechanical-package") return { kind: "mechanical-bundle", bundle: parseMechanicalBundle(raw) };
+      }
+      if (Object.hasOwn(raw, "mechanics")) return { kind: "device", device: parseDevicePackage(raw) };
     }
     if (asJson) return jsonImport(raw, name);
   }

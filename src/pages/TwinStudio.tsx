@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
+import { nanoid } from "nanoid";
 import { ArrowLeft, ChevronDown, CircuitBoard, Download, FilePlus2, FolderOpen, Github, LayoutGrid, Package, Upload, Workflow } from "lucide-react";
 import { IS_PAGES } from "@/const";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
@@ -8,8 +9,9 @@ import { matchMaterials } from "@contracts/material-import";
 import { applyMiloBomImport, applySo101BomImport, importedServoPair, mergeImportedMaterials } from "@contracts/import-apply";
 import { initialMiloWorkspace } from "@contracts/milo-workspace";
 import { upsertLinearAssembly, type LinearAssembly } from "@contracts/linear-assembly";
+import { installMechanicalBundle, upsertMechanicalAssembly, type MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { deviceSourceFromMaterial, type DeviceSourceInput } from "@contracts/twin-extract";
-import { getWorkbenchTargets, readStudioRoute, studioHref, type StudioRoute, type StudioTarget } from "@contracts/studio-navigation";
+import { getWorkbenchTargets, publishedStudioFile, readStudioRoute, studioHref, type StudioRoute, type StudioTarget } from "@contracts/studio-navigation";
 import { addInstance, emptyWorkspace, installPackage, nextInstanceName, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,6 +25,7 @@ import { ImportStartContext, useWorkbenchImport } from "@/hooks/useWorkbenchImpo
 import WorkbenchImportPreview from "@/components/WorkbenchImportPreview";
 
 const storageKey = "gouyuan.twin.workspace.v1";
+const openedProjectKey = storageKey + ".opened";
 const ImportCenter = lazy(() => import("@/components/ImportCenter"));
 const StudioExamples = lazy(() => import("@/components/StudioExamples"));
 const destinations = [
@@ -33,13 +36,15 @@ const destinations = [
 
 function readLocalWorkspace() {
   let raw: string | null = null;
+  let epoch: string | null = null;
   try {
     raw = localStorage.getItem(storageKey);
+    epoch = localStorage.getItem(openedProjectKey);
     const workspace = raw === null ? emptyWorkspace() : parseWorkspace(JSON.parse(raw));
-    return { workspace, raw, damaged: false, warning: "" };
+    return { workspace, raw, epoch, damaged: false, warning: "" };
   } catch {
     return {
-      workspace: emptyWorkspace(), raw, damaged: raw !== null,
+      workspace: emptyWorkspace(), raw, epoch, damaged: raw !== null,
       warning: raw === null
         ? "浏览器存储不可用。请在关闭页面前导出工程。"
         : "已有存档未能读取。可下载原存档，再从工程文件菜单导入备份或新建工程。",
@@ -59,6 +64,7 @@ export default function TwinStudio() {
   const [selection, setSelection] = useState<{ driveKey?: string; motorKey?: string; version: number }>({ version: 0 });
   const [generation, setGeneration] = useState(0);
   const [openedProject, setOpenedProject] = useState(0);
+  const observedEpoch = useRef(session.epoch);
   const [sourceDraft, setSourceDraft] = useState<{ value: Partial<DeviceSourceInput>; key: number }>();
   const [incomingSource, setIncomingSource] = useState<DeviceDraftPatch>();
   const sourceToken = useRef(0);
@@ -72,8 +78,8 @@ export default function TwinStudio() {
   const remembered = targets.find(item => item.id === lastTarget)?.id;
   const workbenchTarget = route.view === "workbench" && route.exampleId === undefined && route.unavailableTarget === undefined
     ? route.target ?? remembered ?? targets[0]?.id : undefined;
-  const editingAssembly = workbenchTarget === "assembly-new" ||
-    (workbenchTarget?.startsWith("assembly:") && targets.some(item => item.id === workbenchTarget));
+  const editingAssembly = workbenchTarget === "assembly-new" || workbenchTarget === "mechanism-new" ||
+    ((workbenchTarget?.startsWith("assembly:") || workbenchTarget?.startsWith("mechanism:")) && targets.some(item => item.id === workbenchTarget));
   const intake = useWorkbenchImport((model, onInstalled) => {
     setIncomingModel({ selection: model, token: ++modelToken.current, onInstalled });
     go({ view: "workbench", target: "incoming" });
@@ -82,6 +88,22 @@ export default function TwinStudio() {
   const routeKey = location.key;
   const previousRoute = useRef(routeKey);
   const pendingHref = useRef("");
+  const previewedLink = useRef<string | null>(null);
+  const sharedSource = route.view === "resources" ? route.source : undefined;
+  const openImportText = intake.text;
+  useEffect(() => {
+    if (!sharedSource || previewedLink.current === routeKey) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      previewedLink.current = routeKey;
+      try {
+        const base = new URL(import.meta.env.BASE_URL, window.location.origin);
+        openImportText(publishedStudioFile(sharedSource, base.href), sharedSource.split("/").at(-1) ?? sharedSource);
+      } catch (cause) { setNotice(cause instanceof Error ? cause.message : "无法打开分享的资料。"); }
+    });
+    return () => { active = false; };
+  }, [sharedSource, routeKey, openImportText]);
   const target = route.view === "workbench" ? route.target : undefined;
   useLayoutEffect(() => {
     if (previousRoute.current === routeKey) return;
@@ -105,16 +127,22 @@ export default function TwinStudio() {
 
   useEffect(() => {
     const sync = (event: StorageEvent) => {
-      if (event.storageArea !== localStorage || (event.key !== storageKey && event.key !== null)) return;
+      if (event.storageArea !== localStorage || (event.key !== storageKey && event.key !== openedProjectKey && event.key !== null)) return;
+      const latest = readLocalWorkspace();
+      const reopened = latest.epoch !== observedEpoch.current || event.key === null;
+      if (reopened) {
+        observedEpoch.current = latest.epoch;
+        setOpenedProject(n => n + 1);
+      } else if (event.key === openedProjectKey) return;
       cancelImport();
       setIncomingModel(null);
-      setSession(readLocalWorkspace());
+      setSession(latest);
       setSourceDraft(undefined);
       setIncomingSource(undefined);
       setGeneration((value) => value + 1);
       setSelection({ version: 0 });
       setLastTarget(undefined);
-      setNotice("已载入其他标签页保存的工程。");
+      setNotice(reopened ? "已切换到其他标签页打开的完整工程。" : "已载入其他标签页保存的工程。");
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
@@ -130,17 +158,23 @@ export default function TwinStudio() {
       next = { ...next, catalog: parseImportCatalog(catalog, next.packages) };
     }
     const raw = JSON.stringify(next);
-    if ((next.catalog || next.assemblies?.length) && new TextEncoder().encode(raw).byteLength > MAX_PROJECT_JSON_BYTES) {
+    if ((next.catalog || next.assemblies?.length || next.mechanisms?.length || next.packages.some(p => p.mechanics)) &&
+      new TextEncoder().encode(raw).byteLength > MAX_PROJECT_JSON_BYTES) {
       throw new Error("工程文字资料超过 8 MiB，请将本次清单拆分到单独工程。");
     }
-    let current: string | null;
+    let current: string | null, epoch: string | null;
     try {
       current = localStorage.getItem(storageKey);
+      epoch = localStorage.getItem(openedProjectKey);
     } catch {
       setSession({ ...session, workspace: next, warning: "当前修改仅保存在本次会话中，请导出工程备份。" });
       return;
     }
-    if (current !== session.raw) {
+    if (current !== session.raw || epoch !== session.epoch) {
+      if (epoch !== observedEpoch.current) {
+        observedEpoch.current = epoch;
+        setOpenedProject(n => n + 1);
+      }
       cancelImport();
       setIncomingModel(null);
       setSession(readLocalWorkspace());
@@ -156,10 +190,20 @@ export default function TwinStudio() {
     if (!replaceDamaged && raw === current && !session.warning) return;
     try {
       localStorage.setItem(storageKey, raw);
-      setSession({ workspace: next, raw, damaged: false, warning: "" });
     } catch {
-      setSession({ workspace: next, raw: current, damaged: false, warning: "浏览器写入失败。当前工程仍可导出，请保存备份。" });
+      setSession({ workspace: next, raw: current, epoch, damaged: false, warning: "浏览器写入失败。当前工程仍可导出，请保存备份。" });
+      return;
     }
+    let warning = "";
+    if (replaceDamaged) {
+      // 整档恢复与普通改动可以生成完全相同的 JSON，其他标签页仍须抛弃旧工程的草稿。
+      try {
+        const nextEpoch = nanoid();
+        localStorage.setItem(openedProjectKey, nextEpoch);
+        observedEpoch.current = epoch = nextEpoch;
+      } catch { warning = "工程已保存，浏览器未能同步此次工程切换。请在其他打开的标签页重新载入。"; }
+    }
+    setSession({ workspace: next, raw, epoch, damaged: false, warning });
   }
 
   function save(next: TwinWorkspace) {
@@ -169,7 +213,7 @@ export default function TwinStudio() {
   }
 
   function confirmOpen(label: string) {
-    const occupied = workspace.packages.length || workspace.so101 || workspace.milo || workspace.assemblies?.length || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
+    const occupied = workspace.packages.length || workspace.so101 || workspace.milo || workspace.assemblies?.length || workspace.mechanisms?.length || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
     return !occupied || window.confirm(`用“${label}”替换当前本机工程？如需保留当前工程，请先取消并导出备份。`);
   }
 
@@ -181,8 +225,9 @@ export default function TwinStudio() {
     setOpenedProject((value) => value + 1);
     setSelection({ version: 0 });
     setLastTarget(undefined); setShowPairSource(false);
-    if (next.assemblies?.length === 1) go({ view: "workbench", target: `assembly:${next.assemblies[0].id}` }, message);
-    else if (next.assemblies?.length) go({ view: "resources", section: "system" }, message);
+    if ((next.mechanisms?.length ?? 0) + (next.assemblies?.length ?? 0) > 1) go({ view: "resources", section: "system" }, message);
+    else if (next.mechanisms?.length) go({ view: "workbench", target: `mechanism:${next.mechanisms[0].id}` }, message);
+    else if (next.assemblies?.length) go({ view: "workbench", target: `assembly:${next.assemblies[0].id}` }, message);
     else if (next.milo) go({ view: "workbench", target: "milo" }, message);
     else if (next.catalog?.models.length || next.catalog?.materials.length) go({ view: "resources" }, message);
     else if (next.so101) go({ view: "workbench", target: "so101" }, message);
@@ -241,6 +286,18 @@ export default function TwinStudio() {
           persist(upsertLinearAssembly(workspace, item.assembly));
           go({ view: "workbench", target: `assembly:${item.assembly.id}` }, `已导入装配“${item.assembly.name}”。`);
           break;
+        case "mechanism":
+          persist(upsertMechanicalAssembly(workspace, item.assembly));
+          go({ view: "workbench", target: `mechanism:${item.assembly.id}` }, `已导入装配“${item.assembly.name}”。`);
+          break;
+        case "mechanical-bundle": {
+          const next = installMechanicalBundle(workspace, item.bundle);
+          persist(next);
+          const message = "已安装子装配及其引用的设备修订。";
+          if (editingAssembly) setNotice(message);
+          else go({ view: "resources", section: "device" }, message);
+          break;
+        }
         case "milo-bom":
           persist(applyMiloBomImport(workspace, item.bom, item.source || item.name));
           setBomRevision(v => v + 1);
@@ -299,6 +356,10 @@ export default function TwinStudio() {
   }
 
   function assemble(pkg: DevicePackage) {
+    if (pkg.mechanics) {
+      go({ view: "workbench", target: "mechanism-new", part: packageKey(pkg) });
+      return;
+    }
     if (pkg.servo) {
       const key = packageKey(pkg);
       const role = pkg.servo.kind;
@@ -327,6 +388,11 @@ export default function TwinStudio() {
   function saveAssembly(assembly: LinearAssembly) {
     save(upsertLinearAssembly(workspace, assembly));
     go({ view: "workbench", target: `assembly:${assembly.id}` }, "", target === "assembly-new");
+  }
+
+  function saveMechanism(assembly: MechanicalAssembly) {
+    save(upsertMechanicalAssembly(workspace, assembly));
+    go({ view: "workbench", target: `mechanism:${assembly.id}` }, "", target === "mechanism-new");
   }
 
   return (
@@ -408,7 +474,8 @@ export default function TwinStudio() {
         </section>
         <StudioRunArea route={route.view === "workbench" ? route : null} workspace={workspace} generation={generation} openedProject={openedProject}
           bomRevision={bomRevision} servoChoice={selection} targets={targets} target={workbenchTarget} incoming={incomingModel}
-          onChange={save} onSaveAssembly={saveAssembly} onNavigate={go}
+          onChange={save} onSaveAssembly={saveAssembly} onSaveMechanism={saveMechanism}
+          onInstallBundle={bundle => save(installMechanicalBundle(workspace, bundle))} onNavigate={go}
           onApplyExample={applyExample} onImportFile={importFile} onImportText={importText} />
         {route.view === "examples" && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开示例库…</p>}>
           <StudioExamples />

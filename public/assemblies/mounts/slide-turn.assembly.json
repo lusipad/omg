@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "kind": "mechanical-assembly",
+  "id": "slide-turn",
+  "name": "滑台 → 转台 → 工具",
+  "nodes": [
+    {
+      "id": "slide",
+      "packageKey": "[\"构元示教\",\"LX-滑台\",\"1.0\"]",
+      "parent": null
+    },
+    {
+      "id": "turn",
+      "packageKey": "[\"构元示教\",\"RZ-转台\",\"1.0\"]",
+      "parent": {
+        "node": "slide",
+        "mount": "out"
+      }
+    },
+    {
+      "id": "tool",
+      "packageKey": "[\"构元示教\",\"T20-工具\",\"1.0\"]",
+      "parent": {
+        "node": "turn",
+        "mount": "out"
+      }
+    }
+  ],
+  "output": {
+    "node": "tool",
+    "mount": "tip"
+  },
+  "commands": {
+    "turn": 90,
+    "slide": 40
+  }
+}

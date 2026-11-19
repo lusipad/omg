@@ -39,6 +39,11 @@ function identify(fields: Fields, kind: "doc" | "bom"): MaterialRow {
   return { id: `${kind}-${hash.toString(16).padStart(32, "0")}`, ...fields };
 }
 
+/** 数量采用长度、面积、体积或质量单位时，装配不能直接将它与所需部件件数比较。 */
+export function isMeasuredMaterialUnit(unit?: string): boolean {
+  return /^(?:[cmk]?m[23]?|[mk]?g|t|ml|l|米|毫米|厘米|千米|克|公斤|千克|吨|毫升|升|平方米|立方米)$/i.test(unit?.trim().normalize("NFKC") ?? "");
+}
+
 export function createDocumentMaterial(name: string, text: string, source?: string): MaterialRow {
   if (!name.trim()) throw new Error("请输入资料名称或选择带文件名的手册。");
   if (!text.trim()) throw new Error("设备资料正文为空。");

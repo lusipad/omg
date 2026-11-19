@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import MaterialDetails, { MaterialIntake, type MaterialIntakeProps } from "./ImportCenterMaterials";
 
 const acceptedSuffixes = WORKBENCH_FILE_ACCEPT.split(",").filter((entry) => entry.startsWith("."));
-type System = "so101" | "milo" | "servo" | "wiring" | `assembly:${string}`;
+type System = "so101" | "milo" | "servo" | "wiring" | `assembly:${string}` | `mechanism:${string}`;
 type Props = MaterialIntakeProps & {
   workspace: TwinWorkspace;
   onChange: (next: TwinWorkspace) => void;
@@ -77,7 +77,7 @@ function ImportEntry({ onImportFiles, onImportText }: MaterialIntakeProps) {
       setPasteOpen(false);
     }}>
       <label className="block"><span className="field-label">内容或资料链接</span>
-        <Textarea autoFocus aria-label="待导入内容或链接" className="h-32 resize-y" placeholder="粘贴模型 XML、设备包 JSON、清单、手册原文、G 代码或一个 HTTP(S) 链接"
+        <Textarea autoFocus aria-label="待导入内容或链接" className="h-32 resize-y" placeholder="粘贴模型 XML、设备包或装配 JSON、清单、手册、G 代码或资料链接"
           value={text} onChange={(event) => edit("text", event.target.value)} />
       </label>
       <details className="text-xs" open={metadataOpen} onToggle={(event) => setMetadataOpen(event.currentTarget.open)}>
@@ -115,6 +115,10 @@ type Resource = { id: string; category: string; name: string; detail: string; se
 function projectResources(workspace: TwinWorkspace) {
   const rows: Resource[] = [];
   const { so101, milo, servoAxis } = workspace;
+  for (const assembly of workspace.mechanisms ?? []) {
+    rows.push({ id: `mechanism:${assembly.id}`, kind: "system", system: `mechanism:${assembly.id}`, section: "system",
+      category: "机械装配", name: assembly.name, detail: `${assembly.nodes.length} 个部件实例`, action: "打开装配" });
+  }
   for (const assembly of workspace.assemblies ?? []) {
     rows.push({ id: `assembly:${assembly.id}`, kind: "system", system: `assembly:${assembly.id}`, section: "system",
       category: "直线轴装配", name: assembly.name, detail: `${assembly.modules.length} 种轴模块 · ${assembly.axes.length} 根轴`, action: "打开装配" });
@@ -132,8 +136,12 @@ function projectResources(workspace: TwinWorkspace) {
     rows.push({ id: "system:servo", kind: "system", system: "servo", section: "system", category: "伺服装配", name: "伺服单轴",
       detail: [models.get(servoAxis.driveKey), models.get(servoAxis.motorKey), `目标 ${servoAxis.targetDeg}°`].filter(Boolean).join(" · "), action: "打开伺服轴" });
   }
-  for (const device of workspace.packages) rows.push({ kind: "device", section: "device", id: "pkg:" + packageKey(device), category: "设备包", name: device.model,
-    detail: `${device.manufacturer} · ${device.revision} · ${device.servo ? (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机") : `${device.ports.length} 个端口`}`, device });
+  for (const device of workspace.packages) {
+    const kind = device.mechanics ? (device.mechanics.kind === "assembly" ? "机械子装配" : "机械部件")
+      : device.servo ? (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机") : `${device.ports.length} 个端口`;
+    rows.push({ kind: "device", section: "device", id: "pkg:" + packageKey(device), category: "设备包", name: device.model,
+      detail: `${device.manufacturer} · ${device.revision} · ${kind}`, device });
+  }
   for (const model of workspace.catalog?.models ?? []) rows.push({ kind: "physics", section: "physics", id: "model:" + model.id, category: "物理模型", name: model.name,
     detail: `${model.entry} · ${model.id.slice(0, 10)}`, model });
   for (const row of workspace.catalog?.materials ?? []) rows.push({ kind: "material", section: "material", id: "material:" + row.id,
