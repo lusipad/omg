@@ -4,8 +4,10 @@ import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 
 export function isStructureOnly(pkg: DevicePackage): boolean {
-  return !!pkg.composition && !(pkg.factory || pkg.feed || pkg.mechanics || pkg.servo || pkg.ports.length);
+  return !!pkg.composition && !(pkg.factory || pkg.feed || pkg.mechanics || pkg.servo || pkg.motorPhysics || pkg.ports.length);
 }
+
+export const motorRoleNames = { stator: "定子", rotor: "转子", bearing: "轴承", motor: "自组伺服电机" } as const;
 
 export function deviceLibraryGroups(packages: readonly DevicePackage[]) {
   const children = new Set(packages.flatMap(pkg => getDeviceParts(pkg).map(part => part.packageKey)));

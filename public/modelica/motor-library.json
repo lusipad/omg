@@ -1,0 +1,66 @@
+{
+  "package": "GouyuanMotor",
+  "version": "1.0.0",
+  "source": "GouyuanMotor.mo",
+  "uses": { "Gouyuan": "1.0.0", "Modelica": "4.0.0" },
+  "assembly": {
+    "id": "GouyuanMotor.CncFeedAxis",
+    "states": ["motor.rotor.inertia.phi", "motor.rotor.inertia.w", "motor.stator.currentA"],
+    "parameters": {
+      "targetMm": { "unit": "mm" },
+      "leadMmPerRev": { "unit": "mm/rev" },
+      "tableMassKg": { "unit": "kg" },
+      "phaseResistanceOhm": { "unit": "Ohm" },
+      "qInductanceH": { "unit": "H" },
+      "windingTurns": { "unit": "1" },
+      "windingFactor": { "unit": "1" },
+      "windingCurrentLimitA": { "unit": "A" },
+      "polePairs": { "unit": "1" },
+      "rotorFluxWb": { "unit": "Wb" },
+      "rotorInertiaKgM2": { "unit": "kg.m2" },
+      "bearingViscousNmS": { "unit": "N.m.s/rad" },
+      "bearingCount": { "unit": "1" },
+      "driveVoltageLimitV": { "unit": "V" },
+      "driveCurrentLimitA": { "unit": "A" },
+      "driveSpeedLimitRpm": { "unit": "rpm" },
+      "driveReferenceInertiaKgM2": { "unit": "kg.m2" },
+      "currentGainOhm": { "unit": "Ohm" }
+    },
+    "outputs": {
+      "positionMm": "mm", "velocityMmS": "mm/s", "angleDeg": "deg",
+      "speedRpm": "rpm", "currentA": "A", "motorTorqueNm": "N.m"
+    }
+  },
+  "components": {
+    "stator": {
+      "id": "GouyuanMotor.StatorWinding",
+      "parameters": {
+        "phaseResistanceOhm": { "field": "phaseResistanceOhm", "unit": "Ohm" },
+        "qInductanceH": { "field": "qInductanceH", "unit": "H" },
+        "windingTurns": { "field": "windingTurns", "unit": "1" },
+        "windingFactor": { "field": "windingFactor", "unit": "1" },
+        "windingCurrentLimitA": { "field": "windingCurrentLimitA", "unit": "A" },
+        "polePairs": { "field": "polePairs", "unit": "1" },
+        "statorBoreMm": { "field": "statorBoreMm", "unit": "mm" }
+      }
+    },
+    "rotor": {
+      "id": "GouyuanMotor.PermanentMagnetRotor",
+      "parameters": {
+        "rotorFluxWb": { "field": "rotorFluxWb", "unit": "Wb" },
+        "rotorInertiaKgM2": { "field": "rotorInertiaKgM2", "unit": "kg.m2" },
+        "polePairs": { "field": "polePairs", "unit": "1" },
+        "rotorDiameterMm": { "field": "rotorDiameterMm", "unit": "mm" },
+        "bearingSeatMm": { "field": "bearingSeatMm", "unit": "mm" }
+      }
+    },
+    "bearing": {
+      "id": "GouyuanMotor.BearingSupport",
+      "parameters": {
+        "bearingViscousNmS": { "field": "bearingViscousNmS", "unit": "N.m.s/rad" },
+        "boreMm": { "field": "boreMm", "unit": "mm" }
+      }
+    },
+    "motor": { "id": "GouyuanMotor.PMServoMotor" }
+  }
+}

@@ -14,7 +14,9 @@ describe("教学车间的多级物理 BOM", () => {
     const roots = ws.packages.filter(p => p.factory);
     const all = deviceCompositionClosure(ws.packages, roots.map(packageKey));
     expect(all.missing).toEqual([]);
-    expect(new Set(all.packages.map(packageKey))).toEqual(new Set(installed.keys()));
+    const optionalMotorParts = ws.packages.filter(p => p.motorPhysics);
+    expect(optionalMotorParts).toHaveLength(6);
+    expect(new Set([...all.packages, ...optionalMotorParts].map(packageKey))).toEqual(new Set(installed.keys()));
     for (const device of roots) {
       const one = rollupDeviceParts(ws.packages, [{ packageKey: packageKey(device), quantity: 1 }]);
       expect(one.complete).toBe(true);

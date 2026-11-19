@@ -105,12 +105,14 @@ def check_cnc_part(case, mapping, rows, makespan):
     source = machine["parameterSources"]["feedMmMin"]
     chain = [json.loads(key) for key in source["packagePath"]]
     feed, service_s = (600, 51) if reduced else (900, 36)
+    base = json.loads((ROOT / "public/assemblies/cnc-factory/devices/cnc-feed.device.json").read_text(encoding="utf-8"))
+    expected_revision = base["revision"] + ("-reduced-feed" if reduced else "")
     require(machine["slot"] == f"Device{slot}" and machine["model"] == "GouyuanFactory.FeedCNC" and
             source["kind"] == "part" and source["path"] == ["feed", "x"] and source["rating"] == "nominalFeed" and
             source["value"] == feed and source["unit"] == "mm/min", "Incorrect CNC-B feed parameter or slot path")
     require(len(chain) == 3 and source["packagePath"][0] == machine["packageKey"] and
             source["packagePath"][2] == source["packageKey"] and
-            chain[0] == ["构元教学件", "CELL-CNC-F900", "2-reduced-feed" if reduced else "2"] and
+            chain[0] == [base["manufacturer"], base["model"], expected_revision] and
             len(chain[1]) == 3 and chain[1][:2] == ["构元教学件", "CNC-FEED-900"] and
             bool(chain[1][2]) and ((chain[1][2] != "1") == reduced) and
             chain[2] == ["构元教学件", f"FEED-AXIS-{feed}", "1"], "Incorrect CNC-B part revision chain")

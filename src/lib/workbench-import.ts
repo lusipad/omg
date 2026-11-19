@@ -9,6 +9,7 @@ import {
 import { IS_PAGES } from "@/const";
 import { downloadableSource } from "./bom-sources";
 import type { ModelSelection, StoredModel } from "./model-files";
+import type { MotorAxisLocation } from "@contracts/studio-navigation";
 import { fetchSourceText } from "./twin-source-text";
 
 export type WorkbenchImportOptions = { hint?: TextImportHint; source?: string; title?: string };
@@ -16,7 +17,7 @@ type Origin = { name: string; source?: string; title?: string };
 export type WorkbenchImportCandidate = Origin & (
   | Exclude<ParsedTextImport, { kind: "materials" | "project" }>
   | (Extract<ParsedTextImport, { kind: "materials" }> & { text: string })
-  | (Extract<ParsedTextImport, { kind: "project" }> & { models?: StoredModel[] })
+  | (Extract<ParsedTextImport, { kind: "project" }> & { models?: StoredModel[]; motorFocus?: MotorAxisLocation })
   | { kind: "source-link"; url: string }
 );
 export type WorkbenchImportResult = WorkbenchImportCandidate | (Origin & { kind: "model"; selection: ModelSelection });

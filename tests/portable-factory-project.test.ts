@@ -28,7 +28,11 @@ describe("可移植的双线数控车间", () => {
       if (candidate.kind !== "device") throw new Error("缺少独立设备包 " + name);
       return candidate.device;
     });
-    expect(individual.every(device => device.revision === "2" && device.composition?.kind === "assembly")).toBe(true);
+    expect(individual.every(device => device.composition?.kind === "assembly")).toBe(true);
+    expect(individual.map(device => device.revision)).toEqual(["2", "2", "2", "2", "2", "2", "3", "3"]);
+    for (const cnc of individual.slice(6)) {
+      expect(cnc.axisPorts).toMatchObject([{ id: "x", path: ["feed", "x"], motorSlot: "motor", fit: "EDU-FRAME-40" }]);
+    }
     expect(children.devices.every(device => !device.factory)).toBe(true);
     expect(library.devices).toEqual([...individual, ...children.devices]);
     const installed = [...individual, ...children.devices].reduce(installPackage, emptyWorkspace());
@@ -70,7 +74,7 @@ describe("可移植的双线数控车间", () => {
     expect(workspace.packages.filter(p => p.factory?.modelRef.version === "1.0.0")).toHaveLength(8);
   });
 
-  it("旧车间采购记录与结构修订 2 的采购记录各自保持原绑定", () => {
+  it("旧车间采购记录与当前设备采购记录各自保持原绑定", () => {
     const { workspace, layout } = example();
     const catalog = new Map(workspace.packages.map(p => [packageKey(p), p]));
     const older = workspace.packages.filter(p => p.factory).map(root => {
@@ -78,9 +82,10 @@ describe("可移植的双线数控车间", () => {
       const { parameters } = resolveFactoryParameters(root, getFactoryModel(modelRef)!, catalog);
       const old = { ...root, revision: "1", factory: { modelRef, parameters } };
       delete old.composition;
+      delete old.axisPorts;
       return old;
     });
-    const oldCsv = asset("bom.csv").replaceAll("双线数控车间教学设计 · 整机修订 2", "双线数控车间教学设计");
+    const oldCsv = asset("bom.csv").replace(/双线数控车间教学设计 · 整机修订 [23]/g, "双线数控车间教学设计");
     const oldBom = parseImportText(oldCsv, "bom.csv"), currentBom = open("bom.csv");
     if (oldBom.kind !== "materials" || currentBom.kind !== "materials") throw new Error("缺少可核对的采购行");
     const prior = mergeImportedMaterials(older.reduce(installPackage, emptyWorkspace()), oldBom.rows);
@@ -97,7 +102,39 @@ describe("可移植的双线数控车间", () => {
     const rows = new Map(mixed.catalog!.materials.map(row => [row.id, row]));
     expect(rows.size).toBe(16);
     for (const row of oldBom.rows) expect(JSON.parse(rows.get(row.id)!.binding!.key)[2]).toBe("1");
-    for (const row of currentBom.rows) expect(JSON.parse(rows.get(row.id)!.binding!.key)[2]).toBe("2");
+    for (const row of currentBom.rows) {
+      expect(rows.get(row.id)!.binding!.key).toBe(workspace.catalog!.materials.find(current => current.id === row.id)!.binding!.key);
+    }
     expect(inspectFactoryLayout(mixed, layout)).toEqual([]);
+  });
+
+  it("升级带 X 轴调试口的 CNC 时，六种其他整机及历史 CNC 采购行可继续使用", () => {
+    const { workspace, layout } = example();
+    const oldCnc = workspace.packages.filter(p => p.axisPorts?.length).map(p => {
+      const previous = { ...p, revision: "2" };
+      delete previous.axisPorts;
+      return previous;
+    });
+    const oldBill = parseImportText(asset("bom.csv").replaceAll("整机修订 3", "整机修订 2"), "bom.csv");
+    if (oldBill.kind !== "materials") throw new Error("缺少修订 2 采购资料");
+    const other = workspace.packages.filter(p => !p.axisPorts?.length && !p.motorPhysics);
+    const saved = mergeImportedMaterials([...oldCnc, ...other].reduce(installPackage, emptyWorkspace()), oldBill.rows);
+    const oldKeys = new Map(oldCnc.map(p => [p.model, packageKey(p)]));
+    const oldLayout = { ...layout, resources: layout.resources.map(r => {
+      const [, model] = JSON.parse(r.packageKey);
+      const key = oldKeys.get(model);
+      return key ? { ...r, packageKey: key, materialId: saved.catalog!.materials.find(row => row.model === model)!.id } : r;
+    }) };
+    expect(inspectFactoryLayout(saved, oldLayout)).toEqual([]);
+    const joined = prepareStudioExampleJoin("factory", upsertFactoryLayout(saved, oldLayout), workspace);
+    expect(joined.replacement).toContain(layout.name);
+    expect(joined.next.catalog!.materials).toHaveLength(10);
+    const bindings = new Set(joined.next.catalog!.materials.map(m => m.binding?.key));
+    for (const old of oldCnc) {
+      expect(bindings.has(packageKey(old))).toBe(true);
+      expect(bindings.has(packageKey({ ...old, revision: "3" }))).toBe(true);
+    }
+    expect(inspectFactoryLayout(joined.next, oldLayout)).toEqual([]);
+    expect(inspectFactoryLayout(joined.next, layout)).toEqual([]);
   });
 });

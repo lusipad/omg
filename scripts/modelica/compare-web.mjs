@@ -6,7 +6,6 @@ import { join } from "node:path";
 import process from "node:process";
 
 const evidence = process.argv[2], model = process.argv[3] ?? "servo";
-assert(evidence && ["servo", "feed"].includes(model), "Usage: node scripts/modelica/compare-web.mjs <native verification directory> [servo|feed]");
 const profiles = {
   servo: {
     registry: "library.json", manifest: "manifest.json", nativeReport: "native-results.json", report: "web-comparison.json",
@@ -18,7 +17,14 @@ const profiles = {
     required: ["normal", "negative", "zero", "lead-10", "mass-25", "low-current", "power-limit", "speed-limit", "other-motor"],
     tolerance: { positionMm: 0.0005, velocityMmS: 0.01, motorTorqueNm: 0.00002, axialForceN: 0.01, angleDeg: 0.005, speedRpm: 0.02 },
   },
+  motor: {
+    registry: "motor-library.json", manifest: "motor-axis.json", nativeReport: "motor-native-results.json", report: "motor-web-comparison.json",
+    required: ["normal", "negative", "zero", "stator", "rotor", "bearing", "low-voltage", "low-current", "heavy-table",
+      "high-resistance", "weak-magnet", "winding-limit", "speed-limit", "lead-10", "stiff-winding"],
+    tolerance: { positionMm: 0.0005, velocityMmS: 0.01, angleDeg: 0.005, speedRpm: 0.02, currentA: 0.0002, motorTorqueNm: 0.00002 },
+  },
 };
+assert(evidence && Object.hasOwn(profiles, model), "Usage: node scripts/modelica/compare-web.mjs <native verification directory> [servo|feed|motor]");
 const profile = profiles[model];
 const assets = new URL("../../public/modelica/", import.meta.url);
 const asset = name => readFileSync(new URL(name, assets));
@@ -38,11 +44,18 @@ assert.equal(manifest.version, registry.version);
 assert.equal(manifest.librarySha256, sha256(asset(profile.registry)));
 assert.equal(native.sourceSha256, sha256(asset(registry.source)));
 assert.equal(native.sourceSha256, manifest.sourceSha256, "Native and browser models differ");
-if (model === "feed") {
+if (model !== "servo") {
   assert.equal(native.model, manifest.model);
   assert.deepEqual(manifest.outputs, outputs);
   assert.deepEqual(manifest.dependencySha256, { "Gouyuan.mo": sha256(asset("Gouyuan.mo")) });
   assert.equal(native.dependencySha256, manifest.dependencySha256["Gouyuan.mo"]);
+}
+if (model === "motor") {
+  assert.deepEqual(manifest.parameters, Object.keys(registry.assembly.parameters));
+  assert.deepEqual(manifest.states, registry.assembly.states);
+  assert.equal(manifest.states.length, 3);
+  assert.equal(manifest.integratorSha256, sha256(readFileSync(new URL("./wasm-integrator.c", import.meta.url))));
+  assert.equal(manifest.substepPolicySha256, sha256(readFileSync(new URL("../../contracts/motor-integration.mjs", import.meta.url))));
 }
 assert.equal(sha256(wasm), manifest.wasmSha256);
 assert.equal(wasm.length, manifest.wasmBytes);
@@ -52,6 +65,16 @@ const stepSeconds = manifest.integrator.stepUs / 1_000_000;
 const stepsPerSample = 10_000 / manifest.integrator.stepUs;
 assert(stepSeconds > 0 && Number.isInteger(1_000 / manifest.integrator.stepUs), "Positive integration step must divide one millisecond");
 const module = new WebAssembly.Module(wasm);
+assert.deepEqual(WebAssembly.Module.imports(module), []);
+const substepsFor = model === "motor" ? (await import("../../contracts/motor-integration.mjs")).motorSubsteps : () => 1;
+if (model === "motor") {
+  // Exercise the OMC-generated initial assertions without the Studio form validator.
+  for (const [name, value] of Object.entries({ windingTurns: 1.5, polePairs: 0.5, bearingCount: 1.5, bearingViscousNmS: -1, currentGainOhm: 0 })) {
+    const input = { ...cases.normal.parameters, [name]: value };
+    const axis = new WebAssembly.Instance(module).exports;
+    assert.throws(() => axis.reset(...manifest.parameters.map(key => input[key])), WebAssembly.RuntimeError, "Expected native parameter assertion for " + name);
+  }
+}
 const results = {};
 for (const [name, reference] of Object.entries(cases)) {
   assert.match(name, /^[a-z0-9-]+$/);
@@ -61,8 +84,7 @@ for (const [name, reference] of Object.entries(cases)) {
   const [header, ...rows] = csv.toString("utf8").trimEnd().split(/\r?\n/);
   const columns = header.split(",").map(field => field.replace(/^"|"$/g, ""));
   if (model === "servo") assert.deepEqual(columns, ["time", ...outputs]);
-  // The feed benchmark retains acceleration and shaft channels for its independent
-  // force/power balance. OMC chooses the order of its native output columns.
+  // The independent native energy checks retain additional diagnostic columns.
   assert.equal(columns[0], "time");
   assert.equal(new Set(columns).size, columns.length, "Duplicate native column");
   const outputColumns = outputs.map(key => columns.indexOf(key));
@@ -73,6 +95,9 @@ for (const [name, reference] of Object.entries(cases)) {
   assert(args.every(Number.isFinite), name + " has missing or non-numeric parameters");
   const axis = new WebAssembly.Instance(module).exports;
   axis.reset(...args);
+  const substeps = substepsFor(reference.parameters, manifest.integrator.stepUs);
+  if (model === "motor" && name === "stiff-winding") assert(substeps > 1, "The stiff-winding case must exercise electrical substepping");
+  const h = stepSeconds / substeps;
   const maxAbsError = Object.fromEntries(outputs.map(key => [key, 0]));
   for (const [index, row] of rows.entries()) {
     const fields = row.split(",");
@@ -80,7 +105,7 @@ for (const [name, reference] of Object.entries(cases)) {
     const values = fields.map(Number);
     assert(values.every(Number.isFinite) && Math.abs(values[0] - index / 100) < 1e-9, name + " has an invalid sample");
     if (index) {
-      for (let i = 0; i < stepsPerSample; i++) axis.step(stepSeconds);
+      for (let i = 0; i < stepsPerSample * substeps; i++) axis.step(h);
     }
     for (const [j, key] of outputs.entries()) {
       const error = Math.abs(axis[key]() - values[outputColumns[j]]);
@@ -89,6 +114,7 @@ for (const [name, reference] of Object.entries(cases)) {
     }
   }
   results[name] = { passed: outputs.every(key => maxAbsError[key] <= tolerance[key]), samples: rows.length, maxAbsError };
+  if (model === "motor") results[name].integrationStepSeconds = h;
 }
 const wholeRun = Object.fromEntries(outputs.map(key => [key,
   Math.max(...Object.values(results).map(result => result.maxAbsError[key]))]));

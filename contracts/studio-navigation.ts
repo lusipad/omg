@@ -2,6 +2,7 @@ import digitalModule from "../examples/GL10-1600END-A03.device.json";
 import servoDrive from "../examples/SV660NS2R8I-FS-INT.device.json";
 import { PICK_PLACE_EXAMPLE, ROBOT_EXAMPLES } from "./robot-examples";
 import { signalIdSchema } from "./twin-device";
+import { isPackageKey } from "./package-identity";
 import type { TwinWorkspace } from "./twin-simulation";
 
 export type StudioExampleKind = "wiring" | "servo" | "linear-assembly" | "factory" | "so101" | "milo" | "physics";
@@ -65,14 +66,15 @@ export function getStudioExample(id: string | null | undefined): StudioExample |
 }
 
 export type StudioResourceSection = "device" | "material" | "physics" | "system" | "author";
+export type MotorAxisLocation = { resourceId: string; axisId: string };
 export type StudioTarget = "wiring" | "servo" | "so101" | "milo" | "incoming" | "assembly-new" | "mechanism-new" | "factory-new"
   | `model:${string}` | `assembly:${string}` | `mechanism:${string}` | `factory:${string}`;
 export type StudioRoute =
-  | { view: "resources"; section?: StudioResourceSection; source?: string }
+  | { view: "resources"; section?: StudioResourceSection; source?: string; motorPart?: string }
   | { view: "examples" }
   | ({ view: "workbench" } & (
-    | { target?: StudioTarget; part?: string; exampleId?: never; unavailableTarget?: never }
-    | { exampleId: string; structure?: string; target?: never; unavailableTarget?: never }
+    | { target?: StudioTarget; part?: string; motorAxis?: string; axis?: string; motorKey?: string; exampleId?: never; unavailableTarget?: never }
+    | { exampleId: string; structure?: string; motorAxis?: string; axis?: string; target?: never; unavailableTarget?: never }
     | { unavailableTarget: string; target?: never; exampleId?: never }
   ));
 
@@ -86,7 +88,10 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
   }
   if (view === "workbench") {
     const exampleId = params.get("example"), target = params.get("target");
+    const motorAxis = signalIdSchema.safeParse(params.get("motorAxis"));
+    const axis = signalIdSchema.safeParse(params.get("axis"));
     if (exampleId !== null) {
+      if (getStudioExample(exampleId)?.kind === "factory" && motorAxis.success) return { view, exampleId, motorAxis: motorAxis.data, ...(axis.success && { axis: axis.data }) };
       const device = signalIdSchema.safeParse(params.get("structure"));
       return getStudioExample(exampleId)?.kind === "factory" && device.success
         ? { view, exampleId, structure: device.data } : { view, exampleId };
@@ -100,6 +105,10 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
     for (const prefix of ["assembly:", "mechanism:", "factory:"] as const) {
       if (!target.startsWith(prefix)) continue;
       const id = signalIdSchema.safeParse(target.slice(prefix.length));
+      if (id.success && prefix === "factory:" && motorAxis.success) {
+        const key = params.get("motorKey");
+        return { view, target: `factory:${id.data}`, motorAxis: motorAxis.data, ...(axis.success && { axis: axis.data }), ...(key && isPackageKey(key) && { motorKey: key }) };
+      }
       if (id.success) return { view, target: `${prefix}${id.data}` };
     }
     if (/^model:[a-f0-9]{64}$/.test(target)) return { view, target: `model:${target.slice(6)}` };
@@ -116,6 +125,8 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
   if (view === "resources" || view === "import" || !view) {
     const source = view === "resources" ? params.get("source") : null;
     const section = params.get("section");
+    const motorPart = params.get("motorPart");
+    if (section === "author" && motorPart && isPackageKey(motorPart)) return { view: "resources", section, motorPart, ...(source && { source }) };
     if (section === "device" || section === "material" || section === "physics" || section === "system" || section === "author") {
       return { view: "resources", section, ...(source && { source }) };
     }
@@ -128,13 +139,23 @@ export function studioHref(route: StudioRoute, hash = ""): string {
   const params = new URLSearchParams({ view: route.view });
   if (route.view === "resources" && route.section) params.set("section", route.section);
   if (route.view === "resources" && route.source) params.set("source", route.source);
+  if (route.view === "resources" && route.section === "author" && route.motorPart) params.set("motorPart", route.motorPart);
   if (route.view === "workbench") {
     if (route.exampleId !== undefined) {
       params.set("example", route.exampleId);
-      if (route.structure) params.set("structure", route.structure);
+      if (route.motorAxis) {
+        params.set("motorAxis", route.motorAxis);
+        if (route.axis) params.set("axis", route.axis);
+      }
+      else if (route.structure) params.set("structure", route.structure);
     }
     else if (route.target !== undefined) {
       params.set("target", route.target);
+      if (route.target.startsWith("factory:") && route.motorAxis) {
+        params.set("motorAxis", route.motorAxis);
+        if (route.axis) params.set("axis", route.axis);
+        if (route.motorKey) params.set("motorKey", route.motorKey);
+      }
       if ((route.target === "mechanism-new" || route.target === "assembly-new" || route.target === "factory-new") && route.part) params.set("part", route.part);
     }
     else if (route.unavailableTarget !== undefined) params.set("target", route.unavailableTarget);

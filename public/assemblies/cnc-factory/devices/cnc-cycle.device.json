@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "manufacturer": "构元教学件",
   "model": "CELL-CNC-60S",
-  "revision": "2",
+  "revision": "3",
   "source": {
     "kind": "local",
     "title": "双线数控车间教学设计",
@@ -57,5 +57,29 @@
         "quantity": 1
       }
     ]
-  }
+  },
+  "axisPorts": [
+    {
+      "id": "x",
+      "name": "X 轴",
+      "path": [
+        "feed",
+        "x"
+      ],
+      "motorSlot": "motor",
+      "fit": "EDU-FRAME-40",
+      "modelRef": {
+        "id": "GouyuanMotor.CncFeedAxis",
+        "version": "1.0.0"
+      },
+      "leadMmPerRev": 5,
+      "tableMassKg": 5,
+      "driveVoltageLimitV": 24,
+      "driveCurrentLimitA": 4,
+      "driveSpeedLimitRpm": 2500,
+      "driveReferenceInertiaKgM2": 4e-05,
+      "currentGainOhm": 8,
+      "source": "构元教学 X 轴调试工况。水平无损丝杠 5 mm/rev、移动质量 5 kg、理想位置反馈。q 轴电压幅值上限 24 V、电流指令上限 4 A、速度指令上限 2500 rpm。驱动整定参考惯量 4×10⁻⁵ kg·m²，电流环比例增益 8 Ω。"
+    }
+  ]
 }

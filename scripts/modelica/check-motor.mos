@@ -1,0 +1,16 @@
+// Run in a directory containing Gouyuan.mo and GouyuanMotor.mo.
+if getVersion() <> "OpenModelica 1.27.2" then exit(1); end if;
+if not loadModel(Modelica, {"4.0.0"}, requireExactVersion=true) then print(getErrorString()); exit(1); end if;
+if not loadFile("Gouyuan.mo") or not loadFile("GouyuanMotor.mo") then print(getErrorString()); exit(1); end if;
+print("MOTOR_VERSIONS " + getVersion() + " / Modelica " + getVersion(Modelica) +
+  " / Gouyuan " + getVersion(Gouyuan) + " / GouyuanMotor " + getVersion(GouyuanMotor) + "\n");
+print("MOTOR_MSL_FILE " + getSourceFile(Modelica) + "\n");
+checkModel(GouyuanMotor.StatorWinding); getErrorString();
+checkModel(GouyuanMotor.PermanentMagnetRotor); getErrorString();
+checkModel(GouyuanMotor.BearingSupport); getErrorString();
+checkModel(GouyuanMotor.PMServoMotor); getErrorString();
+checkModel(GouyuanMotor.CncFeedAxis); getErrorString();
+buildModel(GouyuanMotor.CncFeedAxis, startTime=0, stopTime=8, numberOfIntervals=800,
+  method="dassl", tolerance=1e-8, outputFormat="csv",
+  variableFilter="positionMm|velocityMmS|angleDeg|speedRpm|currentA|motorTorqueNm|appliedVoltageV|requestedVoltageV|drive.currentCommandA|motor.stator.currentSlopeAS|motor.rotor.inertia.a|motor.bearings.shaft.tau|screw.shaft.tau|table.a");
+getErrorString();

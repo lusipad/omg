@@ -8,7 +8,7 @@ import { packageKey, type DevicePackage, type ModelReference } from "@contracts/
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { getFactoryModel, resolveFactoryParameters } from "@contracts/factory";
 import { compositionKind } from "@contracts/device-composition";
-import { exportDeviceLibrary, previewDevicePackages } from "@/lib/device-library";
+import { exportDeviceLibrary, motorRoleNames, previewDevicePackages } from "@/lib/device-library";
 import PackageStructure, { type ApplyDeviceRevision } from "./PackageStructure";
 
 export function FactoryRatings({ device, packages }: { device: DevicePackage; packages: readonly DevicePackage[] }) {
@@ -54,6 +54,13 @@ export function ServoRatings({ servo }: { servo: NonNullable<DevicePackage["serv
       ["配套驱动型号", servo.compatibleDriveModels.join("、")],
     ];
   return <RatingRows rows={rows} modelRef={servo.modelRef} />;
+}
+
+export function MotorRatings({ device }: { device: DevicePackage }) {
+  const model = device.motorPhysics;
+  if (!model) return null;
+  const rows = [["电机配合系列", model.fit], ...Object.values(device.composition?.ratings ?? {}).map(r => [r.label, `${r.value} ${r.unit}`])];
+  return <RatingRows rows={rows} modelRef={model.modelRef} />;
 }
 
 export function FeedRatings({ feed }: { feed: NonNullable<DevicePackage["feed"]> }) {
@@ -141,11 +148,11 @@ export default function TwinPackagePreview({ device, workspace, installed, error
   error: string;
   onClose: () => void;
   onInstall: () => void;
-  onAssemble: (mode?: "factory") => void;
+  onAssemble: (mode?: "factory" | "motor") => void;
   onApplyDeviceRevision?: ApplyDeviceRevision;
 }) {
   const canAssemble = Boolean(device.feed || device.mechanics || device.servo || device.ports.length);
-  const [structure, setStructure] = useState(!canAssemble && !device.factory);
+  const [structure, setStructure] = useState(!canAssemble && !device.factory && !device.motorPhysics);
   const [editing, setEditing] = useState(false);
   const preview = useMemo(() => installed ? workspace : previewDevicePackages(workspace, [device]), [installed, workspace, device]);
   const kind = compositionKind(device);
@@ -154,6 +161,7 @@ export default function TwinPackagePreview({ device, workspace, installed, error
   const ports = new Map(device.ports.map((port) => [port.id, port]));
   const capabilities = [
     device.factory && "工厂设备",
+    device.motorPhysics && motorRoleNames[device.motorPhysics.kind],
     device.mechanics && (device.mechanics.kind === "part" ? "机械部件" : "可复用机械装配"),
     device.servo && (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机"),
     device.feed && (device.feed.kind === "lead-screw" ? "丝杠" : "移动工作台"),
@@ -194,6 +202,15 @@ export default function TwinPackagePreview({ device, workspace, installed, error
           已记录的两组标定值为 {device.calibration.inputPoints[0]} → {device.calibration.outputPoints[0]} 和 {device.calibration.inputPoints[1]} → {device.calibration.outputPoints[1]}，范围外按同一条直线外推。
         </p>}
         {device.mechanics && <MechanicalDetails mechanics={device.mechanics} />}
+        {device.motorPhysics && <section aria-label="电机部件参数" className="surface-inset p-3"><MotorRatings device={device} /></section>}
+        {!!device.axisPorts?.length && <details className="rounded-md border p-3 text-xs">
+          <summary className="cursor-pointer font-medium">电机安装位与轴工况</summary>
+          {device.axisPorts.map(port => <div key={port.id} className="mt-2 space-y-1 break-words">
+            <p>{port.name} · {port.fit} · <span className="mono">{[...port.path, port.motorSlot].join(" / ")}</span></p>
+            <p className="text-muted-foreground">{port.leadMmPerRev} mm/rev · {port.tableMassKg} kg · {port.driveVoltageLimitV} V · {port.driveCurrentLimitA} A</p>
+            <p className="text-muted-foreground">{port.source}</p>
+          </div>)}
+        </details>}
         {device.feed && <section aria-label="进给部件参数" className="space-y-3">
           <h3 className="text-sm font-medium">进给部件参数</h3><FeedRatings feed={device.feed} />
         </section>}
@@ -228,6 +245,8 @@ export default function TwinPackagePreview({ device, workspace, installed, error
           {kind === "assembly" && <Button variant="outline" onClick={() => exportPackage("library")}><Download />导出含子件设备库</Button>}
           {device.mechanics?.kind === "assembly" && <Button variant="outline" onClick={() => exportPackage("mechanical")}><Download />导出含依赖机械包</Button>}
           {installed && device.factory && <Button onClick={() => onAssemble("factory")}><Plus />用于工厂装配</Button>}
+          {installed && device.motorPhysics && <Button onClick={() => onAssemble("motor")}><Plus />
+            {device.motorPhysics.kind === "motor" ? "安装到机床轴" : "用于组装电机"}</Button>}
           {installed && canAssemble && <Button onClick={() => onAssemble()}><Plus />
             {device.feed ? "用于直线轴装配" : device.mechanics ? "用于机械装配" : device.servo ? "用于伺服仿真" : "添加到仿真装配"}</Button>}
           {!installed && <Button onClick={onInstall}><PackageCheck />确认安装</Button>}

@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { packageKey } from "../contracts/package-identity";
 import { PICK_PLACE_EXAMPLE, ROBOT_EXAMPLES } from "../contracts/robot-examples";
 import { createServoDemo, createTwinDemo } from "../contracts/twin-demo";
 import { emptyWorkspace, parseWorkspace } from "../contracts/twin-simulation";
@@ -7,6 +8,17 @@ import { getStudioExample, getWorkbenchTargets, publishedStudioFile, readStudioR
 
 const hash = "a".repeat(64);
 describe("工作台路由", () => {
+  it("示例电机台、从库带入的部件以及机床待装电机保留各自的入口", () => {
+    const key = packageKey({ manufacturer: "工厂", model: "自组 A", revision: "1" });
+    const routes: StudioRoute[] = [
+      { view: "workbench", exampleId: "cnc-factory", motorAxis: "cnc-a" },
+      { view: "workbench", target: "factory:cnc-factory", motorAxis: "cnc-b", axis: "x", motorKey: key },
+      { view: "resources", section: "author", motorPart: key },
+    ];
+    for (const route of routes) expect(readStudioRoute(studioHref(route))).toEqual(route);
+    expect(readStudioRoute("?view=workbench&target=wiring&motorAxis=cnc-a")).toEqual({ view: "workbench", target: "wiring" });
+    expect(readStudioRoute("?view=workbench&target=factory:test&motorAxis=cnc-a&motorKey=bad")).toEqual({ view: "workbench", target: "factory:test", motorAxis: "cnc-a" });
+  });
   it("空地址展示资源总览，纯运行台地址由当前工程决定对象", () => {
     expect(readStudioRoute("")).toEqual({ view: "resources" });
     expect(readStudioRoute("?view=resources")).toEqual({ view: "resources" });

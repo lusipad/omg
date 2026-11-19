@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元教学件",
+  "model": "B08-STD",
+  "revision": "1",
+  "source": {
+    "kind": "local",
+    "title": "EDU-FRAME-40 教学电机参数表",
+    "url": "",
+    "locator": "电机零件选配 · B08-STD · 修订 1",
+    "excerpt": "教学轴承内径 8 mm，单只等效粘滞系数 0.00012 N·m·s/rad。组装时每台电机选用两只，模型按实际数量计入损耗。"
+  },
+  "ports": [],
+  "rules": [],
+  "composition": {
+    "kind": "assembly",
+    "shape": "ring",
+    "parts": [
+      {
+        "id": "inner",
+        "label": "内圈",
+        "packageKey": "[\"构元教学件\",\"BRG-INNER\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "outer",
+        "label": "外圈",
+        "packageKey": "[\"构元教学件\",\"BRG-OUTER\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "cage",
+        "label": "保持架",
+        "packageKey": "[\"构元教学件\",\"BRG-CAGE\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "balls",
+        "label": "钢球",
+        "packageKey": "[\"构元教学件\",\"BALL-4\",\"1\"]",
+        "quantity": 8
+      }
+    ],
+    "ratings": {
+      "bearingViscousNmS": {
+        "label": "单只轴承粘滞系数",
+        "value": 0.00012,
+        "unit": "N.m.s/rad"
+      },
+      "boreMm": {
+        "label": "轴承内径",
+        "value": 8,
+        "unit": "mm"
+      }
+    },
+    "note": "教学电机选配件。结构用量按每件统计，动态参数按这份修订给定的额定值读取。"
+  },
+  "motorPhysics": {
+    "kind": "bearing",
+    "fit": "EDU-FRAME-40",
+    "modelRef": {
+      "id": "GouyuanMotor.BearingSupport",
+      "version": "1.0.0"
+    }
+  }
+}

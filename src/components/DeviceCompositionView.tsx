@@ -15,6 +15,7 @@ type Props = {
   workspace: TwinWorkspace; roots: readonly CompositionRoot[]; lines?: readonly CompositionLine[]; initialRootId?: string;
   onApplyRevision?: (rootId: string, workspace: TwinWorkspace, newRootKey: string) => void;
   onEditingChange?: (editing: boolean) => void;
+  onOpenMotorAxis?: (resourceId: string, axisId: string) => void;
 };
 const statusText = { assembly: "装配件", leaf: "最小件", unknown: "待补明细", missing: "缺少修订" } as const;
 const selectClass = "h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm";
@@ -89,7 +90,7 @@ function ParameterSources({ root, installed, path, onLocate }: {
   </details>;
 }
 
-function CompositionSession({ workspace, roots, lines, initialRootId, onApplyRevision, onEditingChange }: Props) {
+function CompositionSession({ workspace, roots, lines, initialRootId, onApplyRevision, onEditingChange, onOpenMotorAxis }: Props) {
   const [lineId, setLineId] = useState("");
   const [selectedId, setSelectedId] = useState(initialRootId ?? roots[0]?.id ?? "");
   const [requestedPath, setPath] = useState<string[]>([]);
@@ -150,7 +151,9 @@ function CompositionSession({ workspace, roots, lines, initialRootId, onApplyRev
   const status = treeState(node?.device);
   const [maker, model, revision] = node ? deviceIdentity(node.packageKey, node.device) : ["", "", ""];
   const ratings = Object.entries(selected?.composition?.ratings ?? {});
-  const modelRef = selected?.factory?.modelRef ?? selected?.servo?.modelRef ?? selected?.feed?.modelRef;
+  const modelRef = selected?.factory?.modelRef ?? selected?.motorPhysics?.modelRef ?? selected?.servo?.modelRef ?? selected?.feed?.modelRef;
+  const axisPorts = root && onOpenMotorAxis ? installed.get(root.packageKey)?.axisPorts?.filter(port =>
+    !path.length || (port.path.length <= path.length && port.path.every((id, i) => path[i] === id))) : undefined;
   const groupName = line ? line.name : lines ? "整厂" : roots.length === 1 ? roots[0].label : "设备库";
 
   return <section className="composition-view min-w-0 space-y-3" aria-label="设备组成与明细">
@@ -233,6 +236,10 @@ function CompositionSession({ workspace, roots, lines, initialRootId, onApplyRev
                   <dd className="mono mt-0.5 break-all">{r.value} {r.unit}</dd></div>)}
               </dl>}
               {modelRef && <p className="break-all text-xs text-muted-foreground">模型 · <span className="mono text-foreground">{modelRef.id} @ {modelRef.version}</span></p>}
+              {onOpenMotorAxis && !!axisPorts?.length && <div className="flex flex-wrap gap-2">{axisPorts.map(port =>
+                <Button type="button" size="sm" variant="outline" key={port.id} onClick={() => onOpenMotorAxis(root.id, port.id)}>
+                  组装电机并试跑 {port.name}
+                </Button>)}</div>}
               <ParameterSources root={root} installed={installed} path={path} onLocate={next => navigate(root.id, next)} />
               {selected && <details className="rounded-md border p-2.5 text-xs">
                 <summary className="cursor-pointer font-medium">部件资料来源</summary>

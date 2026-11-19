@@ -53,6 +53,13 @@ export const RELEASE_MANIFEST: { release: string; name: string; checks: ReleaseC
       boundary: "水平无损丝杠与刚性工作台，丝杠导程和移动质量取自选定的 BOM 部件。",
     },
     {
+      key: "modelica-built-motor",
+      title: "GouyuanMotor.CncFeedAxis 1.0.0 软件回归",
+      status: "passed",
+      evidence: "由选定定子、转子及轴承组成电机，安装到真实声明的 CNC 槽位。15 个原生工况与浏览器逐点对照，核对电流、转矩、转子和工作台响应。",
+      boundary: "教学工况采用基波 q 轴模型、理想反馈与粘性轴承阻力。实机磁路、摩擦及驱动整定需要实测。",
+    },
+    {
       key: "modelica-factory",
       title: "GouyuanFactory 1.0.0 整厂过程回归",
       status: "passed",

@@ -57,22 +57,22 @@
     {
       "id": "cnc-a",
       "name": "CNC-A",
-      "packageKey": "[\"构元教学件\",\"CELL-CNC-60S\",\"2\"]",
+      "packageKey": "[\"构元教学件\",\"CELL-CNC-60S\",\"3\"]",
       "positionM": [
         8,
         2
       ],
-      "materialId": "bom-8202d08639036fa45acb87e6d6c18f6d"
+      "materialId": "bom-8d6ab770fcfb9b852608198dc418ce5c"
     },
     {
       "id": "cnc-b",
       "name": "CNC-B",
-      "packageKey": "[\"构元教学件\",\"CELL-CNC-F900\",\"2\"]",
+      "packageKey": "[\"构元教学件\",\"CELL-CNC-F900\",\"3\"]",
       "positionM": [
         8,
         -2
       ],
-      "materialId": "bom-3e4eeacd76b5f9aa3b37a6815d1aca95"
+      "materialId": "bom-7ba08e5cb60406dc4d1f45bdf9dc6c54"
     },
     {
       "id": "unload",

@@ -1,15 +1,22 @@
 /* Freestanding numerical harness. model-equations.h contains the selected
  * generated OpenModelica C assignments for all derivatives, outputs and parameters. */
 typedef double modelica_real;
+typedef int modelica_boolean;
 typedef struct { const char *file; int line, column, end_line, end_column, flag; } FILE_INFO;
 #define DIVISION_SIM(a, b, ...) ((a) / (b))
 #define fabs(x) __builtin_fabs(x)
 #define sqrt(x) __builtin_sqrt(x)
+#define floor(x) __builtin_floor(x)
+#define Greater(a, b) ((a) > (b))
+#define GreaterEq(a, b) ((a) >= (b))
+#define LessEq(a, b) ((a) <= (b))
+#define MMC_DEFSTRINGLIT(name, size, text) char name[] = text
 #define fmax(a, b) __builtin_wasm_max_f64(a, b)
 #define fmin(a, b) __builtin_wasm_min_f64(a, b)
 #define sign(x) (((x) > 0) - ((x) < 0))
 #define infoStreamPrintWithEquationIndexes(...) ((void)0)
 #define omc_assert_warning(...) ((void)0)
+#define omc_assert_withEquationIndexes(...) __builtin_trap()
 #define throwStreamPrintWithEquationIndexes(...) __builtin_trap()
 
 #include "model-equations.h"

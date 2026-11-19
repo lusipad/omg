@@ -39,9 +39,16 @@ jobs:
           source "$RUNNER_TEMP/omc/env.sh"
           python3 scripts/modelica/verify.py --omc omc --out "$RUNNER_TEMP/gouyuan-modelica-native"
           python3 -B scripts/modelica/verify-feed.py --omc omc --out "$RUNNER_TEMP/gouyuan-modelica-native"
+          python3 -B scripts/modelica/verify-motor.py --omc omc --out "$RUNNER_TEMP/gouyuan-modelica-native"
           python3 scripts/modelica/build-web.py --check
           node scripts/modelica/compare-web.mjs "$RUNNER_TEMP/gouyuan-modelica-native"
           node scripts/modelica/compare-web.mjs "$RUNNER_TEMP/gouyuan-modelica-native" feed
+          node scripts/modelica/compare-web.mjs "$RUNNER_TEMP/gouyuan-modelica-native" motor
+      - name: 从零件装成电机并复算导出的数控进给轴
+        run: |
+          source "$RUNNER_TEMP/omc/env.sh"
+          npx tsx scripts/modelica/prepare-motor-assemblies.ts "$RUNNER_TEMP/gouyuan-modelica-native"
+          python3 -B scripts/modelica/verify-motor-exports.py --omc omc --out "$RUNNER_TEMP/gouyuan-modelica-native"
       - name: 复算整厂设备、批次和共享资源的调度
         env:
           CLANG: clang-18
@@ -66,6 +73,10 @@ jobs:
             ${{ runner.temp }}/gouyuan-modelica-native/web-comparison.json
             ${{ runner.temp }}/gouyuan-modelica-native/feed-native-results.json
             ${{ runner.temp }}/gouyuan-modelica-native/feed-web-comparison.json
+            ${{ runner.temp }}/gouyuan-modelica-native/motor-native-results.json
+            ${{ runner.temp }}/gouyuan-modelica-native/motor-web-comparison.json
+            ${{ runner.temp }}/gouyuan-modelica-native/motor-assembly-comparison.json
+            ${{ runner.temp }}/gouyuan-modelica-native/motor-assemblies/
             ${{ runner.temp }}/gouyuan-modelica-native/factory-comparison.json
             ${{ runner.temp }}/gouyuan-modelica-native/factory-cases/
       - run: npm run build:pages

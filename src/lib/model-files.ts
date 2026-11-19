@@ -1,12 +1,14 @@
 import { zipSync } from "three/examples/jsm/libs/fflate.module.js";
 import { MODEL_LIMITS, MAX_PROJECT_JSON_BYTES, type ModelBundle, type ModelFile, type ModelRef } from "@contracts/import-catalog";
 import { hasWorkspaceShape, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
+import { packageKey } from "@contracts/twin-device";
+import type { MotorAxisLocation } from "@contracts/studio-navigation";
 import { readStoredModel, writeModels, type StoredModel } from "./model-store";
 
 export type { StoredModel } from "./model-store";
 export type ModelSelection = { files: ModelFile[]; entries: string[] };
 export type WorkbenchBundle = { kind: "model"; selection: ModelSelection }
-  | { kind: "project"; workspace: TwinWorkspace; models: StoredModel[] };
+  | { kind: "project"; workspace: TwinWorkspace; models: StoredModel[]; motorFocus?: MotorAxisLocation };
 
 const { maxFiles, maxBundleBytes, maxFileBytes, maxProjectBytes } = MODEL_LIMITS;
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -500,15 +502,32 @@ async function restoreProject(files: ModelFile[], workspace: TwinWorkspace, sign
 
 /** The accompanying Modelica source is for native tools. Restore the versioned Studio snapshot in this archive. */
 async function readFactorySnapshot(entries: SourceFile[], signal?: AbortSignal) {
-  const meta = entries.find(e => e.path === "factory.twin.json"), map = entries.find(e => e.path === "factory-map.json");
-  if (!meta || !map || !entries.some(e => e.path === "FactoryRun.mo") || !entries.some(e => e.path === "run.mos")) return;
-  if (map.size > MAX_PROJECT_JSON_BYTES || meta.size > MAX_PROJECT_JSON_BYTES) throw new Error("工厂工程或设备映射超过 8 MiB。");
-  const descriptor = JSON.parse(utf8.decode((await map.read(signal)).data));
-  if (descriptor?.kind !== "factory-modelica-map" || descriptor.schemaVersion !== 1) return;
-  const workspace = parseWorkspace(JSON.parse(utf8.decode((await meta.read(signal)).data)));
-  signal?.throwIfAborted();
-  if (workspace.factories?.length !== 1 || workspace.catalog?.models.length) throw new Error("Modelica 工厂快照须包含一座自带设备修订的工厂。");
-  return { workspace, models: [] as StoredModel[] };
+  const byName = new Map(entries.map(entry => [entry.path, entry]));
+  if (!byName.has("run.mos")) return;
+  const formats = [
+    ["FactoryRun.mo", "factory-map.json", "factory-modelica-map", "factory.twin.json"],
+    ["MotorAxisRun.mo", "motor-map.json", "motor-axis-map", "installed.twin.json"],
+  ];
+  for (const [source, mapping, kind, snapshot] of formats) {
+    const meta = byName.get(snapshot), map = byName.get(mapping);
+    if (!meta || !map || !byName.has(source)) continue;
+    if (map.size > MAX_PROJECT_JSON_BYTES || meta.size > MAX_PROJECT_JSON_BYTES) throw new Error("工厂工程或设备映射超过 8 MiB。");
+    const descriptor = JSON.parse(utf8.decode((await map.read(signal)).data));
+    if (descriptor?.kind !== kind || descriptor.schemaVersion !== 1) continue;
+    const workspace = parseWorkspace(JSON.parse(utf8.decode((await meta.read(signal)).data)));
+    signal?.throwIfAborted();
+    if (workspace.factories?.length !== 1 || workspace.catalog?.models.length) throw new Error("Modelica 工厂快照须包含一座自带设备修订的工厂。");
+    if (kind === "motor-axis-map") {
+      const layout = workspace.factories[0], resource = layout.resources.find(r => r.id === descriptor.resourceId);
+      const root = workspace.packages.find(p => packageKey(p) === resource?.packageKey);
+      const port = root?.axisPorts?.find(a => a.id === descriptor.axisId);
+      if (layout.id !== descriptor.layoutId || !resource || resource.packageKey !== descriptor.rootKey || !port) {
+        throw new Error("电机轴试验的安装实例、设备修订或轴安装位与工程快照不符。");
+      }
+      return { workspace, models: [] as StoredModel[], motorFocus: { resourceId: resource.id, axisId: port.id } };
+    }
+    return { workspace, models: [] as StoredModel[] };
+  }
 }
 
 export async function readProjectArchive(file: File): Promise<{ workspace: TwinWorkspace; models: StoredModel[] }> {

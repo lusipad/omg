@@ -25,6 +25,21 @@ const ruleSchema = z.discriminatedUnion("op", [
 const positiveRating = z.number().finite().positive();
 export const modelRefSchema = z.strictObject({ id: text(240), version: text(80) });
 export type ModelReference = z.infer<typeof modelRefSchema>;
+const partPath = z.array(signalIdSchema).min(1);
+const physicalInterface = { fit: text(160), modelRef: modelRefSchema };
+const motorPhysicsSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("stator"), ...physicalInterface }),
+  z.strictObject({ kind: z.literal("rotor"), ...physicalInterface }),
+  z.strictObject({ kind: z.literal("bearing"), ...physicalInterface }),
+  z.strictObject({ kind: z.literal("motor"), ...physicalInterface, statorPath: partPath, rotorPath: partPath, bearingPath: partPath }),
+]);
+const axisPortSchema = z.strictObject({
+  id: signalIdSchema, name: text(160), path: z.array(signalIdSchema), motorSlot: signalIdSchema, ...physicalInterface,
+  leadMmPerRev: positiveRating, tableMassKg: positiveRating, driveVoltageLimitV: positiveRating,
+  driveCurrentLimitA: positiveRating, driveSpeedLimitRpm: positiveRating, driveReferenceInertiaKgM2: positiveRating,
+  currentGainOhm: positiveRating, source: text(2048),
+});
+export type MotorAxisPort = z.infer<typeof axisPortSchema>;
 const feedSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("lead-screw"), leadMmPerRev: positiveRating, modelRef: modelRefSchema }),
   z.strictObject({ kind: z.literal("moving-table"), massKg: positiveRating, modelRef: modelRefSchema }),
@@ -51,6 +66,8 @@ const packageSchema = z.strictObject({
   factory: z.strictObject({ modelRef: modelRefSchema, parameters: factoryParametersSchema, partParameters: factoryPartParametersSchema.optional() }).optional(),
   calibration: calibrationSchema.optional(), mechanics: mechanicsSchema.optional(),
   composition: deviceCompositionSchema.optional(),
+  motorPhysics: motorPhysicsSchema.optional(),
+  axisPorts: z.array(axisPortSchema).refine(ports => new Set(ports.map(p => p.id)).size === ports.length, "同一设备的调试轴标识不能重复。").optional(),
 });
 
 export type SignalPort = z.infer<typeof portSchema>;
@@ -117,7 +134,7 @@ export function parseDevicePackage(value: unknown): DevicePackage {
     if (/[*?□…]/u.test(pkg.model)) throw new Error("伺服设备需要完整型号");
     return pkg;
   }
-  if (pkg.ports.length === 0 && !pkg.mechanics && !pkg.feed && !pkg.factory && !pkg.composition) throw new Error("信号设备至少需要一个端口");
+  if (pkg.ports.length === 0 && !pkg.mechanics && !pkg.feed && !pkg.factory && !pkg.composition && !pkg.motorPhysics && !pkg.axisPorts?.length) throw new Error("信号设备至少需要一个端口");
   const ports = new Map(pkg.ports.map((port) => [port.id, port]));
   if (ports.size !== pkg.ports.length) throw new Error("设备包内的端口标识必须唯一");
   for (const port of pkg.ports) {

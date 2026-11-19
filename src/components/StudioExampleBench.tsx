@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { FolderInput } from "lucide-react";
-import type { StudioExample, StudioTarget } from "@contracts/studio-navigation";
+import type { MotorAxisLocation, StudioExample, StudioTarget } from "@contracts/studio-navigation";
 import { upsertLinearAssembly } from "@contracts/linear-assembly";
 import { upsertFactoryLayout } from "@contracts/factory";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
@@ -14,11 +14,14 @@ const Linear = lazy(() => import("./LinearAssemblyBench"));
 const Factory = lazy(() => import("./FactoryBench"));
 const Follower = lazy(() => import("./So101MotionBench"));
 const Mill = lazy(() => import("./MiloWorkbench"));
-type ProjectProps = { workspace: TwinWorkspace; initialStructureId?: string; onApply: (next: TwinWorkspace, target: StudioTarget) => void };
+type ProjectProps = { workspace: TwinWorkspace; initialStructureId?: string; initialMotorResourceId?: string; initialMotorAxisId?: string;
+  onApply: (next: TwinWorkspace, target: StudioTarget, focus?: MotorAxisLocation) => void };
 type Confirmation = { project: TwinWorkspace; sample: TwinWorkspace; next: TwinWorkspace; description: string };
 const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message : "示例操作失败，请重试。";
 
-function ExampleSession({ kind, download, workspace, initialStructureId, onApply }: ProjectProps & { kind: StudioBenchKind; download?: string }) {
+function ExampleSession({ kind, download, workspace, initialStructureId, initialMotorResourceId, initialMotorAxisId, onApply }: ProjectProps & { kind: StudioBenchKind; download?: string }) {
+  const motorFocus = useRef<MotorAxisLocation | undefined>(undefined);
+  const trackMotor = useCallback((focus?: MotorAxisLocation) => { motorFocus.current = focus; }, []);
   const [loaded, setLoaded] = useState<LoadedStudioExample | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -43,7 +46,7 @@ function ExampleSession({ kind, download, workspace, initialStructureId, onApply
     if (kind === "factory") {
       const layout = sample.factories?.[0];
       if (!layout) throw new Error("请先载入工厂布局。");
-      onApply(next, `factory:${layout.id}`);
+      onApply(next, `factory:${layout.id}`, motorFocus.current);
       return;
     }
     if (kind !== "linear-assembly") { onApply(next, kind); return; }
@@ -91,7 +94,8 @@ function ExampleSession({ kind, download, workspace, initialStructureId, onApply
       {kind === "servo" && <Servo workspace={sample} onChange={edit} />}
       {kind === "linear-assembly" && <Linear trial workspace={sample} assembly={sample.assemblies?.[0]} onTrialReady={setAssemblyReady}
         onSave={assembly => edit(upsertLinearAssembly(sample, assembly))} />}
-      {kind === "factory" && <Factory trial workspace={sample} layout={sample.factories?.[0]} initialStructureId={initialStructureId} onTrialReady={setAssemblyReady}
+      {kind === "factory" && <Factory trial workspace={sample} layout={sample.factories?.[0]} initialStructureId={initialStructureId} initialMotorResourceId={initialMotorResourceId} initialMotorAxisId={initialMotorAxisId} onMotorFocus={trackMotor}
+        onUpdateLibrary={edit} onTrialReady={setAssemblyReady}
         onSave={(layout, revised) => edit(upsertFactoryLayout(revised ?? sample, layout))} />}
       {kind === "so101" && follower && <Follower waypoints={follower.waypoints}
         onChange={waypoints => edit({ ...sample, so101: { ...follower, waypoints } })} />}
@@ -111,5 +115,5 @@ function ExampleSession({ kind, download, workspace, initialStructureId, onApply
 
 export default function StudioExampleBench({ example, ...project }: ProjectProps & { example: StudioExample }) {
   if (example.kind === "physics") return null;
-  return <ExampleSession key={example.id + "/" + (project.initialStructureId ?? "")} kind={example.kind} download={example.download} {...project} />;
+  return <ExampleSession key={JSON.stringify([example.id, project.initialStructureId, project.initialMotorResourceId, project.initialMotorAxisId])} kind={example.kind} download={example.download} {...project} />;
 }

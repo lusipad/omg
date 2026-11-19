@@ -1,0 +1,187 @@
+{
+  "passed": true,
+  "compiler": "OpenModelica 1.27.2",
+  "msl": "4.0.0",
+  "nativeSolver": "DASSL",
+  "sourceSha256": "e985b7e270422ce2f5dfdb8c546b71de61beeb9dec73193e4c6fc8d076d2bf77",
+  "wasmSha256": "3be65a67582512b7ed5b8cbf2b9220e384d2754cabb76af6dba7e8eb86eed9ca",
+  "verifierSha256": "277487c894bfbae2b5e64888b2b2b3b3f2b580b932974f662d13d0bf35bc6a21",
+  "limits": {
+    "positionMm": 0.0005,
+    "velocityMmS": 0.01,
+    "angleDeg": 0.005,
+    "speedRpm": 0.02,
+    "currentA": 0.0002,
+    "motorTorqueNm": 2e-05
+  },
+  "cases": {
+    "standard": {
+      "nativeSamples": 8001,
+      "browserSamples": 80,
+      "stopMs": 785,
+      "nativeStopMs": 785,
+      "at100ms": {
+        "positionMm": 6.41533192815909,
+        "velocityMmS": 44.18550088337296,
+        "angleDeg": 461.9038988274545,
+        "speedRpm": 530.2260106004755,
+        "currentA": -0.01674943372250497,
+        "motorTorqueNm": -0.002261173552538171
+      },
+      "maxAbsError": {
+        "positionMm": 2.9644124488470425e-08,
+        "velocityMmS": 1.972939472238977e-06,
+        "angleDeg": 2.1343769844861527e-06,
+        "speedRpm": 2.3675273723711143e-05,
+        "currentA": 2.3750437141284442e-08,
+        "motorTorqueNm": 3.206309014515754e-09
+      },
+      "passed": true,
+      "motorKey": "[\"装配试验\",\"自组伺服电机\",\"standard\"]",
+      "selected": {
+        "statorKey": "[\"构元教学件\",\"S40-STD\",\"1\"]",
+        "rotorKey": "[\"构元教学件\",\"R40-STD\",\"1\"]",
+        "bearingKey": "[\"构元教学件\",\"B08-STD\",\"1\"]"
+      },
+      "archiveSha256": "8015fc3a9576e63a6d8008c7bb919b7c1aabc492f503daee55fb1b07bd5943b2",
+      "browserCsvSha256": "ad9b1c2b3578c6c38387af04e3a0d587966c2872ba265041b7c6b969b2b02694",
+      "nativeCsvSha256": "de62373e5ffbebd5b23bf94ed4662937ee0e5819b1dd1dd1037c8d1f1032cb60"
+    },
+    "high-inductance": {
+      "nativeSamples": 8001,
+      "browserSamples": 80,
+      "stopMs": 785,
+      "nativeStopMs": 785,
+      "at100ms": {
+        "positionMm": 6.422926382894075,
+        "velocityMmS": 44.12707950079393,
+        "angleDeg": 462.4506995683734,
+        "speedRpm": 529.5249540095272,
+        "currentA": -0.01731551585494035,
+        "motorTorqueNm": -0.002337594640416947
+      },
+      "maxAbsError": {
+        "positionMm": 9.967881631212094e-08,
+        "velocityMmS": 3.0774999828508953e-06,
+        "angleDeg": 7.176874760261853e-06,
+        "speedRpm": 3.6929999737367325e-05,
+        "currentA": 3.988904813401195e-08,
+        "motorTorqueNm": 5.385021503365173e-09
+      },
+      "passed": true,
+      "motorKey": "[\"装配试验\",\"自组伺服电机\",\"high-inductance\"]",
+      "selected": {
+        "statorKey": "[\"构元教学件\",\"S40-HL\",\"1\"]",
+        "rotorKey": "[\"构元教学件\",\"R40-STD\",\"1\"]",
+        "bearingKey": "[\"构元教学件\",\"B08-STD\",\"1\"]"
+      },
+      "archiveSha256": "7c76ea52878f01cd12ac5dd13495c1527916b611409bbf255be4dd4da3a458f9",
+      "browserCsvSha256": "bc81083ea3271d57ee15cd6786273d34e071da96d905ccbe9037541b93e9929b",
+      "nativeCsvSha256": "292347b5203aca14e9cc4240a5971cb5690553687b7454798733a6e479471d6d"
+    },
+    "high-inertia": {
+      "nativeSamples": 8001,
+      "browserSamples": 65,
+      "stopMs": 637,
+      "nativeStopMs": 637,
+      "at100ms": {
+        "positionMm": 5.687417682293614,
+        "velocityMmS": 61.05818372744275,
+        "angleDeg": 409.4940731251402,
+        "speedRpm": 732.698204729313,
+        "currentA": -0.1314625432867589,
+        "motorTorqueNm": -0.01774744334371246
+      },
+      "maxAbsError": {
+        "positionMm": 2.6563375499222275e-08,
+        "velocityMmS": 2.9556047531631435e-07,
+        "angleDeg": 1.912563334371953e-06,
+        "speedRpm": 3.546725703351683e-06,
+        "currentA": 6.757378767652256e-09,
+        "motorTorqueNm": 9.122461258614933e-10
+      },
+      "passed": true,
+      "motorKey": "[\"装配试验\",\"自组伺服电机\",\"high-inertia\"]",
+      "selected": {
+        "statorKey": "[\"构元教学件\",\"S40-STD\",\"1\"]",
+        "rotorKey": "[\"构元教学件\",\"R40-HI\",\"1\"]",
+        "bearingKey": "[\"构元教学件\",\"B08-STD\",\"1\"]"
+      },
+      "archiveSha256": "704d42191f31f5f0627bf737fa9f906f027e2c5122eb51295694bc56f52ba95e",
+      "browserCsvSha256": "70fe8cb87ec232ac877a54d92607644940d8b48c22a9ae18c2d6e71db869a564",
+      "nativeCsvSha256": "7cd1a13cccccb46a1b5bc1f261f7b68ee4df9b1b86af861ece572308d379056c"
+    },
+    "high-damping": {
+      "nativeSamples": 8001,
+      "browserSamples": 106,
+      "stopMs": 1048,
+      "nativeStopMs": 1048,
+      "at100ms": {
+        "positionMm": 5.474804242474862,
+        "velocityMmS": 40.76795151595748,
+        "angleDeg": 394.1859054581901,
+        "speedRpm": 489.2154181914897,
+        "currentA": 0.1942163220054957,
+        "motorTorqueNm": 0.02621920347074192
+      },
+      "maxAbsError": {
+        "positionMm": 2.435588219995566e-08,
+        "velocityMmS": 2.211396704865365e-06,
+        "angleDeg": 1.7536235361603758e-06,
+        "speedRpm": 2.653676040154096e-05,
+        "currentA": 2.84731104249758e-08,
+        "motorTorqueNm": 3.843869916808629e-09
+      },
+      "passed": true,
+      "motorKey": "[\"装配试验\",\"自组伺服电机\",\"high-damping\"]",
+      "selected": {
+        "statorKey": "[\"构元教学件\",\"S40-STD\",\"1\"]",
+        "rotorKey": "[\"构元教学件\",\"R40-STD\",\"1\"]",
+        "bearingKey": "[\"构元教学件\",\"B08-HI\",\"1\"]"
+      },
+      "archiveSha256": "3133dc0c573621a05322ee86414a082a0ac33d1527ff15cbc086877913a990c0",
+      "browserCsvSha256": "e8a72d483eae56ce1c3a981bc818210be5777543c8f740c5db2cccd39a7a1f85",
+      "nativeCsvSha256": "f26ba06c03b7f7f7b0c3fd50ce3e21b959d8ade2f8413ec49047ff2003d93600"
+    },
+    "reverse": {
+      "nativeSamples": 8001,
+      "browserSamples": 80,
+      "stopMs": 785,
+      "nativeStopMs": 785,
+      "at100ms": {
+        "positionMm": -6.41533192815909,
+        "velocityMmS": -44.18550088337296,
+        "angleDeg": -461.9038988274545,
+        "speedRpm": -530.2260106004755,
+        "currentA": 0.01674943372250497,
+        "motorTorqueNm": 0.002261173552538171
+      },
+      "maxAbsError": {
+        "positionMm": 2.9644124488470425e-08,
+        "velocityMmS": 1.972939472238977e-06,
+        "angleDeg": 2.1343769844861527e-06,
+        "speedRpm": 2.3675273723711143e-05,
+        "currentA": 2.3750437141284442e-08,
+        "motorTorqueNm": 3.206309014515754e-09
+      },
+      "passed": true,
+      "motorKey": "[\"装配试验\",\"自组伺服电机\",\"reverse\"]",
+      "selected": {
+        "statorKey": "[\"构元教学件\",\"S40-STD\",\"1\"]",
+        "rotorKey": "[\"构元教学件\",\"R40-STD\",\"1\"]",
+        "bearingKey": "[\"构元教学件\",\"B08-STD\",\"1\"]"
+      },
+      "archiveSha256": "6f0c8056f329ca463aa7f91952bc34b6f925ffb4d329bdb694050388ad6da4a8",
+      "browserCsvSha256": "ebc734aa93f2392d0b4e24e9d2919a3a1960455e3f0ede52c18f53e9bb94feaf",
+      "nativeCsvSha256": "67c42e8408350368511a07f2dd1bd22d98c9bd94ff57ecc7d6d53074e20bc535"
+    }
+  },
+  "maxAbsError": {
+    "positionMm": 9.967881631212094e-08,
+    "velocityMmS": 3.0774999828508953e-06,
+    "angleDeg": 7.176874760261853e-06,
+    "speedRpm": 3.6929999737367325e-05,
+    "currentA": 3.988904813401195e-08,
+    "motorTorqueNm": 5.385021503365173e-09
+  }
+}

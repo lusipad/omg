@@ -7,7 +7,7 @@ import type { MaterialRow, ModelRef } from "@contracts/import-catalog";
 import { readStudioRoute, studioHref } from "@contracts/studio-navigation";
 import { WORKBENCH_FILE_ACCEPT } from "@/lib/workbench-import";
 import { downloadFile } from "@/lib/download";
-import { deviceLibraryGroups, isStructureOnly } from "@/lib/device-library";
+import { deviceLibraryGroups, isStructureOnly, motorRoleNames } from "@/lib/device-library";
 import { compositionKind } from "@contracts/device-composition";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -145,6 +145,7 @@ function projectResources(workspace: TwinWorkspace) {
   }
   for (const device of workspace.packages) {
     const kind = device.factory ? `工厂设备 · ${device.factory.modelRef.id} @ ${device.factory.modelRef.version}`
+      : device.motorPhysics ? `${motorRoleNames[device.motorPhysics.kind]} · ${device.motorPhysics.fit}`
       : device.feed ? (device.feed.kind === "lead-screw" ? `丝杠 · ${device.feed.leadMmPerRev} mm/rev` : `移动工作台 · ${device.feed.massKg} kg`)
       : device.mechanics ? (device.mechanics.kind === "assembly" ? "机械子装配" : "机械部件")
       : device.servo ? (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机")

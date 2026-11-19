@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import TwinPackagePreview, { DeviceSourceEvidence, FactoryRatings, FeedRatings, MechanicalDefinitionDetails, MechanicalDetails, ServoRatings } from "./TwinPackagePreview";
+import TwinPackagePreview, { DeviceSourceEvidence, FactoryRatings, FeedRatings, MechanicalDefinitionDetails, MechanicalDetails, MotorRatings, ServoRatings } from "./TwinPackagePreview";
 import PackageStructure, { type ApplyDeviceRevision } from "./PackageStructure";
 
 type Props = {
@@ -29,7 +29,7 @@ type Props = {
   onConfirm: (overrides?: ImportOverrides) => void;
   onUseManual: (overrides: ImportOverrides) => void;
   onClose: () => void;
-  onAssemble: (device: DevicePackage, mode?: "factory") => void;
+  onAssemble: (device: DevicePackage, mode?: "factory" | "motor") => void;
   onApplyDeviceRevision?: ApplyDeviceRevision;
 };
 const labels = {
@@ -194,6 +194,7 @@ function PackageList({ workspace, devices, rootKey }: { workspace: TwinWorkspace
         <div className="mt-2 space-y-2"><DeviceSourceEvidence source={device.source} />
           {device.mechanics && <MechanicalDetails mechanics={device.mechanics} />}
           {device.feed && <FeedRatings feed={device.feed} />}
+          {device.motorPhysics && <MotorRatings device={device} />}
           {device.factory && <FactoryRatings device={device} packages={preview.packages} />}
           {device.servo && <ServoRatings servo={device.servo} />}
           {device.ports.length > 0 && <p className="text-xs text-muted-foreground">{device.ports.length} 个端口 · {device.rules.length} 条行为规则</p>}

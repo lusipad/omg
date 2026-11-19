@@ -12,7 +12,7 @@ import { upsertLinearAssembly, type LinearAssembly } from "@contracts/linear-ass
 import { upsertFactoryLayout, type FactoryLayout } from "@contracts/factory";
 import { installMechanicalBundle, upsertMechanicalAssembly, type MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { deviceSourceFromMaterial, type DeviceSourceInput } from "@contracts/twin-extract";
-import { getWorkbenchTargets, publishedStudioFile, readStudioRoute, studioHref, type StudioRoute, type StudioTarget } from "@contracts/studio-navigation";
+import { getWorkbenchTargets, publishedStudioFile, readStudioRoute, studioHref, type MotorAxisLocation, type StudioRoute, type StudioTarget } from "@contracts/studio-navigation";
 import { addInstance, emptyWorkspace, installDeviceDependencies, installPackage, nextInstanceName, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -60,6 +60,7 @@ export default function TwinStudio() {
   const authoring = route.view === "resources" && route.section === "author";
   const browsingResources = route.view === "resources" && !authoring;
   const [showPairSource, setShowPairSource] = useState(false);
+  const [motorToMount, setMotorToMount] = useState<string>();
   const [lastTarget, setLastTarget] = useState<StudioTarget | undefined>(() =>
     route.view === "workbench" && route.target !== "incoming" ? route.target : undefined);
   const [selection, setSelection] = useState<{ driveKey?: string; motorKey?: string; version: number }>({ version: 0 });
@@ -75,6 +76,15 @@ export default function TwinStudio() {
   const modelToken = useRef(0);
   const importInput = useRef<HTMLInputElement>(null);
   const { workspace } = session;
+  const selectedMotor = motorToMount ? workspace.packages.find(p => packageKey(p) === motorToMount) : undefined;
+  const motorDestinations = useMemo(() => {
+    if (selectedMotor?.motorPhysics?.kind !== "motor") return [];
+    const catalog = new Map(workspace.packages.map(p => [packageKey(p), p]));
+    return (workspace.factories ?? []).flatMap(layout => layout.resources.flatMap(resource => {
+      const ports = catalog.get(resource.packageKey)?.axisPorts?.filter(port => port.fit === selectedMotor.motorPhysics!.fit);
+      return ports?.length ? [{ layout, resource, ports }] : [];
+    }));
+  }, [workspace, selectedMotor]);
   const targets = useMemo(() => getWorkbenchTargets(workspace), [workspace]);
   const remembered = targets.find(item => item.id === lastTarget)?.id;
   const workbenchTarget = route.view === "workbench" && route.exampleId === undefined && route.unavailableTarget === undefined
@@ -218,7 +228,7 @@ export default function TwinStudio() {
     return !occupied || window.confirm(`用“${label}”替换当前本机工程？如需保留当前工程，请先取消并导出备份。`);
   }
 
-  function showProject(next: TwinWorkspace, message: string) {
+  function showProject(next: TwinWorkspace, message: string, motorFocus?: MotorAxisLocation) {
     persist(next, true);
     setSourceDraft(undefined);
     setIncomingSource(undefined);
@@ -227,7 +237,8 @@ export default function TwinStudio() {
     setSelection({ version: 0 });
     setLastTarget(undefined); setShowPairSource(false);
     if ((next.mechanisms?.length ?? 0) + (next.assemblies?.length ?? 0) + (next.factories?.length ?? 0) > 1) go({ view: "resources", section: "system" }, message);
-    else if (next.factories?.length) go({ view: "workbench", target: `factory:${next.factories[0].id}` }, message);
+    else if (next.factories?.length) go({ view: "workbench", target: `factory:${next.factories[0].id}`,
+      ...(motorFocus && { motorAxis: motorFocus.resourceId, axis: motorFocus.axisId }) }, message);
     else if (next.mechanisms?.length) go({ view: "workbench", target: `mechanism:${next.mechanisms[0].id}` }, message);
     else if (next.assemblies?.length) go({ view: "workbench", target: `assembly:${next.assemblies[0].id}` }, message);
     else if (next.milo) go({ view: "workbench", target: "milo" }, message);
@@ -268,7 +279,7 @@ export default function TwinStudio() {
         case "project":
           await prepareProjectResources(item, signal);
           signal.throwIfAborted();
-          showProject(item.workspace, `已导入工程“${item.name}”。`);
+          showProject(item.workspace, `已导入工程“${item.name}”。`, item.motorFocus);
           break;
         case "device":
           persist(installPackage(workspace, item.device));
@@ -361,7 +372,14 @@ export default function TwinStudio() {
     go({ view: "resources", section: "author" }, `已带入“${row.name}”的资料。请核对身份、定位和规格后生成草案。`);
   }
 
-  function assemble(pkg: DevicePackage, mode?: "factory") {
+  function assemble(pkg: DevicePackage, mode?: "factory" | "motor") {
+    if (pkg.motorPhysics && (mode === "motor" || (!pkg.servo && !pkg.factory && !pkg.feed && !pkg.mechanics))) {
+      if (pkg.motorPhysics.kind === "motor") {
+        cancelImport();
+        setMotorToMount(packageKey(pkg));
+      } else go({ view: "resources", section: "author", motorPart: packageKey(pkg) });
+      return;
+    }
     if (pkg.factory && (mode === "factory" || (!pkg.feed && !pkg.mechanics && !pkg.servo))) {
       go({ view: "workbench", target: "factory-new", part: packageKey(pkg) });
       return;
@@ -397,10 +415,10 @@ export default function TwinStudio() {
     go({ view: "workbench", target: "servo" }, "驱动器和电机均已安装，组轴后即可运行目标位置。");
   }
 
-  function applyExample(next: TwinWorkspace, target: StudioTarget, name: string) {
+  function applyExample(next: TwinWorkspace, target: StudioTarget, name: string, focus?: MotorAxisLocation) {
     save(next);
     if (target === "servo") setSelection(previous => ({ version: previous.version + 1 }));
-    go({ view: "workbench", target }, `已将“${name}”加入当前工程。`);
+    go({ view: "workbench", target, ...(focus && { motorAxis: focus.resourceId, axis: focus.axisId }) }, `已将“${name}”加入当前工程。`);
   }
 
   function saveAssembly(assembly: LinearAssembly) {
@@ -410,7 +428,7 @@ export default function TwinStudio() {
 
   function saveFactory(layout: FactoryLayout, revised?: TwinWorkspace) {
     save(upsertFactoryLayout(revised ?? workspace, layout));
-    go({ view: "workbench", target: `factory:${layout.id}` }, "", target === "factory-new");
+    if (target !== `factory:${layout.id}`) go({ view: "workbench", target: `factory:${layout.id}` }, "", target === "factory-new");
   }
 
   function saveDeviceRevision(revised: TwinWorkspace, key: string) {
@@ -494,7 +512,8 @@ export default function TwinStudio() {
         </div>
         <section hidden={!authoring} aria-label="创建设备" className="space-y-4">
           <Link to={studioHref({ view: "resources" })} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />返回工程资源</Link>
-          <TwinDeviceLibrary key={`${generation}-${sourceDraft?.key ?? 0}`} initialSource={sourceDraft?.value} incomingSource={incomingSource}
+          <TwinDeviceLibrary key={JSON.stringify([generation, sourceDraft?.key ?? 0, route.view === "resources" ? route.motorPart : undefined])}
+            workspace={workspace} initialMotorPartKey={route.view === "resources" ? route.motorPart : undefined} initialSource={sourceDraft?.value} incomingSource={incomingSource}
             active={authoring} onImportFile={importFile} onImportText={importText} onPreviewDevice={intake.previewDevice} />
           {authoring && !IS_PAGES && <section className="surface">
             <button type="button" className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm font-medium" aria-expanded={showPairSource} aria-controls="servo-sources" onClick={() => setShowPairSource(!showPairSource)}>
@@ -508,6 +527,20 @@ export default function TwinStudio() {
           onChange={save} onSaveAssembly={saveAssembly} onSaveFactory={saveFactory} onOpenImport={() => importInput.current?.click()} onSaveMechanism={saveMechanism}
           onInstallBundle={bundle => save(installMechanicalBundle(workspace, bundle))} onNavigate={go}
           onApplyExample={applyExample} onImportFile={importFile} onImportText={importText} />
+        <Dialog open={motorToMount !== undefined} onOpenChange={open => { if (!open) setMotorToMount(undefined); }}>
+          <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader><DialogTitle>选择电机的安装机床</DialogTitle><DialogDescription className="break-all">
+              {selectedMotor?.model} · {selectedMotor?.revision}
+            </DialogDescription></DialogHeader>
+            {motorDestinations.length ? motorDestinations.map(({ layout, resource, ports }) =>
+              <Button key={JSON.stringify([layout.id, resource.id])} variant="outline" className="h-auto whitespace-normal py-2" onClick={() => {
+                setMotorToMount(undefined);
+                go({ view: "workbench", target: `factory:${layout.id}`, motorAxis: resource.id, motorKey: motorToMount });
+              }}>{layout.name} · {resource.name} · {ports.map(port => port.name).join("、")}</Button>)
+              : <div className="space-y-3"><p className="text-sm">当前工程缺少与这台电机配合的轴安装位。可以导入带轴工况的机床，或从示例库将数控工厂加入工程，再选用这台电机。</p>
+                <Button variant="outline" onClick={() => { setMotorToMount(undefined); go({ view: "examples" }); }}>浏览示例库</Button></div>}
+          </DialogContent>
+        </Dialog>
         {route.view === "examples" && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开示例库…</p>}>
           <StudioExamples />
         </Suspense>}

@@ -14,7 +14,7 @@ const finite = z.number().finite();
 const resourceSchema = z.strictObject({
   id: signalIdSchema, name: nameSchema, packageKey: z.string().trim().max(4096),
   positionM: z.tuple([finite, finite]), materialId: z.string().trim().min(1).max(128).optional(),
-  parameters: factoryParametersSchema.optional(),
+  parameters: factoryParametersSchema.optional(), axisTargetsMm: factoryParametersSchema.optional(),
 });
 const resourceRefs = z.array(signalIdSchema).max(FACTORY_LIMITS.resources)
   .refine(ids => new Set(ids).size === ids.length, "候选设备标识重复");

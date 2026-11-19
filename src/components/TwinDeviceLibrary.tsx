@@ -9,11 +9,13 @@ import { fetchSourceText } from "@/lib/twin-source-text";
 import type { DeviceDraftPatch, WorkbenchImportOptions } from "@/lib/workbench-import";
 import { trpc } from "@/providers/trpc";
 import type { MaterialRow } from "@contracts/import-catalog";
+import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
 import { deviceExtractionPrompt, deviceSourceFromMaterial, generateDevicePackage, inovanceSource, suggestSourceMetadata, type DeviceSourceInput } from "@contracts/twin-extract";
 
 const emptySource: DeviceSourceInput = { manufacturer: "", model: "", revision: "", title: "", url: "", locator: "", text: "" };
 const LocalLeafForm = lazy(() => import("./DeviceCompositionEditor").then(module => ({ default: module.LocalLeafForm })));
+const MotorAssemblyForm = lazy(() => import("./MotorAssemblyForm"));
 const sourceFields = [
   { key: "manufacturer", label: "制造商", hint: "资料中的制造商名称" },
   { key: "model", label: "设备型号", hint: "完整订货型号" },
@@ -38,7 +40,9 @@ function isSampleUrl(value: string) {
   }
 }
 
-export default function TwinDeviceLibrary({ initialSource, incomingSource, onImportFile, onImportText, onPreviewDevice, active = true }: {
+export default function TwinDeviceLibrary({ workspace, initialSource, incomingSource, initialMotorPartKey, onImportFile, onImportText, onPreviewDevice, active = true }: {
+  workspace: TwinWorkspace;
+  initialMotorPartKey?: string;
   initialSource?: Partial<DeviceSourceInput>;
   incomingSource?: DeviceDraftPatch;
   active?: boolean;
@@ -46,7 +50,7 @@ export default function TwinDeviceLibrary({ initialSource, incomingSource, onImp
   onImportText: (text: string, name: string, options?: WorkbenchImportOptions) => void;
   onPreviewDevice: (device: DevicePackage, installed?: boolean) => void;
 }) {
-  const [mode, setMode] = useState<"source" | "package" | "leaf">("source");
+  const [mode, setMode] = useState<"source" | "package" | "leaf" | "motor">(initialMotorPartKey ? "motor" : "source");
   const [source, setSource] = useState<DeviceSourceInput>(() => ({ ...emptySource, ...initialSource }));
   const latestSource = useRef(source);
   useLayoutEffect(() => { latestSource.current = source; }, [source]);
@@ -258,6 +262,7 @@ export default function TwinDeviceLibrary({ initialSource, incomingSource, onImp
             <Button size="sm" variant={mode === "source" ? "secondary" : "ghost"} aria-pressed={mode === "source"} onClick={() => switchMode("source")}><BookOpen />从资料生成</Button>
             <Button size="sm" variant={mode === "package" ? "secondary" : "ghost"} aria-pressed={mode === "package"} onClick={() => switchMode("package")}><FileJson />导入设备包</Button>
             <Button size="sm" variant={mode === "leaf" ? "secondary" : "ghost"} aria-pressed={mode === "leaf"} onClick={() => switchMode("leaf")}><Box />创建最小件</Button>
+            <Button size="sm" variant={mode === "motor" ? "secondary" : "ghost"} aria-pressed={mode === "motor"} onClick={() => switchMode("motor")}>从部件组装电机</Button>
           </div>
         </header>
         <div className="space-y-4 p-4 sm:p-5">
@@ -324,7 +329,10 @@ export default function TwinDeviceLibrary({ initialSource, incomingSource, onImp
                 </div>}
               </div>
             </details>
-          </> : mode === "leaf" ? <Suspense fallback={<p role="status">正在打开部件表单…</p>}>
+          </> : mode === "motor" ? <Suspense fallback={<p role="status">正在打开电机选件表单…</p>}>
+            <MotorAssemblyForm key={initialMotorPartKey} workspace={workspace} initialPartKey={initialMotorPartKey}
+              submitLabel="核对组装电机" onBuild={device => onPreviewDevice(device)} />
+          </Suspense> : mode === "leaf" ? <Suspense fallback={<p role="status">正在打开部件表单…</p>}>
             <LocalLeafForm onCreate={device => onPreviewDevice(device)} submitLabel="核对最小件" />
           </Suspense> : <>
             <p className="text-xs leading-5 text-muted-foreground">选择已有设备包，或粘贴人工编写、AI 提取的设备包 JSON。</p>

@@ -7,7 +7,8 @@ import { downloadBlob } from "@/lib/download";
 import FactoryScene from "./FactoryScene";
 import { Button } from "./ui/button";
 
-type Props = { layout: FactoryLayout; result: FactoryRunResult; active?: boolean; onEditResource?: (id: string) => void; onOpenStructure?: (id: string) => void };
+type Props = { layout: FactoryLayout; result: FactoryRunResult; active?: boolean; onEditResource?: (id: string) => void; onOpenStructure?: (id: string) => void;
+  onOpenMotor?: (id: string) => void; motorResourceIds?: readonly string[] };
 const number = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2, useGrouping: false });
 const seconds = (t: number) => number.format(t) + " s";
 const selectClass = "h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm";
@@ -106,7 +107,7 @@ function ResourceTimeline({
   );
 }
 
-function Playback({ layout, result, active = true, onEditResource, onOpenStructure }: Props) {
+function Playback({ layout, result, active = true, onEditResource, onOpenStructure, onOpenMotor, motorResourceIds }: Props) {
   const timeline = useMemo(() => indexFactoryRun(result), [result]),
     slider = useId();
   const sliderEnd = useMemo(() => {
@@ -345,6 +346,8 @@ function Playback({ layout, result, active = true, onEditResource, onOpenStructu
             )}
           </div>
           {onOpenStructure && <Button size="sm" variant="outline" onClick={() => { seek(time); onOpenStructure(resource.id); }}>拆解此设备</Button>}
+          {onOpenMotor && motorResourceIds?.includes(resource.id) &&
+            <Button size="sm" variant="outline" onClick={() => { seek(time); onOpenMotor(resource.id); }}>组电机与试跑轴</Button>}
           {onEditResource && (
             <Button size="sm" variant="outline" onClick={() => onEditResource(resource.id)}>
               <SlidersHorizontal />

@@ -1,0 +1,617 @@
+{
+  "schemaVersion": 1,
+  "kind": "device-library",
+  "packages": [
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "S40-STD",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "EDU-FRAME-40 教学电机参数表",
+        "url": "",
+        "locator": "电机零件选配 · S40-STD · 修订 1",
+        "excerpt": "四极教学定子，每相电阻 2 Ω，q 轴电感 4 mH，每相串联 50 匝，基波绕组系数 0.9，峰值电流指令上限 4 A，内径 24 mm。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "ring",
+        "parts": [
+          {
+            "id": "winding",
+            "label": "三相绕组线段",
+            "packageKey": "[\"构元教学件\",\"PHASE-WIRE\",\"1\"]",
+            "quantity": 3
+          },
+          {
+            "id": "laminations",
+            "label": "定子叠片",
+            "packageKey": "[\"构元教学件\",\"STATOR-STEEL\",\"1\"]",
+            "quantity": 24
+          }
+        ],
+        "ratings": {
+          "phaseResistanceOhm": {
+            "label": "每相绕组电阻",
+            "value": 2,
+            "unit": "Ohm"
+          },
+          "qInductanceH": {
+            "label": "q 轴同步电感",
+            "value": 0.004,
+            "unit": "H"
+          },
+          "windingTurns": {
+            "label": "每相串联匝数",
+            "value": 50,
+            "unit": "1"
+          },
+          "windingFactor": {
+            "label": "基波绕组系数",
+            "value": 0.9,
+            "unit": "1"
+          },
+          "windingCurrentLimitA": {
+            "label": "绕组峰值电流指令上限",
+            "value": 4,
+            "unit": "A"
+          },
+          "polePairs": {
+            "label": "绕组极对数",
+            "value": 2,
+            "unit": "1"
+          },
+          "statorBoreMm": {
+            "label": "定子内径",
+            "value": 24,
+            "unit": "mm"
+          }
+        },
+        "note": "教学电机选配件。结构用量按每件统计，动态参数按这份修订给定的额定值读取。"
+      },
+      "motorPhysics": {
+        "kind": "stator",
+        "fit": "EDU-FRAME-40",
+        "modelRef": {
+          "id": "GouyuanMotor.StatorWinding",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "S40-HL",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "EDU-FRAME-40 教学电机参数表",
+        "url": "",
+        "locator": "电机零件选配 · S40-HL · 修订 1",
+        "excerpt": "四极教学高电感定子，q 轴电感为 12 mH。与 S40-STD 的对照中，每相电阻、匝数、绕组系数、电流上限和内径采用相同教学数值。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "ring",
+        "parts": [
+          {
+            "id": "winding",
+            "label": "三相绕组线段",
+            "packageKey": "[\"构元教学件\",\"PHASE-WIRE\",\"1\"]",
+            "quantity": 3
+          },
+          {
+            "id": "laminations",
+            "label": "定子叠片",
+            "packageKey": "[\"构元教学件\",\"STATOR-STEEL\",\"1\"]",
+            "quantity": 24
+          }
+        ],
+        "ratings": {
+          "phaseResistanceOhm": {
+            "label": "每相绕组电阻",
+            "value": 2,
+            "unit": "Ohm"
+          },
+          "qInductanceH": {
+            "label": "q 轴同步电感",
+            "value": 0.012,
+            "unit": "H"
+          },
+          "windingTurns": {
+            "label": "每相串联匝数",
+            "value": 50,
+            "unit": "1"
+          },
+          "windingFactor": {
+            "label": "基波绕组系数",
+            "value": 0.9,
+            "unit": "1"
+          },
+          "windingCurrentLimitA": {
+            "label": "绕组峰值电流指令上限",
+            "value": 4,
+            "unit": "A"
+          },
+          "polePairs": {
+            "label": "绕组极对数",
+            "value": 2,
+            "unit": "1"
+          },
+          "statorBoreMm": {
+            "label": "定子内径",
+            "value": 24,
+            "unit": "mm"
+          }
+        },
+        "note": "教学电机选配件。结构用量按每件统计，动态参数按这份修订给定的额定值读取。"
+      },
+      "motorPhysics": {
+        "kind": "stator",
+        "fit": "EDU-FRAME-40",
+        "modelRef": {
+          "id": "GouyuanMotor.StatorWinding",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "R40-STD",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "EDU-FRAME-40 教学电机参数表",
+        "url": "",
+        "locator": "电机零件选配 · R40-STD · 修订 1",
+        "excerpt": "四极表贴式永磁转子，每极基波满距单匝峰值磁通 1 mWb，惯量 2×10⁻⁵ kg·m²，外径 23 mm，轴承安装段直径 8 mm。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "parts": [
+          {
+            "id": "shaft",
+            "label": "转轴",
+            "packageKey": "[\"构元教学件\",\"SERVO-SHAFT\",\"1\"]",
+            "quantity": 1
+          },
+          {
+            "id": "magnets",
+            "label": "永磁体",
+            "packageKey": "[\"构元教学件\",\"ROTOR-MAGNET\",\"1\"]",
+            "quantity": 4
+          },
+          {
+            "id": "laminations",
+            "label": "转子叠片",
+            "packageKey": "[\"构元教学件\",\"ROTOR-STEEL\",\"1\"]",
+            "quantity": 16
+          }
+        ],
+        "ratings": {
+          "rotorFluxWb": {
+            "label": "每极基波满距单匝峰值磁通",
+            "value": 0.001,
+            "unit": "Wb"
+          },
+          "rotorInertiaKgM2": {
+            "label": "转子转动惯量",
+            "value": 2e-05,
+            "unit": "kg.m2"
+          },
+          "polePairs": {
+            "label": "转子极对数",
+            "value": 2,
+            "unit": "1"
+          },
+          "rotorDiameterMm": {
+            "label": "转子外径",
+            "value": 23,
+            "unit": "mm"
+          },
+          "bearingSeatMm": {
+            "label": "轴承安装段轴径",
+            "value": 8,
+            "unit": "mm"
+          }
+        },
+        "note": "教学电机选配件。结构用量按每件统计，动态参数按这份修订给定的额定值读取。"
+      },
+      "motorPhysics": {
+        "kind": "rotor",
+        "fit": "EDU-FRAME-40",
+        "modelRef": {
+          "id": "GouyuanMotor.PermanentMagnetRotor",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "R40-HI",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "EDU-FRAME-40 教学电机参数表",
+        "url": "",
+        "locator": "电机零件选配 · R40-HI · 修订 1",
+        "excerpt": "四极教学高惯量转子，惯量 6×10⁻⁵ kg·m²。磁通、外径及轴承安装段的几何接口与 R40-STD 相同。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "parts": [
+          {
+            "id": "shaft",
+            "label": "转轴",
+            "packageKey": "[\"构元教学件\",\"SERVO-SHAFT\",\"1\"]",
+            "quantity": 1
+          },
+          {
+            "id": "magnets",
+            "label": "永磁体",
+            "packageKey": "[\"构元教学件\",\"ROTOR-MAGNET\",\"1\"]",
+            "quantity": 4
+          },
+          {
+            "id": "laminations",
+            "label": "转子叠片",
+            "packageKey": "[\"构元教学件\",\"ROTOR-STEEL\",\"1\"]",
+            "quantity": 16
+          }
+        ],
+        "ratings": {
+          "rotorFluxWb": {
+            "label": "每极基波满距单匝峰值磁通",
+            "value": 0.001,
+            "unit": "Wb"
+          },
+          "rotorInertiaKgM2": {
+            "label": "转子转动惯量",
+            "value": 6e-05,
+            "unit": "kg.m2"
+          },
+          "polePairs": {
+            "label": "转子极对数",
+            "value": 2,
+            "unit": "1"
+          },
+          "rotorDiameterMm": {
+            "label": "转子外径",
+            "value": 23,
+            "unit": "mm"
+          },
+          "bearingSeatMm": {
+            "label": "轴承安装段轴径",
+            "value": 8,
+            "unit": "mm"
+          }
+        },
+        "note": "教学电机选配件。结构用量按每件统计，动态参数按这份修订给定的额定值读取。"
+      },
+      "motorPhysics": {
+        "kind": "rotor",
+        "fit": "EDU-FRAME-40",
+        "modelRef": {
+          "id": "GouyuanMotor.PermanentMagnetRotor",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "B08-STD",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "EDU-FRAME-40 教学电机参数表",
+        "url": "",
+        "locator": "电机零件选配 · B08-STD · 修订 1",
+        "excerpt": "教学轴承内径 8 mm，单只等效粘滞系数 0.00012 N·m·s/rad。组装时每台电机选用两只，模型按实际数量计入损耗。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "ring",
+        "parts": [
+          {
+            "id": "inner",
+            "label": "内圈",
+            "packageKey": "[\"构元教学件\",\"BRG-INNER\",\"1\"]",
+            "quantity": 1
+          },
+          {
+            "id": "outer",
+            "label": "外圈",
+            "packageKey": "[\"构元教学件\",\"BRG-OUTER\",\"1\"]",
+            "quantity": 1
+          },
+          {
+            "id": "cage",
+            "label": "保持架",
+            "packageKey": "[\"构元教学件\",\"BRG-CAGE\",\"1\"]",
+            "quantity": 1
+          },
+          {
+            "id": "balls",
+            "label": "钢球",
+            "packageKey": "[\"构元教学件\",\"BALL-4\",\"1\"]",
+            "quantity": 8
+          }
+        ],
+        "ratings": {
+          "bearingViscousNmS": {
+            "label": "单只轴承粘滞系数",
+            "value": 0.00012,
+            "unit": "N.m.s/rad"
+          },
+          "boreMm": {
+            "label": "轴承内径",
+            "value": 8,
+            "unit": "mm"
+          }
+        },
+        "note": "教学电机选配件。结构用量按每件统计，动态参数按这份修订给定的额定值读取。"
+      },
+      "motorPhysics": {
+        "kind": "bearing",
+        "fit": "EDU-FRAME-40",
+        "modelRef": {
+          "id": "GouyuanMotor.BearingSupport",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "B08-HI",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "EDU-FRAME-40 教学电机参数表",
+        "url": "",
+        "locator": "电机零件选配 · B08-HI · 修订 1",
+        "excerpt": "教学高阻尼轴承，内径 8 mm，单只等效粘滞系数 0.00036 N·m·s/rad。组装时两只轴承的阻力矩相加。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "ring",
+        "parts": [
+          {
+            "id": "inner",
+            "label": "内圈",
+            "packageKey": "[\"构元教学件\",\"BRG-INNER\",\"1\"]",
+            "quantity": 1
+          },
+          {
+            "id": "outer",
+            "label": "外圈",
+            "packageKey": "[\"构元教学件\",\"BRG-OUTER\",\"1\"]",
+            "quantity": 1
+          },
+          {
+            "id": "cage",
+            "label": "保持架",
+            "packageKey": "[\"构元教学件\",\"BRG-CAGE\",\"1\"]",
+            "quantity": 1
+          },
+          {
+            "id": "balls",
+            "label": "钢球",
+            "packageKey": "[\"构元教学件\",\"BALL-4\",\"1\"]",
+            "quantity": 8
+          }
+        ],
+        "ratings": {
+          "bearingViscousNmS": {
+            "label": "单只轴承粘滞系数",
+            "value": 0.00036,
+            "unit": "N.m.s/rad"
+          },
+          "boreMm": {
+            "label": "轴承内径",
+            "value": 8,
+            "unit": "mm"
+          }
+        },
+        "note": "教学电机选配件。结构用量按每件统计，动态参数按这份修订给定的额定值读取。"
+      },
+      "motorPhysics": {
+        "kind": "bearing",
+        "fit": "EDU-FRAME-40",
+        "modelRef": {
+          "id": "GouyuanMotor.BearingSupport",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BRG-INNER",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "轴承内圈 · BRG-INNER",
+        "excerpt": "教学清单按一件独立成形件计入轴承内圈的用量。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BRG-OUTER",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "轴承外圈 · BRG-OUTER",
+        "excerpt": "教学清单按一件独立成形件计入轴承外圈的用量。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BRG-CAGE",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "轴承保持架 · BRG-CAGE",
+        "excerpt": "教学清单按一件独立成形件计入轴承保持架的用量。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BALL-4",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "教学轴承钢球 · BALL-4",
+        "excerpt": "教学清单按一件独立成形件计入教学轴承钢球的用量。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ball"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SERVO-SHAFT",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "电机转轴 · SERVO-SHAFT",
+        "excerpt": "教学清单按一件独立成形件计入电机转轴的用量。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ROTOR-STEEL",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "转子叠片 · ROTOR-STEEL",
+        "excerpt": "教学清单按一件独立成形件计入转子叠片的用量。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "STATOR-STEEL",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "定子叠片 · STATOR-STEEL",
+        "excerpt": "教学清单按一件独立成形件计入定子叠片的用量。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ROTOR-MAGNET",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "永磁体 · ROTOR-MAGNET",
+        "excerpt": "教学清单按一件独立成形件计入永磁体的用量。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "PHASE-WIRE",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "定子相绕组漆包线段 · PHASE-WIRE",
+        "excerpt": "教学清单按一段预裁线材计入定子相绕组漆包线段的用量。"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "coil"
+      }
+    }
+  ]
+}

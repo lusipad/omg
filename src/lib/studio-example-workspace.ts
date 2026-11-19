@@ -160,7 +160,9 @@ export function prepareStudioExampleJoin(kind: StudioBenchKind, project: TwinWor
       if (!layout) throw new Error("请先载入工厂布局。");
       const issues = inspectFactoryLayout(sample, layout);
       if (issues.length) throw new Error(issues.join("\n"));
-      const merged = joinMaterials(project, sample, layout.resources.map(r => r.packageKey));
+      // Retain the trial's calibrated stock and built motors even before they are mounted.
+      const motorLibrary = sample.packages.filter(p => p.motorPhysics).map(packageKey);
+      const merged = joinMaterials(project, sample, [...layout.resources.map(r => r.packageKey), ...motorLibrary]);
       const previous = merged.factories?.find(f => f.id === layout.id);
       const replacement = previous && !same(previous, layout)
         ? `将以“${layout.name}”的 ${layout.lines.length} 条产线和 ${layout.resources.length} 台设备更新当前工程中的“${previous.name}”。` : undefined;

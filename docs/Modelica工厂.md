@@ -7,7 +7,7 @@
 ## 从空工程逐步装配
 
 1. 在 **工程资源** 导入 BOM。8 行列出上下料单元、输送带、移动机器人和机床的可选型号与数量。库存按安装的设备实例计数，每加工一件工件仍使用同一台设备。[下载 BOM](https://lusipad.com/omg/assemblies/cnc-factory/bom.csv)
-2. 在同一入口导入设备库并确认安装。库中有 8 种整机和 105 种可复用的内部部件修订。也可逐个导入下表的整机包，再补装共享子件库。遇到同型号的多个修订，按工程指定的版本核对采购行绑定。[下载完整设备库](https://lusipad.com/omg/assemblies/cnc-factory/devices.library.json) · [下载共享子件库](https://lusipad.com/omg/assemblies/cnc-factory/parts.library.json)
+2. 在同一入口导入设备库并确认安装。库中有 8 种整机、105 种内部部件修订和 6 种带标定参数的电机选件。也可逐个导入下表的整机包，再补装共享子件库。遇到同型号的多个修订，按工程指定的版本核对采购行绑定。[下载完整设备库](https://lusipad.com/omg/assemblies/cnc-factory/devices.library.json) · [下载共享子件库](https://lusipad.com/omg/assemblies/cnc-factory/parts.library.json)
 3. 导入工厂布局并运行。布局保存设备实例、安装位置、两条线的投料计划、工序顺序、候选机床和载具。也可以在工厂编辑器中新建布局，按下表放置设备，再逐条添加工序。[下载工厂布局](https://lusipad.com/omg/assemblies/cnc-factory/layout.factory.json)
 
 | 设备与坐标（米） | 当前实例采用的设备包 | 可替换设备包 |
@@ -28,6 +28,8 @@
 ## 读懂一件工件的等待和运输
 
 在回放中点选设备后，点 **拆解此设备** 可查看该实例当前安装的内部修订，再切回 **工厂回放** 继续观察同一时刻。单台设备、整条线与整厂都可以汇总最小件数量。[直接打开 CNC-A 的结构](https://lusipad.com/omg/?view=workbench&example=cnc-factory&structure=cnc-a) · [结构修订与换件教程](设备分解.md)
+
+点选修订 3 的 CNC 后，可进入 **电机与轴**，用自组的伺服电机驱动这台机器的 X 轴。轴试验使用位置指令和机床包中的驱动整定、丝杠、工作台质量。整厂排程使用各工序已声明的工艺节拍。两种计算可在同一工程分别复算。[安装电机并观察位置、速度](零件装配伺服电机.md)
 
 主线第 1 件在 **10.00 s** 完成接驳。此时机器人正在为补料线服务。机器人在 **14.59 s** 从 CNC-B 出发，**17.39 s** 空驶到线尾接驳位，取件后在 **18.89 s** 开始载货行驶，**23.36 s** 到达 CNC-A。放件结束后 CNC-A 在 **24.36–84.36 s** 加工这件工件。把回放切换到机器人，可以按这些时刻观察空驶、取件、载货和放件。
 

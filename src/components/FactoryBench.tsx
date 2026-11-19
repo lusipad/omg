@@ -1,10 +1,11 @@
 import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Boxes, ChevronDown, Download, Factory, GitBranch, Play, Save, Workflow } from "lucide-react";
+import { Activity, Boxes, ChevronDown, Download, Factory, GitBranch, Play, Save, Workflow } from "lucide-react";
 import { nanoid } from "nanoid";
 import { FACTORY_LIMITS, inspectFactoryLayout, parseFactoryLayout, type FactoryLayout, type FactoryResource } from "@contracts/factory";
 import { deviceCompositionClosure } from "@contracts/device-composition";
 import { applyFactoryStructureRevision, factoryStructureRoots } from "@contracts/factory-structure";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
+import type { MotorAxisLocation } from "@contracts/studio-navigation";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { runFactory, type FactoryRunResult } from "@/lib/factory-runtime";
 import { downloadFile, downloadJson } from "@/lib/download";
@@ -14,11 +15,15 @@ import FactoryEditor from "./FactoryEditor";
 import FactoryPlayback from "./FactoryPlayback";
 
 const DeviceCompositionView = lazy(() => import("./DeviceCompositionView"));
+const MotorAxisBench = lazy(() => import("./MotorAxisBench"));
 type Props = {
   workspace: TwinWorkspace; layout?: FactoryLayout; initialPackageKey?: string; initialStructureId?: string; trial?: boolean;
+  initialMotorResourceId?: string; initialMotorAxisId?: string; initialMotorKey?: string;
+  onMotorFocus?: (focus?: MotorAxisLocation) => void;
+  onUpdateLibrary: (value: TwinWorkspace) => void;
   onSave: (value: FactoryLayout, revised?: TwinWorkspace) => void; onTrialReady?: (ready: boolean) => void; onImport?: () => void;
 };
-type Tab = "playback" | "devices" | "lines" | "structure";
+type Tab = "playback" | "devices" | "lines" | "structure" | "motor";
 type RunSpec = { layout: FactoryLayout; signature: string; basis: string };
 type Request = RunSpec & { action: "run" | "export"; workspace: TwinWorkspace; save?: Props["onSave"] };
 type Completed = RunSpec & { result: FactoryRunResult };
@@ -26,6 +31,7 @@ const errorText = (cause: unknown) => cause instanceof Error ? cause.message : "
 const tabs = [
   { id: "playback", name: "工厂回放", icon: Factory }, { id: "devices", name: "设备布局", icon: Boxes },
   { id: "lines", name: "产线工序", icon: Workflow }, { id: "structure", name: "设备结构", icon: GitBranch },
+  { id: "motor", name: "电机与轴", icon: Activity },
 ] as const;
 
 function resourceFor(resources: FactoryResource[], pkg: DevicePackage, workspace: TwinWorkspace): FactoryResource {
@@ -49,7 +55,7 @@ function inputs(workspace: TwinWorkspace, layout: FactoryLayout) {
     workspace.catalog?.materials.filter(row => ids.has(row.id)).map(row => [row.id, row.quantity, row.unit, row.binding])]);
 }
 
-function fresh(workspace: TwinWorkspace, saved?: FactoryLayout, initialPackageKey?: string, initialStructureId?: string) {
+function fresh(workspace: TwinWorkspace, saved?: FactoryLayout, initialPackageKey?: string, initialStructureId?: string, initialMotorResourceId?: string) {
   const draft: FactoryLayout = saved ?? { schemaVersion: 1, kind: "factory-layout", id: "factory-" + nanoid(), name: "新工厂", resources: [], lines: [] };
   const initial = !saved && initialPackageKey ? workspace.packages.find(p => p.factory && packageKey(p) === initialPackageKey) : undefined;
   if (initial) draft.resources.push(resourceFor(draft.resources, initial, workspace));
@@ -57,14 +63,17 @@ function fresh(workspace: TwinWorkspace, saved?: FactoryLayout, initialPackageKe
   const pending: Request | null = saved && !inspectFactoryLayout(workspace, saved).length
     ? { layout: saved, workspace, signature: seen, basis: inputs(workspace, saved), action: "run" } : null;
   const structure = initialStructureId && saved?.resources.some(resource => resource.id === initialStructureId);
-  return { draft, seen, initialPackageKey, submitted: "", tab: (structure ? "structure" : pending ? "playback" : "devices") as Tab, selected: draft.resources[0]?.id ?? "",
+  const motor = initialMotorResourceId && saved?.resources.some(resource => resource.id === initialMotorResourceId);
+  return { draft, seen, initialPackageKey, submitted: "", tab: (motor ? "motor" : structure ? "structure" : pending ? "playback" : "devices") as Tab, selected: draft.resources[0]?.id ?? "",
     request: pending, completed: null as Completed | null, error: "", notice: "" };
 }
 
-export default function FactoryBench({ workspace, layout, initialPackageKey, initialStructureId, trial = false, onSave, onTrialReady, onImport }: Props) {
-  const [session, setSession] = useState(() => fresh(workspace, layout, initialPackageKey, initialStructureId));
+export default function FactoryBench({ workspace, layout, initialPackageKey, initialStructureId, initialMotorResourceId, initialMotorAxisId, initialMotorKey, trial = false, onSave, onUpdateLibrary, onTrialReady, onMotorFocus, onImport }: Props) {
+  const [session, setSession] = useState(() => fresh(workspace, layout, initialPackageKey, initialStructureId, initialMotorResourceId));
   const [structureRoot, setStructureRoot] = useState(initialStructureId);
   const [editingStructure, setEditingStructure] = useState(false);
+  const [motorTarget, setMotorTarget] = useState<{ resourceId?: string; axisId?: string }>({ resourceId: initialMotorResourceId, axisId: initialMotorAxisId });
+  const [motorBusy, setMotorBusy] = useState(false);
   const replacementSelect = useRef<HTMLSelectElement>(null), focusReplacement = useRef(false);
   const incoming = useMemo(() => layout ? JSON.stringify(layout) : "", [layout]);
   if (incoming !== session.seen || initialPackageKey !== session.initialPackageKey) {
@@ -72,6 +81,10 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
     else setSession(fresh(workspace, layout, initialPackageKey));
   }
   const { draft, tab } = session;
+  const motorResources = useMemo(() => {
+    const installed = new Map(workspace.packages.map(p => [packageKey(p), p]));
+    return draft.resources.filter(r => installed.get(r.packageKey)?.axisPorts?.length).map(r => r.id);
+  }, [draft.resources, workspace.packages]);
   const structureRoots = useMemo(() => factoryStructureRoots(draft), [draft]);
   const structureLines = useMemo(() => draft.lines.map(line => ({
     id: line.id, name: line.name, resourceIds: [...new Set(line.stages.flatMap(stage => [...stage.stations, ...stage.carriers]))],
@@ -93,7 +106,7 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
   if (session.seen === incoming && pending && !job) setSession({ ...session, request: null, completed: null, notice: "工程资料已变动，请重新运行。" });
   const prior = session.completed;
   const completed = prior && !checked.issues.length && prior.signature === checked.signature && prior.basis === checked.basis ? prior : null;
-  const ready = !!checked.value && !checked.issues.length && checked.signature === incoming && !job && !session.error && !editingStructure;
+  const ready = !!checked.value && !checked.issues.length && checked.signature === incoming && !job && !session.error && !editingStructure && !(tab === "motor" && motorBusy);
   useLayoutEffect(() => { if (trial) onTrialReady?.(ready); }, [trial, onTrialReady, ready]);
 
   useLayoutEffect(() => {
@@ -128,7 +141,25 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
   }
   function chooseTab(next: Tab, id?: string) {
     if (next === "structure") setStructureRoot(id);
+    if (next === "playback" && tab === "motor" && !completed && checked.value && !checked.issues.length) {
+      setSession(s => ({ ...s, tab: next, request: { action: "run", layout: checked.value!, signature: checked.signature, basis: checked.basis, workspace } }));
+      return;
+    }
     setSession(s => ({ ...s, tab: next, selected: id ?? s.selected }));
+  }
+  function openMotor(resourceId: string, axisId?: string) {
+    setMotorTarget({ resourceId, axisId });
+    chooseTab("motor", resourceId);
+  }
+  function saveMotorChange(revised: TwinWorkspace, value: FactoryLayout) {
+    if (value === draft) {
+      onUpdateLibrary(revised);
+      return;
+    }
+    const parsed = parseFactoryLayout(value), signature = JSON.stringify(parsed);
+    onSave(parsed, revised);
+    setSession(s => ({ ...s, draft: parsed, submitted: signature, request: null,
+      completed: s.completed?.signature === signature ? s.completed : null, error: "", notice: "", tab: "motor" }));
   }
   function applyStructure(id: string, revisions: TwinWorkspace, rootKey: string) {
     const original = draft.resources.find(r => r.id === id);
@@ -156,10 +187,11 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
     {!trial && tab === "playback" && <h2 className="display-title break-words text-xl font-semibold">{draft.name || "工厂"}</h2>}
     <div className="grid min-w-0 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
       <div className="flex max-w-full flex-wrap items-center gap-1" role="group" aria-label="工厂工作区视图">
-        {tabs.map(item => <Button key={item.id} type="button" size="sm" variant={tab === item.id ? "secondary" : "ghost"} aria-pressed={tab === item.id}
-          disabled={editingStructure || (item.id === "playback" && !completed && !job && tab !== "playback")} onClick={() => chooseTab(item.id)}><item.icon className="hidden sm:block" />{item.name}</Button>)}
+        {tabs.filter(item => item.id !== "motor" || motorResources.length || tab === "motor").map(item => <Button key={item.id} type="button" size="sm" variant={tab === item.id ? "secondary" : "ghost"} aria-pressed={tab === item.id}
+          disabled={editingStructure || (item.id === "playback" && !completed && !job && tab !== "playback" && !(tab === "motor" && canRun))}
+          onClick={() => chooseTab(item.id)}><item.icon className="hidden sm:block" />{item.name}</Button>)}
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
+      {tab !== "motor" && <div className="flex flex-wrap items-center gap-1.5">
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button size="sm" variant="ghost" disabled={editingStructure}><Download className="hidden sm:block" />导出<ChevronDown className="size-3" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -170,14 +202,18 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
         {tab !== "playback" && <Button type="button" size="sm" variant="outline" disabled={editingStructure || !checked.value || !!job || checked.signature === incoming}
           onClick={() => act("save")}><Save className="hidden sm:block" />{trial ? "应用到示例" : "保存布局"}</Button>}
         <Button type="button" size="sm" disabled={editingStructure || !canRun || !!job} onClick={() => act("run")}><Play />{trial ? "运行工厂" : "保存并运行"}</Button>
-      </div>
+      </div>}
     </div>
     {job && <p role="status" className="text-sm text-primary">{job.action === "run" ? "正在计算整厂作业与运输时序…" : "正在准备 Modelica 工程…"}</p>}
     {session.error && <p role="alert" className="break-words text-sm text-destructive">{session.error}</p>}
     {session.notice && <p role="status" className="text-xs text-muted-foreground">{session.notice}</p>}
     {tab === "structure" && <Suspense fallback={<p role="status" className="p-4 text-sm">正在打开设备结构…</p>}>
       <DeviceCompositionView workspace={workspace} roots={structureRoots} lines={structureLines} initialRootId={structureRoot}
-        onEditingChange={setEditingStructure} onApplyRevision={applyStructure} />
+        onEditingChange={setEditingStructure} onApplyRevision={applyStructure} onOpenMotorAxis={openMotor} />
+    </Suspense>}
+    {tab === "motor" && <Suspense fallback={<p role="status" className="p-4 text-sm">正在打开电机组装与轴试跑…</p>}>
+      <MotorAxisBench workspace={workspace} layout={draft} trial={trial} initialResourceId={motorTarget.resourceId} initialAxisId={motorTarget.axisId} initialMotorKey={initialMotorKey}
+        onChange={saveMotorChange} onBusyChange={setMotorBusy} onFocusChange={onMotorFocus} onImport={trial ? undefined : onImport} />
     </Suspense>}
     {(tab === "devices" || tab === "lines") && <FactoryEditor draft={draft} workspace={workspace} selectedId={session.selected} tab={tab} onChange={edit} replacementRef={replacementSelect}
       onOpenStructure={id => chooseTab("structure", id)}
@@ -185,11 +221,12 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
         if (draft.resources.length >= FACTORY_LIMITS.resources) return;
         const next = resourceFor(draft.resources, pkg, workspace); edit({ ...draft, resources: [...draft.resources, next] }); chooseTab("devices", next.id);
       }} />}
-    {checked.issues.length > 0 && <details className="surface min-w-0 p-3 text-sm" open>
+    {tab !== "motor" && checked.issues.length > 0 && <details className="surface min-w-0 p-3 text-sm" open>
       <summary className="cursor-pointer font-medium">运行前待补全 {checked.issues.length} 项</summary>
       <ul className="mt-2 list-disc space-y-1 break-words pl-5 text-xs leading-5 text-amber-300">{checked.issues.map((msg, i) => <li key={i}>{msg}</li>)}</ul>
     </details>}
     {completed && <div hidden={tab !== "playback"}><FactoryPlayback layout={completed.layout} result={completed.result} active={tab === "playback"}
+      motorResourceIds={motorResources} onOpenMotor={openMotor}
       onOpenStructure={id => chooseTab("structure", id)}
       onEditResource={id => { focusReplacement.current = true; chooseTab("devices", id); }} /></div>}
     {tab === "playback" && !completed && !job && !session.error && canRun && <p className="surface p-4 text-sm text-muted-foreground">运行当前布局后可回放工件与设备。</p>}

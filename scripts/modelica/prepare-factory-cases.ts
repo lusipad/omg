@@ -37,7 +37,7 @@ function reduceCncFeed(workspace: TwinWorkspace, layout: FactoryLayout) {
   assert(feed?.kind === "assembly" && originalParts[2].model === "FEED-AXIS-900");
   const slow = packageKey({ manufacturer: "构元教学件", model: "FEED-AXIS-600", revision: "1" });
   const changed = { ...feed, parts: feed.parts.map(p => p.id === "x" ? { ...p, packageKey: slow } : p) };
-  const edit = deriveDeviceComposition(workspace, machine.packageKey, parentPath, changed, "2-reduced-feed");
+  const edit = deriveDeviceComposition(workspace, machine.packageKey, parentPath, changed, originalParts[0].revision + "-reduced-feed");
   const applied = applyFactoryStructureRevision(workspace, layout, machine.id, machine.packageKey, edit.workspace, edit.rootKey);
   assert.deepEqual(applied.layout.lines, layout.lines);
   assert.deepEqual(applied.layout.resources.filter(r => r.id !== machine.id), layout.resources.filter(r => r.id !== machine.id));

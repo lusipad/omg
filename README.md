@@ -16,6 +16,8 @@
 
 从工厂回放点 **拆解此设备**，可以沿每一层的安装槽位查看型号、修订和数量。在 CNC-A 中打开 **进给系统 → X 轴进给组件 → 伺服电机 → 支承组件 → 滚动轴承 → 钢球**，可以核对这一条路径的 16 颗钢球。按整厂汇总会合并共用型号，并将共享设备按实际安装台数计入。编辑结构可以另存新修订，已绑定的子件额定值会进入下一次求解。[直接拆解 CNC-A](https://lusipad.com/omg/?view=workbench&example=cnc-factory&structure=cnc-a) · [逐层拆解与换件](docs/设备分解.md)
 
+在 **电机与轴** 中从设备库选择定子、转子及一对轴承，可以先保存一台独立伺服电机，再将它装到 CNC 的 X 轴。输入目标位移后，Modelica 结合绕组电流、转子惯量、轴承阻尼、丝杠和移动负载计算位置与速度。曲线可切换观察工作台或电机轴，也可导出 CSV 及可独立运行的原生模型。[从零件装 CNC-A 的电机](https://lusipad.com/omg/?view=workbench&example=cnc-factory&motorAxis=cnc-a) · [装配与复算教程](docs/零件装配伺服电机.md)
+
 例如，可以在 Milo 上分三层铣出 Ø30 × 3 mm 的平底槽，或用 UR5e、2F-85 夹爪及独立方块组装取放工位。试用中可调整程序或工况。[Milo 圆槽](https://lusipad.com/omg/?view=workbench&example=milo-v1-5) · [UR5e 取放工位](https://lusipad.com/omg/?view=workbench&example=ur5e-pick-place) · [下载圆槽 G 代码](public/machines/milo-v1-5/circular-pocket.nc)
 
 公开站点在浏览器内运行模型。轻量工程可导出 JSON，包含用户物理模型的工程可导出带原始资源的 ZIP。客户项目、数据库、官网资料提取、PDF 转换和在线 AI 生成使用下文的完整服务部署。`npm run build:pages` 生成 `dist/pages`，推送到 `main` 后 GitHub Actions 会构建并发布这个目录。[导入格式与操作步骤](docs/通用模型与资料导入.md)

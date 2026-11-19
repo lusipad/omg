@@ -5,7 +5,7 @@
   "csvEventTimeRelativeTolerance": 1e-09,
   "librarySha256": "fd2a244c2fe14436afaf89160f5eb46927c4315401c791a001a897ac63859fbc",
   "schedulerSha256": "c31e5b25b96855b6d03f97db52f437e7c8932f0fed8cd1f0f3b9af5cb1e5d868",
-  "verifierSha256": "4f4689ecece6b8199b668ec40e04b791939ab7b2fa22cee8c4f5967592d46087",
+  "verifierSha256": "36e2c984c17a930818db89ef8805b463bf4477a48383c9d091690aced8d99b1d",
   "cases": {
     "baseline": {
       "verifiedPartParameter": {
@@ -15,7 +15,7 @@
         "kind": "part",
         "packageKey": "[\"构元教学件\",\"FEED-AXIS-900\",\"1\"]",
         "packagePath": [
-          "[\"构元教学件\",\"CELL-CNC-F900\",\"2\"]",
+          "[\"构元教学件\",\"CELL-CNC-F900\",\"3\"]",
           "[\"构元教学件\",\"CNC-FEED-900\",\"1\"]",
           "[\"构元教学件\",\"FEED-AXIS-900\",\"1\"]"
         ],
@@ -57,12 +57,12 @@
       "nativeEventSha256": "37f8285ab3c421b70d0f2d774813852271703954fc70cd2ccfc6025e3c99cc14",
       "sourceSha256": "94b2dbe86d45af6a981bd780a9197f9e2129a6890d75a6664f3c318952c64d1c",
       "mosSha256": "8747d5a83ae907bb8258c5be58cbc92205d8b95d5411fe7351d9cbbf06b2d198",
-      "expectedSha256": "ff306cbc7a6e33142787f03f6e2ae459a1dcaa53e6f99b693e686a9dadee3c56",
-      "mapSha256": "f1fd251b492a318f9f2f4a17a358bb8d7307dbbb1d394f15143d7eb4c1c51193",
+      "expectedSha256": "9384b53cf5656cb509ba935fb19eaea2268ad13d119a6ce8874f5095ef6c8aff",
+      "mapSha256": "03dad9f219b3a1459f959e46188476d1782cdd76c90612487f2c20b08e8397f2",
       "nativeCsv": "factory-baseline.csv",
       "nativeCsvSha256": "9f149a0414f0f7759eccaa160119cb35c4cda9e328d18ad78afca4a2b2351bf0",
       "log": "factory-baseline.log",
-      "logSha256": "bb3d2a9c2edd70975737b8137909630dde2a7a9be70f3da1f8df66ac6ea39701"
+      "logSha256": "01c28ef4af396b10cacfa23b330337d2b65600caa486a72c793dabbf9c023280"
     },
     "fast-amr": {
       "operations": 33,
@@ -94,12 +94,12 @@
       "nativeEventSha256": "ccd3f78e2c608c070db5d624af60564d85c49e3289c9cfbe89de42d2ec222e10",
       "sourceSha256": "85564040f6be4e7c02bfaed65557d3f63509f06e987fd1fd1a32d1cfd137bd26",
       "mosSha256": "8747d5a83ae907bb8258c5be58cbc92205d8b95d5411fe7351d9cbbf06b2d198",
-      "expectedSha256": "a62cbe3ced071ec065fcccb71bf48a814c2bc5ea5c52aff974b1e47ffb41b4cb",
-      "mapSha256": "839f1a073750205a414b925e39862ca3dd3c710bb7d541eca718b7dc22273b74",
+      "expectedSha256": "ef217e61870400b008ed3dba9f34e4396e01e685837f9f19c00c389255286a1c",
+      "mapSha256": "a3ff481c210393ae9294527a4e1a3769ee6b59aa08016b278171813de7afe92f",
       "nativeCsv": "factory-fast-amr.csv",
       "nativeCsvSha256": "60f19895e5b29f9a7b8dc700a86eca6caf13cf6220dad560f3b000f0a36acd42",
       "log": "factory-fast-amr.log",
-      "logSha256": "486074955b60ae6f3707b5b4cb46d1061c730dddf0cdad86d6230e52e8fa05d4"
+      "logSha256": "80b4a84bd267c3117005a1341055bf09b31c905ac07deeb9f0c2188240d12b93"
     },
     "alternate-cnc": {
       "operations": 33,
@@ -131,12 +131,12 @@
       "nativeEventSha256": "d14bd1e7dcfca7469666412522a81c6ac4a23d3ef5c309a8ca7e8db4bcfc7cd8",
       "sourceSha256": "e5967a52d28a9bf070058cecfc8829484c144ca474fc05179b699448587149b5",
       "mosSha256": "8747d5a83ae907bb8258c5be58cbc92205d8b95d5411fe7351d9cbbf06b2d198",
-      "expectedSha256": "05fc8c3495b400292699f31ee732c498739aed46e27faa32b8444368a7d19c78",
-      "mapSha256": "c000983e9f216b4a8a6f72ef8cdffe4fa4bcd44263212230d1a26dd6e30cf2a9",
+      "expectedSha256": "d6aa5566679bfedd1edd2ec328bf1d7702935f864da5d206861d947cf381b17e",
+      "mapSha256": "5907852577ab7c5d2d03092e57e35b11bf6d11ffa67059e685e9820acb5b83e1",
       "nativeCsv": "factory-alternate-cnc.csv",
       "nativeCsvSha256": "6dac0076adfeb431c6f56be81c4af4a67307404d730683cf12723aa03a53247e",
       "log": "factory-alternate-cnc.log",
-      "logSha256": "bc9fe2e4df95b63d9e8b82a7aec7d16bf51d4b551b2408e68e1445d70a8e3e55"
+      "logSha256": "4d808e953058fc55d8817a7f4858cfda0971aa4ee7b60b5c2469a93f99557dad"
     },
     "single-cnc": {
       "operations": 33,
@@ -168,12 +168,12 @@
       "nativeEventSha256": "f517c301067c143d66cbc624257443a1fe2cdc73ae2ea6e55f596a563f521e12",
       "sourceSha256": "a31999d8914b11fe53cf8884def65786c10c7adb07842b796a138eef0c465489",
       "mosSha256": "8747d5a83ae907bb8258c5be58cbc92205d8b95d5411fe7351d9cbbf06b2d198",
-      "expectedSha256": "ffb3020e954acb7e745bb0a41224303970fc5401c8e8ce57f40f2bac26b48d25",
-      "mapSha256": "cc4f9e8fbf43bf769bf3b83fa2fe0693046344e7e65352041f1e552b52ca82f5",
+      "expectedSha256": "33e92bf74c8a28f4106c5a3c99b41d5e7e2d7a9fd3c25328db564f24e884d284",
+      "mapSha256": "3bbe4eade09edce88003d0c2f15b5afea38e44031b97fae8f516490819ea4de9",
       "nativeCsv": "factory-single-cnc.csv",
       "nativeCsvSha256": "a70e2037dc118a004ba060075f13344bfa0c2f273e28326de267cc2abe703029",
       "log": "factory-single-cnc.log",
-      "logSha256": "ddf2ab580065534f96f5f7bb2b5cfd6946ad5acd0272777a0e2c12a8f9645cf8"
+      "logSha256": "3a564f2f6f9b12010c95e6c5bb628b0d5f9786a7467a5afb45efc78bfea975c0"
     },
     "reduced-feed-part": {
       "verifiedPartParameter": {
@@ -183,7 +183,7 @@
         "kind": "part",
         "packageKey": "[\"构元教学件\",\"FEED-AXIS-600\",\"1\"]",
         "packagePath": [
-          "[\"构元教学件\",\"CELL-CNC-F900\",\"2-reduced-feed\"]",
+          "[\"构元教学件\",\"CELL-CNC-F900\",\"3-reduced-feed\"]",
           "[\"构元教学件\",\"CNC-FEED-900\",\"1-1\"]",
           "[\"构元教学件\",\"FEED-AXIS-600\",\"1\"]"
         ],
@@ -225,12 +225,12 @@
       "nativeEventSha256": "4ef96ff23a1dcffbe1d5e793ae93ff0a6ff75ada3f57e2cb9e8ce1f6cef9147a",
       "sourceSha256": "89f881f331163d2584fd05c8028229a63feccc8a9aae96681646e898f0932166",
       "mosSha256": "8747d5a83ae907bb8258c5be58cbc92205d8b95d5411fe7351d9cbbf06b2d198",
-      "expectedSha256": "a91dc92f7ee828d44c88a1ed2c241bccbfd8067460e6d6959434db4ee5d812e8",
-      "mapSha256": "ae245aeea941f995c428bce369e4cf5026a37906f1946bbd3b18f53de6bbbe44",
+      "expectedSha256": "93b2afab9d5cccf518f4eefb632e4e75c0c9100f91755b4a1266e1760490c7c9",
+      "mapSha256": "eeba771e23816cc33f29251daf7b1dcb1e7823ede4995c3a9fab812b7012df12",
       "nativeCsv": "factory-reduced-feed-part.csv",
       "nativeCsvSha256": "8161e237b7abb34656b29fcb3de222a8f347b151142ca6bb763f2d5f9f1d413c",
       "log": "factory-reduced-feed-part.log",
-      "logSha256": "64162131ea0fb99b260e44feb34a0ed93120a1087a1e56a912fe58f7b8a18060"
+      "logSha256": "d2ceac5d18ac5f791eea8c4af43b45d0d0660168d61a6078528ba51a3544da5d"
     }
   },
   "msl": "4.0.0",

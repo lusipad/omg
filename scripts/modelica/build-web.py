@@ -1,9 +1,9 @@
-"""Package the OpenModelica-generated equations of the two audited axis models.
+"""Package the OpenModelica-generated equations of the audited axis models.
 
 The OpenModelica back end performs flattening, index reduction, alias elimination and
 the symbolic solution of the small linear system. We keep its generated assignment
 bodies, changing only their runtime storage/diagnostic ABI for freestanding wasm.
-Both compiled models must be autonomous, continuous and fully scalarized.
+All compiled models must be autonomous, continuous and fully scalarized.
 """
 import argparse
 from dataclasses import dataclass
@@ -37,6 +37,8 @@ class WebModel:
     wasm: str
     manifest: str
     dependencies: tuple = ()
+    state_count: int = 2
+    step_us: int = 50
 
 
 MODELS = {
@@ -51,6 +53,14 @@ MODELS = {
                      ("targetMm", "leadMmPerRev", "tableMassKg", *RATINGS),
                      ("positionMm", "velocityMmS", "motorTorqueNm", "axialForceN", "angleDeg", "speedRpm"),
                      "feed-axis.wasm", "feed-axis.json", ("Gouyuan.mo",)),
+    "motor": WebModel("GouyuanMotor.CncFeedAxis", "motor-library.json", "MotorWeb",
+                      "--postOptModules+=partlintornsystem --partlintorn=1",
+                      ("targetMm", "leadMmPerRev", "tableMassKg", "phaseResistanceOhm", "qInductanceH",
+                       "windingTurns", "windingFactor", "windingCurrentLimitA", "polePairs", "rotorFluxWb",
+                       "rotorInertiaKgM2", "bearingViscousNmS", "bearingCount", "driveVoltageLimitV",
+                       "driveCurrentLimitA", "driveSpeedLimitRpm", "driveReferenceInertiaKgM2", "currentGainOhm"),
+                      ("positionMm", "velocityMmS", "angleDeg", "speedRpm", "currentA", "motorTorqueNm"),
+                      "motor-axis.wasm", "motor-axis.json", ("Gouyuan.mo",), state_count=3, step_us=25),
 }
 
 
@@ -71,7 +81,7 @@ def executable(variable, command):
     return path
 
 
-def emit_kernel(directory, model, output_units):
+def emit_kernel(directory, model, assembly):
     prefix = model.prefix
     info = json.loads((directory / (prefix + "_info.json")).read_text())
     description = ET.parse(directory / (prefix + "_init.xml")).getroot()
@@ -80,9 +90,10 @@ def emit_kernel(directory, model, output_units):
     unsupported = ("numberOfEventIndicators", "numberOfTimeEvents", "numberOfInputVariables",
                    "numberOfExternalObjects", "numberOfFunctions")
     if any(description.get(key) != "0" for key in unsupported):
-        raise ValueError("The two-state web integrator requires autonomous, continuous scalar equations.")
+        raise ValueError("The web integrator requires autonomous, continuous scalar equations.")
     variables = info["variables"]
     scalars = {v.get("name"): v for v in description.findall(".//ScalarVariable")}
+    output_units = assembly["outputs"]
     if set(output_units) != set(model.outputs):
         raise ValueError("Registry and WASM output ports differ for " + model.name)
     for name, unit in output_units.items():
@@ -92,8 +103,17 @@ def emit_kernel(directory, model, output_units):
             raise ValueError("Registry and compiled output units differ for " + name)
     states = sorted((n for n, v in variables.items() if v["kind"] == "state"),
                     key=lambda n: variables[n]["index"])
-    if len(states) != 2 or any(scalars[n][0].get("fixed") != "true" for n in states):
-        raise ValueError("Expected exactly two fixed-initial-value continuous Modelica states.")
+    if len(states) != model.state_count or any(scalars[n][0].get("fixed") != "true" for n in states):
+        raise ValueError(f"{model.name} must have {model.state_count} fixed-initial-value continuous Modelica states.")
+    if "states" in assembly:
+        if states != assembly["states"] or list(assembly["parameters"]) != list(model.parameters):
+            raise ValueError(f"{model.name}: registry and compiled state or parameter interface differ.")
+        for name, spec in assembly["parameters"].items():
+            unit = spec["unit"]
+            # The positive revolutions in mm/rev are dimensionless in the native model.
+            expected = {"mm/rev": "mm", "rpm": "rev/min"}.get(unit, unit)
+            if scalars[name][0].get("unit", "1") != expected:
+                raise ValueError(f"{model.name}: registry and compiled parameter units differ for {name}.")
     for n in model.parameters:
         if variables[n]["kind"] != "parameter" or variables[n]["type"] != "Real":
             raise ValueError("Expected a tunable Real parameter: " + n)
@@ -157,6 +177,23 @@ def emit_kernel(directory, model, output_units):
     for name in [*derivatives, *model.outputs]:
         require(name, set())
 
+    # The detailed motor registers its complete ABI. OMC omits the read set on
+    # initial algorithm equations, so resolve each Real parameter through its
+    # native storage index before calling the original assertion bodies.
+    if "states" in assembly:
+        checks = []
+        parameters_by_index = {v["index"]: n for n, v in variables.items() if v["kind"] == "parameter" and v["type"] == "Real"}
+        for eq in eqs.values():
+            if eq.get("section") != "initial" or eq["tag"] != "algorithm":
+                continue
+            body = code[eq["eqIndex"]]
+            if not all(statement.startswith("assert(") for statement in eq["equation"]) or "realVarsIndex[" in body:
+                raise ValueError("Only parameter assertions may execute during the web motor's initialization.")
+            for index in re.findall(r"realParamsIndex\[(\d+)\]", body):
+                require(parameters_by_index[int(index)], set())
+            checks.append(eq["eqIndex"])
+        schedule["check_initial"] = checks
+
     def slot(name):
         variable = variables[name]
         if variable["type"] != "Real" and variable["type"] != "Real()":
@@ -183,7 +220,11 @@ def emit_kernel(directory, model, output_units):
     for section, ids in schedule.items():
         pieces.append(f"static void {section}(void) {{")
         for i in ids:
-            pieces += [f"  {{ /* OMC equation {i} */", flatten_storage(code[i]), "  }"]
+            body = code[i]
+            if section == "check_initial":
+                # Source paths are native diagnostic locations, not model data.
+                body = re.sub(r"FILE_INFO (\w+) = \{[^{}]*\};", r"FILE_INFO \1 = {0};", body)
+            pieces += [f"  {{ /* OMC equation {i} */", flatten_storage(body), "  }"]
         pieces.append("}")
 
     pieces.append("void reset(" + ", ".join("double " + n for n in model.parameters) + ") {")
@@ -198,13 +239,16 @@ def emit_kernel(directory, model, output_units):
         if not math.isfinite(value):
             raise ValueError("Non-finite initial state: " + name)
         pieces.append(f"  {slot(name)} = {value!r};")
-    pieces += ["  parameter();", "  regular();", "}"]
+    pieces.append("  parameter();")
+    if "check_initial" in schedule:
+        pieces.append("  check_initial();")
+    pieces += ["  regular();", "}"]
     for name in model.outputs:
         pieces.append(f"double {name}(void) {{ return {slot(name)}; }}")
     pieces += [f"#define STATE_COUNT {len(states)}",
                "static const int state_index[] = {" + ",".join(str(variables[n]["index"]) for n in states) + "};",
                "static const int derivative_index[] = {" + ",".join(str(variables[n]["index"]) for n in derivatives) + "};"]
-    return "\n".join(pieces) + "\n"
+    return "\n".join(pieces) + "\n", states
 
 
 def build(model, omc, clang, linker, check):
@@ -231,7 +275,7 @@ def build(model, omc, clang, linker, check):
         log = run([omc, "build.mos"], work)
         if f'"{version}"' not in log.splitlines() or "false" in log.splitlines() or "Error:" in log:
             raise ValueError("Modelica translation failed:\n" + log)
-        equations = emit_kernel(work, model, library["assembly"]["outputs"])
+        equations, states = emit_kernel(work, model, library["assembly"])
         (work / "model-equations.h").write_text(equations)
         wrapper = Path(__file__).with_name("wasm-integrator.c")
         options = ["-O2", "--target=wasm32-unknown-unknown", "-ffreestanding", "-nostdlib",
@@ -241,13 +285,18 @@ def build(model, omc, clang, linker, check):
         subprocess.run([clang, *options, "-I", str(work), str(wrapper), "-o", model.wasm], cwd=work, check=True)
         wasm = (work / model.wasm).read_bytes()
     manifest = {"model": library["assembly"]["id"], "version": library["version"], "msl": version,
-                "parameters": model.parameters, "integrator": {"method": "RK4", "stepUs": 50},
+                "parameters": model.parameters, "integrator": {"method": "RK4", "stepUs": model.step_us},
                 "compiler": COMPILER, "llvm": "18.1.3", "sourceSha256": digest(source.read_bytes()),
                 "librarySha256": digest(registry.read_bytes()), "equationsSha256": digest(equations.encode()),
                 "wasmSha256": digest(wasm), "wasmBytes": len(wasm)}
     if model.dependencies:
         manifest["dependencySha256"] = {name: digest((MODEL_DIR / name).read_bytes()) for name in model.dependencies}
         manifest["outputs"] = model.outputs
+    if "states" in library["assembly"]:
+        manifest["states"] = states
+        manifest["integratorSha256"] = digest(wrapper.read_bytes())
+    if model is MODELS["motor"]:
+        manifest["substepPolicySha256"] = digest((ROOT / "contracts/motor-integration.mjs").read_bytes())
     for filename, content in [(model.wasm, wasm), (model.manifest, (json.dumps(manifest, indent=2) + "\n").encode())]:
         output = MODEL_DIR / "runtime" / filename
         if check:
@@ -262,7 +311,7 @@ def build(model, omc, clang, linker, check):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="rebuild and compare the published files")
-    parser.add_argument("--model", choices=MODELS, help="build one model (default: both)")
+    parser.add_argument("--model", choices=MODELS, help="build one model (default: all)")
     args = parser.parse_args()
     omc = executable("OMC", "omc")
     clang = executable("CLANG", "clang-18")

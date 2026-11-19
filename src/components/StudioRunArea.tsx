@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import { ArrowLeft, FolderInput, Plus } from "lucide-react";
 import { Link } from "react-router";
-import { getStudioExample, studioHref, type StudioRoute, type StudioTarget, type StudioTargetOption } from "@contracts/studio-navigation";
+import { getStudioExample, studioHref, type MotorAxisLocation, type StudioRoute, type StudioTarget, type StudioTargetOption } from "@contracts/studio-navigation";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import type { FactoryLayout } from "@contracts/factory";
 import type { LinearAssembly } from "@contracts/linear-assembly";
@@ -36,7 +36,7 @@ type Props = {
   onSaveMechanism: (assembly: MechanicalAssembly) => void;
   onInstallBundle: (bundle: MechanicalBundle) => void;
   onNavigate: (route: StudioRoute, message?: string, replace?: boolean) => void;
-  onApplyExample: (next: TwinWorkspace, target: StudioTarget, name: string) => void;
+  onApplyExample: (next: TwinWorkspace, target: StudioTarget, name: string, focus?: MotorAxisLocation) => void;
   onImportFile: (file: File, hint?: WorkbenchImportOptions["hint"]) => void;
   onImportText: (text: string, name: string, options?: WorkbenchImportOptions) => void;
 };
@@ -99,8 +99,10 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
     </div>}
     {route && !missing && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开运行台…</p>}>
       {example && example.kind !== "physics" && <ExampleBench key={example.id} example={example} workspace={workspace}
-        initialStructureId={route.exampleId !== undefined ? route.structure : undefined} onApply={(next, destination) => {
-        onApplyExample(next, destination, example.name);
+        initialStructureId={route.exampleId !== undefined ? route.structure : undefined}
+        initialMotorResourceId={route.exampleId !== undefined ? route.motorAxis : undefined} initialMotorAxisId={route.exampleId !== undefined ? route.axis : undefined}
+        onApply={(next, destination, focus) => {
+        onApplyExample(next, destination, example.name, focus);
         if (destination === "wiring") setWiringRevision(revision => revision + 1);
       }} />}
       {(example?.kind === "physics" || model || (target === "incoming" && incoming)) && <Physics
@@ -113,7 +115,11 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
       {target === "milo" && <Mill key={`${generation}-${bomRevision}`} workspace={workspace} onChange={onChange} onImportFile={onImportFile} onImportText={onImportText} />}
       {(target === "assembly-new" || assembly) && <LinearAssemblyBench key={openedProject}
         workspace={workspace} assembly={assembly} onSave={onSaveAssembly} initialPackageKey={route.target === "assembly-new" ? route.part : undefined} />}
-      {(target === "factory-new" || factory) && <FactoryBench key={openedProject} workspace={workspace} layout={factory} onSave={onSaveFactory}
+      {(target === "factory-new" || factory) && <FactoryBench key={JSON.stringify([openedProject, route.target?.startsWith("factory:") ? route.motorAxis : null,
+        route.target?.startsWith("factory:") ? route.axis : null, route.target?.startsWith("factory:") ? route.motorKey : null])} workspace={workspace} layout={factory} onSave={onSaveFactory} onUpdateLibrary={onChange}
+        initialMotorResourceId={route.target?.startsWith("factory:") ? route.motorAxis : undefined}
+        initialMotorAxisId={route.target?.startsWith("factory:") ? route.axis : undefined}
+        initialMotorKey={route.target?.startsWith("factory:") ? route.motorKey : undefined}
         onImport={onOpenImport} initialPackageKey={route.target === "factory-new" ? route.part : undefined} />}
       {(target === "mechanism-new" || mechanism) && <MechanicalAssemblyBench key={openedProject} workspace={workspace} assembly={mechanism}
         initialPackageKey={route.target === "mechanism-new" ? route.part : undefined} onSave={onSaveMechanism} onInstallBundle={onInstallBundle} />}

@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元教学件",
+  "model": "S40-HL",
+  "revision": "1",
+  "source": {
+    "kind": "local",
+    "title": "EDU-FRAME-40 教学电机参数表",
+    "url": "",
+    "locator": "电机零件选配 · S40-HL · 修订 1",
+    "excerpt": "四极教学高电感定子，q 轴电感为 12 mH。与 S40-STD 的对照中，每相电阻、匝数、绕组系数、电流上限和内径采用相同教学数值。"
+  },
+  "ports": [],
+  "rules": [],
+  "composition": {
+    "kind": "assembly",
+    "shape": "ring",
+    "parts": [
+      {
+        "id": "winding",
+        "label": "三相绕组线段",
+        "packageKey": "[\"构元教学件\",\"PHASE-WIRE\",\"1\"]",
+        "quantity": 3
+      },
+      {
+        "id": "laminations",
+        "label": "定子叠片",
+        "packageKey": "[\"构元教学件\",\"STATOR-STEEL\",\"1\"]",
+        "quantity": 24
+      }
+    ],
+    "ratings": {
+      "phaseResistanceOhm": {
+        "label": "每相绕组电阻",
+        "value": 2,
+        "unit": "Ohm"
+      },
+      "qInductanceH": {
+        "label": "q 轴同步电感",
+        "value": 0.012,
+        "unit": "H"
+      },
+      "windingTurns": {
+        "label": "每相串联匝数",
+        "value": 50,
+        "unit": "1"
+      },
+      "windingFactor": {
+        "label": "基波绕组系数",
+        "value": 0.9,
+        "unit": "1"
+      },
+      "windingCurrentLimitA": {
+        "label": "绕组峰值电流指令上限",
+        "value": 4,
+        "unit": "A"
+      },
+      "polePairs": {
+        "label": "绕组极对数",
+        "value": 2,
+        "unit": "1"
+      },
+      "statorBoreMm": {
+        "label": "定子内径",
+        "value": 24,
+        "unit": "mm"
+      }
+    },
+    "note": "教学电机选配件。结构用量按每件统计，动态参数按这份修订给定的额定值读取。"
+  },
+  "motorPhysics": {
+    "kind": "stator",
+    "fit": "EDU-FRAME-40",
+    "modelRef": {
+      "id": "GouyuanMotor.StatorWinding",
+      "version": "1.0.0"
+    }
+  }
+}

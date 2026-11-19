@@ -17,3 +17,4 @@ public/modelica/GouyuanFactory/Resources/Include/*.h text eol=lf
 public/modelica/MSL-LICENSE.txt -text
 public/modelica/runtime/*.wasm binary
 scripts/modelica/** text eol=lf
+contracts/motor-integration.mjs text eol=lf
