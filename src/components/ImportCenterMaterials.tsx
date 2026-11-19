@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { IS_PAGES } from "@/const";
+import { isStructureOnly } from "@/lib/device-library";
 import type { WorkbenchImportOptions } from "@/lib/workbench-import";
 import MaterialCalibration from "./MaterialCalibration";
 
@@ -89,7 +90,8 @@ export default function MaterialDetails({ workspace, row, onChange, onOpenDevice
   const devices = new Map(workspace.packages.map((device) => [packageKey(device), device]));
   const models = new Map(catalog.models.map((model) => [model.id, model]));
   const hasFeedParameters = row.leadMmPerRev !== undefined || row.massKg !== undefined;
-  const boundFeed = row.binding?.kind === "device" && devices.get(row.binding.key)?.feed;
+  const bound = row.binding?.kind === "device" ? devices.get(row.binding.key) : undefined;
+  const boundAction = bound && isStructureOnly(bound) ? "查看部件结构" : bound?.feed ? "用于直线轴装配" : bound?.factory ? "用于工厂装配" : "运行绑定模型";
 
   function bind(item: MaterialRow, binding: MaterialRow["binding"], base = workspace) {
     const previous = base.catalog;
@@ -138,7 +140,7 @@ export default function MaterialDetails({ workspace, row, onChange, onOpenDevice
           </select>
         </label>
         <div className="flex flex-wrap gap-2">
-          {row.binding && <Button onClick={() => openBinding(row)}><Play />{boundFeed ? "用于直线轴装配" : "运行绑定模型"}</Button>}
+          {row.binding && <Button onClick={() => openBinding(row)}><Play />{boundAction}</Button>}
           <Button variant="outline" onClick={() => { onUseSource(row); onClose(); }}><FileText />从资料生成设备包</Button>
         </div>
         <MaterialCalibration material={row} onInstall={(device) => bind(row, { kind: "device", key: packageKey(device) }, installPackage(workspace, device))} />

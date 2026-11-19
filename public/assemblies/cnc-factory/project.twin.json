@@ -5,7 +5,7 @@
       "schemaVersion": 1,
       "manufacturer": "构元教学件",
       "model": "CELL-HANDLER-4S",
-      "revision": "1",
+      "revision": "2",
       "source": {
         "title": "双线数控车间教学设计",
         "url": "",
@@ -23,13 +23,50 @@
         "parameters": {
           "handlingS": 4
         }
+      },
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+        "parts": [
+          {
+            "id": "base",
+            "label": "上下料底座",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"STATION-BASE\",\"1\"]"
+          },
+          {
+            "id": "arm",
+            "label": "上下料臂总成",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"HANDLER-ARM-STD\",\"1\"]"
+          },
+          {
+            "id": "gripper",
+            "label": "气动夹持组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CLAMP-UNIT\",\"1\"]"
+          },
+          {
+            "id": "sensor",
+            "label": "工件检测",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"OPT-SENSOR\",\"1\"]"
+          },
+          {
+            "id": "control",
+            "label": "电控组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]"
+          }
+        ]
       }
     },
     {
       "schemaVersion": 1,
       "manufacturer": "构元教学件",
       "model": "CELL-HANDLER-2S",
-      "revision": "1",
+      "revision": "2",
       "source": {
         "title": "双线数控车间教学设计",
         "url": "",
@@ -47,13 +84,50 @@
         "parameters": {
           "handlingS": 2
         }
+      },
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+        "parts": [
+          {
+            "id": "base",
+            "label": "上下料底座",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"STATION-BASE\",\"1\"]"
+          },
+          {
+            "id": "arm",
+            "label": "上下料臂总成",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"HANDLER-ARM-FAST\",\"1\"]"
+          },
+          {
+            "id": "gripper",
+            "label": "气动夹持组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CLAMP-UNIT\",\"1\"]"
+          },
+          {
+            "id": "sensor",
+            "label": "工件检测",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"OPT-SENSOR\",\"1\"]"
+          },
+          {
+            "id": "control",
+            "label": "电控组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]"
+          }
+        ]
       }
     },
     {
       "schemaVersion": 1,
       "manufacturer": "构元教学件",
       "model": "CELL-BELT-100",
-      "revision": "1",
+      "revision": "2",
       "source": {
         "title": "双线数控车间教学设计",
         "url": "",
@@ -68,16 +142,65 @@
           "id": "GouyuanFactory.BeltConveyor",
           "version": "1.0.0"
         },
-        "parameters": {
-          "speedMps": 1
+        "parameters": {},
+        "partParameters": {
+          "speedMps": {
+            "path": [
+              "drive"
+            ],
+            "rating": "lineSpeed"
+          }
         }
+      },
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+        "parts": [
+          {
+            "id": "frame",
+            "label": "输送机架",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BELT-FRAME\",\"1\"]"
+          },
+          {
+            "id": "drive",
+            "label": "输送驱动组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BELT-DRIVE-100\",\"1\"]"
+          },
+          {
+            "id": "belt",
+            "label": "闭合输送胶带",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BELT-LOOP\",\"1\"]"
+          },
+          {
+            "id": "rollers",
+            "label": "输送托辊",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"ROLLER-UNIT\",\"1\"]"
+          },
+          {
+            "id": "sensor",
+            "label": "工件检测",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"OPT-SENSOR\",\"1\"]"
+          },
+          {
+            "id": "control",
+            "label": "电控组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]"
+          }
+        ]
       }
     },
     {
       "schemaVersion": 1,
       "manufacturer": "构元教学件",
       "model": "CELL-BELT-200",
-      "revision": "1",
+      "revision": "2",
       "source": {
         "title": "双线数控车间教学设计",
         "url": "",
@@ -92,16 +215,65 @@
           "id": "GouyuanFactory.BeltConveyor",
           "version": "1.0.0"
         },
-        "parameters": {
-          "speedMps": 2
+        "parameters": {},
+        "partParameters": {
+          "speedMps": {
+            "path": [
+              "drive"
+            ],
+            "rating": "lineSpeed"
+          }
         }
+      },
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+        "parts": [
+          {
+            "id": "frame",
+            "label": "输送机架",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BELT-FRAME\",\"1\"]"
+          },
+          {
+            "id": "drive",
+            "label": "输送驱动组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BELT-DRIVE-200\",\"1\"]"
+          },
+          {
+            "id": "belt",
+            "label": "闭合输送胶带",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BELT-LOOP\",\"1\"]"
+          },
+          {
+            "id": "rollers",
+            "label": "输送托辊",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"ROLLER-UNIT\",\"1\"]"
+          },
+          {
+            "id": "sensor",
+            "label": "工件检测",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"OPT-SENSOR\",\"1\"]"
+          },
+          {
+            "id": "control",
+            "label": "电控组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]"
+          }
+        ]
       }
     },
     {
       "schemaVersion": 1,
       "manufacturer": "构元教学件",
       "model": "CELL-AMR-100",
-      "revision": "1",
+      "revision": "2",
       "source": {
         "title": "双线数控车间教学设计",
         "url": "",
@@ -118,17 +290,68 @@
         },
         "parameters": {
           "dropTimeS": 1,
-          "emptySpeedMps": 1.6,
-          "loadedSpeedMps": 1,
           "pickTimeS": 1.5
+        },
+        "partParameters": {
+          "emptySpeedMps": {
+            "path": [
+              "chassis",
+              "traction"
+            ],
+            "rating": "emptySpeed"
+          },
+          "loadedSpeedMps": {
+            "path": [
+              "chassis",
+              "traction"
+            ],
+            "rating": "loadedSpeed"
+          }
         }
+      },
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+        "parts": [
+          {
+            "id": "chassis",
+            "label": "移动底盘",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"AMR-CHASSIS-100\",\"1\"]"
+          },
+          {
+            "id": "battery",
+            "label": "电池组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BATTERY-PACK\",\"1\"]"
+          },
+          {
+            "id": "sensors",
+            "label": "定位传感器",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"OPT-SENSOR\",\"1\"]"
+          },
+          {
+            "id": "body",
+            "label": "上罩盖板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BODY-COVER\",\"1\"]"
+          },
+          {
+            "id": "control",
+            "label": "电控组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]"
+          }
+        ]
       }
     },
     {
       "schemaVersion": 1,
       "manufacturer": "构元教学件",
       "model": "CELL-AMR-180",
-      "revision": "1",
+      "revision": "2",
       "source": {
         "title": "双线数控车间教学设计",
         "url": "",
@@ -145,17 +368,68 @@
         },
         "parameters": {
           "dropTimeS": 0.8,
-          "emptySpeedMps": 2.4,
-          "loadedSpeedMps": 1.8,
           "pickTimeS": 1.2
+        },
+        "partParameters": {
+          "emptySpeedMps": {
+            "path": [
+              "chassis",
+              "traction"
+            ],
+            "rating": "emptySpeed"
+          },
+          "loadedSpeedMps": {
+            "path": [
+              "chassis",
+              "traction"
+            ],
+            "rating": "loadedSpeed"
+          }
         }
+      },
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+        "parts": [
+          {
+            "id": "chassis",
+            "label": "移动底盘",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"AMR-CHASSIS-180\",\"1\"]"
+          },
+          {
+            "id": "battery",
+            "label": "电池组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BATTERY-PACK\",\"1\"]"
+          },
+          {
+            "id": "sensors",
+            "label": "定位传感器",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"OPT-SENSOR\",\"1\"]"
+          },
+          {
+            "id": "body",
+            "label": "上罩盖板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BODY-COVER\",\"1\"]"
+          },
+          {
+            "id": "control",
+            "label": "电控组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]"
+          }
+        ]
       }
     },
     {
       "schemaVersion": 1,
       "manufacturer": "构元教学件",
       "model": "CELL-CNC-60S",
-      "revision": "1",
+      "revision": "2",
       "source": {
         "title": "双线数控车间教学设计",
         "url": "",
@@ -173,13 +447,50 @@
         "parameters": {
           "cycleS": 60
         }
+      },
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+        "parts": [
+          {
+            "id": "frame",
+            "label": "床身与防护",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CNC-FRAME\",\"1\"]"
+          },
+          {
+            "id": "feed",
+            "label": "进给系统",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CNC-FEED-600\",\"1\"]"
+          },
+          {
+            "id": "spindle",
+            "label": "主轴组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SPINDLE-UNIT\",\"1\"]"
+          },
+          {
+            "id": "fixture",
+            "label": "夹紧组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CLAMP-UNIT\",\"1\"]"
+          },
+          {
+            "id": "control",
+            "label": "电控组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]"
+          }
+        ]
       }
     },
     {
       "schemaVersion": 1,
       "manufacturer": "构元教学件",
       "model": "CELL-CNC-F900",
-      "revision": "1",
+      "revision": "2",
       "source": {
         "title": "双线数控车间教学设计",
         "url": "",
@@ -196,9 +507,3023 @@
         },
         "parameters": {
           "clampS": 6,
-          "cutLengthMm": 450,
-          "feedMmMin": 900
+          "cutLengthMm": 450
+        },
+        "partParameters": {
+          "feedMmMin": {
+            "path": [
+              "feed",
+              "x"
+            ],
+            "rating": "nominalFeed"
+          }
         }
+      },
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+        "parts": [
+          {
+            "id": "frame",
+            "label": "床身与防护",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CNC-FRAME\",\"1\"]"
+          },
+          {
+            "id": "feed",
+            "label": "进给系统",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CNC-FEED-900\",\"1\"]"
+          },
+          {
+            "id": "spindle",
+            "label": "主轴组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SPINDLE-UNIT\",\"1\"]"
+          },
+          {
+            "id": "fixture",
+            "label": "夹紧组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CLAMP-UNIT\",\"1\"]"
+          },
+          {
+            "id": "control",
+            "label": "电控组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BRG-INNER",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "轴承内圈 · BRG-INNER",
+        "excerpt": "教学清单按一件独立成形件计入轴承内圈的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BRG-OUTER",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "轴承外圈 · BRG-OUTER",
+        "excerpt": "教学清单按一件独立成形件计入轴承外圈的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BRG-CAGE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "轴承保持架 · BRG-CAGE",
+        "excerpt": "教学清单按一件独立成形件计入轴承保持架的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SHAFT-CLIP",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "轴用挡圈 · SHAFT-CLIP",
+        "excerpt": "教学清单按一件独立成形件计入轴用挡圈的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "GUIDE-WIPER",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "导轨密封刮片 · GUIDE-WIPER",
+        "excerpt": "教学清单按一件独立成形件计入导轨密封刮片的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CYL-SEAL",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "气缸密封圈 · CYL-SEAL",
+        "excerpt": "教学清单按一件独立成形件计入气缸密封圈的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "COLLET",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "弹性夹头 · COLLET",
+        "excerpt": "教学清单按一件独立成形件计入弹性夹头的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "COUPLING-SLEEVE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "弹性联轴器套体 · COUPLING-SLEEVE",
+        "excerpt": "教学清单按一件独立成形件计入弹性联轴器套体的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "WHEEL-TYRE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "实心驱动轮胎 · WHEEL-TYRE",
+        "excerpt": "教学清单按一件独立成形件计入实心驱动轮胎的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ring"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BALL-4",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "教学轴承钢球 · BALL-4",
+        "excerpt": "教学清单按一件独立成形件计入教学轴承钢球的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ball"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BALL-3",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "教学丝杠与滑块滚珠 · BALL-3",
+        "excerpt": "教学清单按一件独立成形件计入教学丝杠与滑块滚珠的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "ball"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SERVO-SHAFT",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "电机转轴 · SERVO-SHAFT",
+        "excerpt": "教学清单按一件独立成形件计入电机转轴的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BOLT-M4",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "安装螺钉 M4 · BOLT-M4",
+        "excerpt": "教学清单按一件独立成形件计入安装螺钉 M4的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BOLT-M8",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "安装螺栓 M8 · BOLT-M8",
+        "excerpt": "教学清单按一件独立成形件计入安装螺栓 M8的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BALLSCREW-SHAFT",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "滚珠丝杠轴 · BALLSCREW-SHAFT",
+        "excerpt": "教学清单按一件独立成形件计入滚珠丝杠轴的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SPINDLE-SHAFT",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "主轴轴芯 · SPINDLE-SHAFT",
+        "excerpt": "教学清单按一件独立成形件计入主轴轴芯的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SPINDLE-DRAWBAR",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "主轴拉杆 · SPINDLE-DRAWBAR",
+        "excerpt": "教学清单按一件独立成形件计入主轴拉杆的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CYL-ROD",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "气缸活塞杆 · CYL-ROD",
+        "excerpt": "教学清单按一件独立成形件计入气缸活塞杆的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "VALVE-CORE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "阀芯 · VALVE-CORE",
+        "excerpt": "教学清单按一件独立成形件计入阀芯的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ROLLER-SHAFT",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "托辊轴 · ROLLER-SHAFT",
+        "excerpt": "教学清单按一件独立成形件计入托辊轴的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ARM-PIN",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "臂节销轴 · ARM-PIN",
+        "excerpt": "教学清单按一件独立成形件计入臂节销轴的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ROLLER-TUBE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "托辊筒体 · ROLLER-TUBE",
+        "excerpt": "教学清单按一件独立成形件计入托辊筒体的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CELL-LI",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "密封锂离子电芯 · CELL-LI",
+        "excerpt": "教学清单按一个密封电芯计入密封锂离子电芯的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "GUIDE-RAIL",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "成形直线导轨 · GUIDE-RAIL",
+        "excerpt": "教学清单按一件独立成形件计入成形直线导轨的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "shaft"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ROTOR-STEEL",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "转子叠片 · ROTOR-STEEL",
+        "excerpt": "教学清单按一件独立成形件计入转子叠片的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "STATOR-STEEL",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "定子叠片 · STATOR-STEEL",
+        "excerpt": "教学清单按一件独立成形件计入定子叠片的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ENCODER-DISK",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "光电编码盘 · ENCODER-DISK",
+        "excerpt": "教学清单按一件独立成形件计入光电编码盘的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "PCB-CTRL",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "逻辑线路板裸板 · PCB-CTRL",
+        "excerpt": "教学清单按一件独立成形件计入逻辑线路板裸板的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "PCB-POWER",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "功率线路板裸板 · PCB-POWER",
+        "excerpt": "教学清单按一件独立成形件计入功率线路板裸板的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "MACHINE-GUARD",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "机床防护板 · MACHINE-GUARD",
+        "excerpt": "教学清单按一件独立成形件计入机床防护板的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "AXIS-TABLE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "轴滑台板 · AXIS-TABLE",
+        "excerpt": "教学清单按一件独立成形件计入轴滑台板的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ARM-LINK",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "机械臂连杆 · ARM-LINK",
+        "excerpt": "教学清单按一件独立成形件计入机械臂连杆的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BODY-COVER",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "设备外壳盖板 · BODY-COVER",
+        "excerpt": "教学清单按一件独立成形件计入设备外壳盖板的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ROLLER-BRACKET",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "托辊支架 · ROLLER-BRACKET",
+        "excerpt": "教学清单按一件独立成形件计入托辊支架的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "STATION-BASE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "上下料底座 · STATION-BASE",
+        "excerpt": "教学清单按一件独立成形件计入上下料底座的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CHASSIS-PLATE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "移动底盘板 · CHASSIS-PLATE",
+        "excerpt": "教学清单按一件独立成形件计入移动底盘板的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BAT-TRAY",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "电芯绝缘托盘 · BAT-TRAY",
+        "excerpt": "教学清单按一件独立成形件计入电芯绝缘托盘的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CONVEYOR-RAIL",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "输送机型材侧梁 · CONVEYOR-RAIL",
+        "excerpt": "教学清单按一件独立成形件计入输送机型材侧梁的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "plate"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ROTOR-MAGNET",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "永磁体 · ROTOR-MAGNET",
+        "excerpt": "教学清单按一件独立成形件计入永磁体的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SERVO-CASE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "电机机壳 · SERVO-CASE",
+        "excerpt": "教学清单按一件独立成形件计入电机机壳的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "LED",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "光电发射器封装 · LED",
+        "excerpt": "教学清单按一个电子封装计入光电发射器封装的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "PHOTO-DIODE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "光电接收器封装 · PHOTO-DIODE",
+        "excerpt": "教学清单按一个电子封装计入光电接收器封装的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "MCU",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "控制芯片封装 · MCU",
+        "excerpt": "教学清单按一个电子封装计入控制芯片封装的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "MOSFET",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "功率开关管封装 · MOSFET",
+        "excerpt": "教学清单按一个电子封装计入功率开关管封装的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "RESISTOR",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "贴片电阻 · RESISTOR",
+        "excerpt": "教学清单按一个电子封装计入贴片电阻的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CAPACITOR",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "陶瓷电容 · CAPACITOR",
+        "excerpt": "教学清单按一个电子封装计入陶瓷电容的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "PLUG",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "接插件 · PLUG",
+        "excerpt": "教学清单按一个电子封装计入接插件的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BALL-NUT-BODY",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "丝杠螺母本体 · BALL-NUT-BODY",
+        "excerpt": "教学清单按一件独立成形件计入丝杠螺母本体的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "GUIDE-BLOCK",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "滑块本体 · GUIDE-BLOCK",
+        "excerpt": "教学清单按一件独立成形件计入滑块本体的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "MACHINE-BED",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "床身铸件 · MACHINE-BED",
+        "excerpt": "教学清单按一件独立成形件计入床身铸件的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CYL-BODY",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "气缸筒体 · CYL-BODY",
+        "excerpt": "教学清单按一件独立成形件计入气缸筒体的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CYL-PISTON",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "活塞 · CYL-PISTON",
+        "excerpt": "教学清单按一件独立成形件计入活塞的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "VALVE-BODY",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "阀体 · VALVE-BODY",
+        "excerpt": "教学清单按一件独立成形件计入阀体的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "JAW",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "夹持爪片 · JAW",
+        "excerpt": "教学清单按一件独立成形件计入夹持爪片的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CONTROL-HOUSING",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "电控箱壳体 · CONTROL-HOUSING",
+        "excerpt": "教学清单按一件独立成形件计入电控箱壳体的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "GRIP-FRAME",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "夹具安装座 · GRIP-FRAME",
+        "excerpt": "教学清单按一件独立成形件计入夹具安装座的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "GEAR-HOUSING",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "减速器壳体 · GEAR-HOUSING",
+        "excerpt": "教学清单按一件独立成形件计入减速器壳体的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SENSOR-HOUSING",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "光电传感壳体 · SENSOR-HOUSING",
+        "excerpt": "教学清单按一件独立成形件计入光电传感壳体的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "WHEEL-HUB",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "驱动轮毂 · WHEEL-HUB",
+        "excerpt": "教学清单按一件独立成形件计入驱动轮毂的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "box"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "GEAR-PINION",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "主动小齿轮 · GEAR-PINION",
+        "excerpt": "教学清单按一件独立成形件计入主动小齿轮的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "gear"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "GEAR-STD",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "标准从动齿轮 · GEAR-STD",
+        "excerpt": "教学清单按一件独立成形件计入标准从动齿轮的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "gear"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "GEAR-FAST",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "快型从动齿轮 · GEAR-FAST",
+        "excerpt": "教学清单按一件独立成形件计入快型从动齿轮的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "gear"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "PHASE-WIRE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "定子相绕组漆包线段 · PHASE-WIRE",
+        "excerpt": "教学清单按一段预裁线材计入定子相绕组漆包线段的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "coil"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "VALVE-COIL",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "阀线圈漆包线段 · VALVE-COIL",
+        "excerpt": "教学清单按一段预裁线材计入阀线圈漆包线段的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "coil"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "RETURN-SPRING",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "复位弹簧 · RETURN-SPRING",
+        "excerpt": "教学清单按一件独立成形件计入复位弹簧的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "coil"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CABLE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "预裁绝缘导线 · CABLE",
+        "excerpt": "教学清单按一段预裁线材计入预裁绝缘导线的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "coil"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BELT-LOOP",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "闭合输送胶带 · BELT-LOOP",
+        "excerpt": "教学清单按一件独立成形件计入闭合输送胶带的用量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "leaf",
+        "shape": "belt"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "EDU-BEARING",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "滚动轴承 · EDU-BEARING",
+        "excerpt": "教学轴承由内外圈、保持架和八颗同规格钢球组成。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "ring",
+        "parts": [
+          {
+            "id": "inner",
+            "label": "内圈",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BRG-INNER\",\"1\"]"
+          },
+          {
+            "id": "outer",
+            "label": "外圈",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BRG-OUTER\",\"1\"]"
+          },
+          {
+            "id": "cage",
+            "label": "保持架",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BRG-CAGE\",\"1\"]"
+          },
+          {
+            "id": "balls",
+            "label": "钢球",
+            "quantity": 8,
+            "packageKey": "[\"构元教学件\",\"BALL-4\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SERVO-ROTOR",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "转子组件 · SERVO-ROTOR",
+        "excerpt": "教学转子由轴、四块磁体和十六片转子叠片组成。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "parts": [
+          {
+            "id": "shaft",
+            "label": "转轴",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SERVO-SHAFT\",\"1\"]"
+          },
+          {
+            "id": "magnets",
+            "label": "永磁体",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"ROTOR-MAGNET\",\"1\"]"
+          },
+          {
+            "id": "laminations",
+            "label": "转子叠片",
+            "quantity": 16,
+            "packageKey": "[\"构元教学件\",\"ROTOR-STEEL\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SERVO-STATOR",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "定子组件 · SERVO-STATOR",
+        "excerpt": "教学三相定子含三段绕组漆包线和二十四片定子叠片。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "ring",
+        "parts": [
+          {
+            "id": "winding",
+            "label": "三相绕组线段",
+            "quantity": 3,
+            "packageKey": "[\"构元教学件\",\"PHASE-WIRE\",\"1\"]"
+          },
+          {
+            "id": "laminations",
+            "label": "定子叠片",
+            "quantity": 24,
+            "packageKey": "[\"构元教学件\",\"STATOR-STEEL\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SERVO-SUPPORT",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "电机支承组件 · SERVO-SUPPORT",
+        "excerpt": "一套支承在两端各安装一只教学滚动轴承和一个挡圈。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "ring",
+        "parts": [
+          {
+            "id": "bearing",
+            "label": "滚动轴承",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"EDU-BEARING\",\"1\"]"
+          },
+          {
+            "id": "clips",
+            "label": "轴用挡圈",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"SHAFT-CLIP\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "OPT-ENCODER",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "光电编码器 · OPT-ENCODER",
+        "excerpt": "教学光电编码器按编码盘、发射与接收封装及引线计数。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "ring",
+        "parts": [
+          {
+            "id": "disk",
+            "label": "编码盘",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"ENCODER-DISK\",\"1\"]"
+          },
+          {
+            "id": "emitter",
+            "label": "发射器",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"LED\",\"1\"]"
+          },
+          {
+            "id": "receiver",
+            "label": "接收器",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"PHOTO-DIODE\",\"1\"]"
+          },
+          {
+            "id": "cable",
+            "label": "引线",
+            "quantity": 3,
+            "packageKey": "[\"构元教学件\",\"CABLE\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "EDU-SERVO",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "伺服电机 · EDU-SERVO",
+        "excerpt": "教学永磁伺服电机组成由转子、定子、支承、编码器、机壳和紧固件定义。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "parts": [
+          {
+            "id": "rotor",
+            "label": "转子组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SERVO-ROTOR\",\"1\"]"
+          },
+          {
+            "id": "stator",
+            "label": "定子组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SERVO-STATOR\",\"1\"]"
+          },
+          {
+            "id": "supports",
+            "label": "支承组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SERVO-SUPPORT\",\"1\"]"
+          },
+          {
+            "id": "encoder",
+            "label": "光电编码器",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"OPT-ENCODER\",\"1\"]"
+          },
+          {
+            "id": "case",
+            "label": "机壳",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SERVO-CASE\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "壳体螺钉",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"BOLT-M4\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CTRL-BOARD",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "控制板组件 · CTRL-BOARD",
+        "excerpt": "教学控制板以裸板、控制芯片、无源器件和接插件计量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "plate",
+        "parts": [
+          {
+            "id": "pcb",
+            "label": "裸板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"PCB-CTRL\",\"1\"]"
+          },
+          {
+            "id": "mcu",
+            "label": "控制芯片",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"MCU\",\"1\"]"
+          },
+          {
+            "id": "resistors",
+            "label": "电阻",
+            "quantity": 8,
+            "packageKey": "[\"构元教学件\",\"RESISTOR\",\"1\"]"
+          },
+          {
+            "id": "caps",
+            "label": "电容",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"CAPACITOR\",\"1\"]"
+          },
+          {
+            "id": "ports",
+            "label": "接插件",
+            "quantity": 3,
+            "packageKey": "[\"构元教学件\",\"PLUG\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "POWER-BOARD",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "功率板组件 · POWER-BOARD",
+        "excerpt": "教学驱动功率板采用六个开关管，另计裸板、采样电阻、电容和端子。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "plate",
+        "parts": [
+          {
+            "id": "pcb",
+            "label": "裸板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"PCB-POWER\",\"1\"]"
+          },
+          {
+            "id": "switches",
+            "label": "功率开关管",
+            "quantity": 6,
+            "packageKey": "[\"构元教学件\",\"MOSFET\",\"1\"]"
+          },
+          {
+            "id": "resistors",
+            "label": "采样电阻",
+            "quantity": 3,
+            "packageKey": "[\"构元教学件\",\"RESISTOR\",\"1\"]"
+          },
+          {
+            "id": "caps",
+            "label": "电容",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"CAPACITOR\",\"1\"]"
+          },
+          {
+            "id": "terminals",
+            "label": "接插件",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"PLUG\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "EDU-CONTROL",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "电控组件 · EDU-CONTROL",
+        "excerpt": "教学控制组件将逻辑板与功率板装入机箱并接线。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "logic",
+            "label": "控制板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CTRL-BOARD\",\"1\"]"
+          },
+          {
+            "id": "power",
+            "label": "功率板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"POWER-BOARD\",\"1\"]"
+          },
+          {
+            "id": "case",
+            "label": "电控箱壳体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CONTROL-HOUSING\",\"1\"]"
+          },
+          {
+            "id": "cover",
+            "label": "外壳盖板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BODY-COVER\",\"1\"]"
+          },
+          {
+            "id": "wires",
+            "label": "接线",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"CABLE\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "安装螺钉",
+            "quantity": 8,
+            "packageKey": "[\"构元教学件\",\"BOLT-M4\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SCREW-NUT",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "丝杠螺母组件 · SCREW-NUT",
+        "excerpt": "教学滚珠螺母含螺母本体与十六颗滚珠。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "ring",
+        "parts": [
+          {
+            "id": "body",
+            "label": "螺母本体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BALL-NUT-BODY\",\"1\"]"
+          },
+          {
+            "id": "balls",
+            "label": "循环滚珠",
+            "quantity": 16,
+            "packageKey": "[\"构元教学件\",\"BALL-3\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SCREW-PAIR",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "丝杠传动副 · SCREW-PAIR",
+        "excerpt": "教学轴使用一根丝杠轴和一套滚珠螺母。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "parts": [
+          {
+            "id": "screw",
+            "label": "丝杠轴",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BALLSCREW-SHAFT\",\"1\"]"
+          },
+          {
+            "id": "nut",
+            "label": "滚珠螺母",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SCREW-NUT\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "GUIDE-SHOE",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "导轨滑块 · GUIDE-SHOE",
+        "excerpt": "教学滑块含本体、十六颗滚珠及两枚密封刮片。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "body",
+            "label": "滑块本体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"GUIDE-BLOCK\",\"1\"]"
+          },
+          {
+            "id": "balls",
+            "label": "循环滚珠",
+            "quantity": 16,
+            "packageKey": "[\"构元教学件\",\"BALL-3\",\"1\"]"
+          },
+          {
+            "id": "wipers",
+            "label": "密封刮片",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"GUIDE-WIPER\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "FEED-AXIS-600",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "直线进给轴 600 mm/min · FEED-AXIS-600",
+        "excerpt": "教学直线轴的缺省加工进给设为 600 mm/min，配一台伺服电机、一副丝杠和双导轨。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "ratings": {
+          "nominalFeed": {
+            "label": "标定工艺进给",
+            "value": 600,
+            "unit": "mm/min"
+          }
+        },
+        "parts": [
+          {
+            "id": "motor",
+            "label": "伺服电机",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-SERVO\",\"1\"]"
+          },
+          {
+            "id": "coupling",
+            "label": "联轴套体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"COUPLING-SLEEVE\",\"1\"]"
+          },
+          {
+            "id": "screw",
+            "label": "丝杠传动副",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SCREW-PAIR\",\"1\"]"
+          },
+          {
+            "id": "rails",
+            "label": "直线导轨",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"GUIDE-RAIL\",\"1\"]"
+          },
+          {
+            "id": "shoes",
+            "label": "导轨滑块",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"GUIDE-SHOE\",\"1\"]"
+          },
+          {
+            "id": "table",
+            "label": "轴滑台板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"AXIS-TABLE\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "安装螺栓",
+            "quantity": 8,
+            "packageKey": "[\"构元教学件\",\"BOLT-M8\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CNC-FEED-600",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "三轴进给系统 · CNC-FEED-600",
+        "excerpt": "教学三轴进给系统分别安装 X、Y、Z 轴模块。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "x",
+            "label": "X 轴进给组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"FEED-AXIS-600\",\"1\"]"
+          },
+          {
+            "id": "y",
+            "label": "Y 轴进给组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"FEED-AXIS-600\",\"1\"]"
+          },
+          {
+            "id": "z",
+            "label": "Z 轴进给组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"FEED-AXIS-600\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "FEED-AXIS-900",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "直线进给轴 900 mm/min · FEED-AXIS-900",
+        "excerpt": "教学直线轴的缺省加工进给设为 900 mm/min，配一台伺服电机、一副丝杠和双导轨。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "ratings": {
+          "nominalFeed": {
+            "label": "标定工艺进给",
+            "value": 900,
+            "unit": "mm/min"
+          }
+        },
+        "parts": [
+          {
+            "id": "motor",
+            "label": "伺服电机",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-SERVO\",\"1\"]"
+          },
+          {
+            "id": "coupling",
+            "label": "联轴套体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"COUPLING-SLEEVE\",\"1\"]"
+          },
+          {
+            "id": "screw",
+            "label": "丝杠传动副",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SCREW-PAIR\",\"1\"]"
+          },
+          {
+            "id": "rails",
+            "label": "直线导轨",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"GUIDE-RAIL\",\"1\"]"
+          },
+          {
+            "id": "shoes",
+            "label": "导轨滑块",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"GUIDE-SHOE\",\"1\"]"
+          },
+          {
+            "id": "table",
+            "label": "轴滑台板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"AXIS-TABLE\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "安装螺栓",
+            "quantity": 8,
+            "packageKey": "[\"构元教学件\",\"BOLT-M8\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CNC-FEED-900",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "三轴进给系统 · CNC-FEED-900",
+        "excerpt": "教学三轴进给系统分别安装 X、Y、Z 轴模块。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "x",
+            "label": "X 轴进给组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"FEED-AXIS-900\",\"1\"]"
+          },
+          {
+            "id": "y",
+            "label": "Y 轴进给组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"FEED-AXIS-900\",\"1\"]"
+          },
+          {
+            "id": "z",
+            "label": "Z 轴进给组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"FEED-AXIS-900\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "SPINDLE-UNIT",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "主轴组件 · SPINDLE-UNIT",
+        "excerpt": "教学主轴由驱动电机、轴芯、支承、夹头与拉杆组成。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "parts": [
+          {
+            "id": "motor",
+            "label": "主轴驱动电机",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-SERVO\",\"1\"]"
+          },
+          {
+            "id": "shaft",
+            "label": "主轴轴芯",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SPINDLE-SHAFT\",\"1\"]"
+          },
+          {
+            "id": "bearing",
+            "label": "主轴支承轴承",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"EDU-BEARING\",\"1\"]"
+          },
+          {
+            "id": "collet",
+            "label": "弹性夹头",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"COLLET\",\"1\"]"
+          },
+          {
+            "id": "drawbar",
+            "label": "拉杆",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SPINDLE-DRAWBAR\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "AIR-CYLINDER",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "气缸组件 · AIR-CYLINDER",
+        "excerpt": "教学夹紧执行件的组成是缸筒、活塞、活塞杆与两道密封。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "parts": [
+          {
+            "id": "barrel",
+            "label": "缸筒",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CYL-BODY\",\"1\"]"
+          },
+          {
+            "id": "piston",
+            "label": "活塞",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CYL-PISTON\",\"1\"]"
+          },
+          {
+            "id": "rod",
+            "label": "活塞杆",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CYL-ROD\",\"1\"]"
+          },
+          {
+            "id": "seals",
+            "label": "密封圈",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"CYL-SEAL\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "VALVE-UNIT",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "电磁阀 · VALVE-UNIT",
+        "excerpt": "教学电磁阀按阀体、阀芯、线圈和复位弹簧计量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "coil",
+        "parts": [
+          {
+            "id": "body",
+            "label": "阀体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"VALVE-BODY\",\"1\"]"
+          },
+          {
+            "id": "plunger",
+            "label": "阀芯",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"VALVE-CORE\",\"1\"]"
+          },
+          {
+            "id": "winding",
+            "label": "线圈线段",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"VALVE-COIL\",\"1\"]"
+          },
+          {
+            "id": "spring",
+            "label": "复位弹簧",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"RETURN-SPRING\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CLAMP-UNIT",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "气动夹持组件 · CLAMP-UNIT",
+        "excerpt": "教学夹具用双爪、单缸和电磁阀完成夹紧与松开。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "frame",
+            "label": "夹具安装座",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"GRIP-FRAME\",\"1\"]"
+          },
+          {
+            "id": "jaws",
+            "label": "夹持爪片",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"JAW\",\"1\"]"
+          },
+          {
+            "id": "cylinder",
+            "label": "气缸组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"AIR-CYLINDER\",\"1\"]"
+          },
+          {
+            "id": "valve",
+            "label": "电磁阀",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"VALVE-UNIT\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "固定螺钉",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"BOLT-M4\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "CNC-FRAME",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "机床床身与防护 · CNC-FRAME",
+        "excerpt": "教学床身组件含一件床身铸件、两块防护板及六个连接螺栓。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "bed",
+            "label": "床身铸件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"MACHINE-BED\",\"1\"]"
+          },
+          {
+            "id": "guards",
+            "label": "防护板",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"MACHINE-GUARD\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "连接螺栓",
+            "quantity": 6,
+            "packageKey": "[\"构元教学件\",\"BOLT-M8\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "REDUCER-STD",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "标准减速器 · REDUCER-STD",
+        "excerpt": "教学齿轮箱以箱体、齿轮副、轴承及紧固件组装。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "gear",
+        "parts": [
+          {
+            "id": "housing",
+            "label": "减速器壳体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"GEAR-HOUSING\",\"1\"]"
+          },
+          {
+            "id": "pinion",
+            "label": "主动小齿轮",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"GEAR-PINION\",\"1\"]"
+          },
+          {
+            "id": "gear",
+            "label": "从动齿轮",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"GEAR-STD\",\"1\"]"
+          },
+          {
+            "id": "bearings",
+            "label": "减速器轴承",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"EDU-BEARING\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "箱体螺钉",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"BOLT-M4\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "HANDLER-JOINT-STD",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "机械臂关节驱动 · HANDLER-JOINT-STD",
+        "excerpt": "教学关节驱动由伺服电机、减速器与臂节销轴组成。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "motor",
+            "label": "关节伺服电机",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-SERVO\",\"1\"]"
+          },
+          {
+            "id": "reducer",
+            "label": "关节减速器",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"REDUCER-STD\",\"1\"]"
+          },
+          {
+            "id": "pin",
+            "label": "臂节销轴",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"ARM-PIN\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "HANDLER-ARM-STD",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "上下料臂总成 · HANDLER-ARM-STD",
+        "excerpt": "教学上下料臂配两根连杆和三套关节驱动。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "links",
+            "label": "机械臂连杆",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"ARM-LINK\",\"1\"]"
+          },
+          {
+            "id": "joints",
+            "label": "关节驱动",
+            "quantity": 3,
+            "packageKey": "[\"构元教学件\",\"HANDLER-JOINT-STD\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "REDUCER-FAST",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "快型减速器 · REDUCER-FAST",
+        "excerpt": "教学齿轮箱以箱体、齿轮副、轴承及紧固件组装。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "gear",
+        "parts": [
+          {
+            "id": "housing",
+            "label": "减速器壳体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"GEAR-HOUSING\",\"1\"]"
+          },
+          {
+            "id": "pinion",
+            "label": "主动小齿轮",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"GEAR-PINION\",\"1\"]"
+          },
+          {
+            "id": "gear",
+            "label": "从动齿轮",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"GEAR-FAST\",\"1\"]"
+          },
+          {
+            "id": "bearings",
+            "label": "减速器轴承",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"EDU-BEARING\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "箱体螺钉",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"BOLT-M4\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "HANDLER-JOINT-FAST",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "机械臂关节驱动 · HANDLER-JOINT-FAST",
+        "excerpt": "教学关节驱动由伺服电机、减速器与臂节销轴组成。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "motor",
+            "label": "关节伺服电机",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-SERVO\",\"1\"]"
+          },
+          {
+            "id": "reducer",
+            "label": "关节减速器",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"REDUCER-FAST\",\"1\"]"
+          },
+          {
+            "id": "pin",
+            "label": "臂节销轴",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"ARM-PIN\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "HANDLER-ARM-FAST",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "上下料臂总成 · HANDLER-ARM-FAST",
+        "excerpt": "教学上下料臂配两根连杆和三套关节驱动。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "links",
+            "label": "机械臂连杆",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"ARM-LINK\",\"1\"]"
+          },
+          {
+            "id": "joints",
+            "label": "关节驱动",
+            "quantity": 3,
+            "packageKey": "[\"构元教学件\",\"HANDLER-JOINT-FAST\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "OPT-SENSOR",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "光电检测组件 · OPT-SENSOR",
+        "excerpt": "教学光电检测单元由成对光电器件、壳体和引线构成。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "emitter",
+            "label": "发射器",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"LED\",\"1\"]"
+          },
+          {
+            "id": "receiver",
+            "label": "接收器",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"PHOTO-DIODE\",\"1\"]"
+          },
+          {
+            "id": "housing",
+            "label": "传感壳体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"SENSOR-HOUSING\",\"1\"]"
+          },
+          {
+            "id": "cable",
+            "label": "引线",
+            "quantity": 3,
+            "packageKey": "[\"构元教学件\",\"CABLE\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BELT-DRIVE-100",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "输送驱动组件 · BELT-DRIVE-100",
+        "excerpt": "按教学配套将输出带速标定为 1 m/s，用于主线输送模型。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "ratings": {
+          "lineSpeed": {
+            "label": "标定输送带速",
+            "value": 1,
+            "unit": "m/s"
+          }
+        },
+        "parts": [
+          {
+            "id": "motor",
+            "label": "输送伺服电机",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-SERVO\",\"1\"]"
+          },
+          {
+            "id": "reducer",
+            "label": "齿轮减速器",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"REDUCER-STD\",\"1\"]"
+          },
+          {
+            "id": "coupling",
+            "label": "联轴套体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"COUPLING-SLEEVE\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BELT-DRIVE-200",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "输送驱动组件 · BELT-DRIVE-200",
+        "excerpt": "按教学配套将输出带速标定为 2 m/s，用于主线输送模型。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "ratings": {
+          "lineSpeed": {
+            "label": "标定输送带速",
+            "value": 2,
+            "unit": "m/s"
+          }
+        },
+        "parts": [
+          {
+            "id": "motor",
+            "label": "输送伺服电机",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-SERVO\",\"1\"]"
+          },
+          {
+            "id": "reducer",
+            "label": "齿轮减速器",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"REDUCER-FAST\",\"1\"]"
+          },
+          {
+            "id": "coupling",
+            "label": "联轴套体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"COUPLING-SLEEVE\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "ROLLER-UNIT",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "输送托辊 · ROLLER-UNIT",
+        "excerpt": "教学托辊包含筒体、辊轴及两端轴承。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "shaft",
+        "parts": [
+          {
+            "id": "tube",
+            "label": "托辊筒体",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"ROLLER-TUBE\",\"1\"]"
+          },
+          {
+            "id": "shaft",
+            "label": "托辊轴",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"ROLLER-SHAFT\",\"1\"]"
+          },
+          {
+            "id": "bearings",
+            "label": "托辊轴承",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"EDU-BEARING\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BELT-FRAME",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "输送机架 · BELT-FRAME",
+        "excerpt": "教学输送机架使用两根侧梁与四个托辊支架。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "rails",
+            "label": "机架侧梁",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"CONVEYOR-RAIL\",\"1\"]"
+          },
+          {
+            "id": "brackets",
+            "label": "托辊支架",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"ROLLER-BRACKET\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "连接螺栓",
+            "quantity": 8,
+            "packageKey": "[\"构元教学件\",\"BOLT-M8\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "DRIVE-WHEEL",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "移动机器人驱动轮 · DRIVE-WHEEL",
+        "excerpt": "教学驱动轮按轮毂、实心轮胎与支承轴承计量。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "ring",
+        "parts": [
+          {
+            "id": "hub",
+            "label": "驱动轮毂",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"WHEEL-HUB\",\"1\"]"
+          },
+          {
+            "id": "tyre",
+            "label": "实心轮胎",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"WHEEL-TYRE\",\"1\"]"
+          },
+          {
+            "id": "bearing",
+            "label": "车轮轴承",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"EDU-BEARING\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "AMR-TRACTION-100",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "差速牵引组件 · AMR-TRACTION-100",
+        "excerpt": "教学平面直行工况的牵引标定取空驶 1.6 m/s、载货 1 m/s。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "ratings": {
+          "emptySpeed": {
+            "label": "标定空驶速度",
+            "value": 1.6,
+            "unit": "m/s"
+          },
+          "loadedSpeed": {
+            "label": "标定载货速度",
+            "value": 1,
+            "unit": "m/s"
+          }
+        },
+        "parts": [
+          {
+            "id": "motors",
+            "label": "左右驱动电机",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"EDU-SERVO\",\"1\"]"
+          },
+          {
+            "id": "reducers",
+            "label": "左右减速器",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"REDUCER-STD\",\"1\"]"
+          },
+          {
+            "id": "wheels",
+            "label": "驱动轮",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"DRIVE-WHEEL\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "AMR-CHASSIS-100",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "移动机器人底盘 · AMR-CHASSIS-100",
+        "excerpt": "教学底盘连接差速牵引组件、底板与紧固件。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "plate",
+        "parts": [
+          {
+            "id": "traction",
+            "label": "差速牵引组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"AMR-TRACTION-100\",\"1\"]"
+          },
+          {
+            "id": "plate",
+            "label": "底盘板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CHASSIS-PLATE\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "连接螺栓",
+            "quantity": 8,
+            "packageKey": "[\"构元教学件\",\"BOLT-M8\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "AMR-TRACTION-180",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "差速牵引组件 · AMR-TRACTION-180",
+        "excerpt": "教学平面直行工况的牵引标定取空驶 2.4 m/s、载货 1.8 m/s。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "ratings": {
+          "emptySpeed": {
+            "label": "标定空驶速度",
+            "value": 2.4,
+            "unit": "m/s"
+          },
+          "loadedSpeed": {
+            "label": "标定载货速度",
+            "value": 1.8,
+            "unit": "m/s"
+          }
+        },
+        "parts": [
+          {
+            "id": "motors",
+            "label": "左右驱动电机",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"EDU-SERVO\",\"1\"]"
+          },
+          {
+            "id": "reducers",
+            "label": "左右减速器",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"REDUCER-FAST\",\"1\"]"
+          },
+          {
+            "id": "wheels",
+            "label": "驱动轮",
+            "quantity": 2,
+            "packageKey": "[\"构元教学件\",\"DRIVE-WHEEL\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "AMR-CHASSIS-180",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "移动机器人底盘 · AMR-CHASSIS-180",
+        "excerpt": "教学底盘连接差速牵引组件、底板与紧固件。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "plate",
+        "parts": [
+          {
+            "id": "traction",
+            "label": "差速牵引组件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"AMR-TRACTION-180\",\"1\"]"
+          },
+          {
+            "id": "plate",
+            "label": "底盘板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CHASSIS-PLATE\",\"1\"]"
+          },
+          {
+            "id": "bolts",
+            "label": "连接螺栓",
+            "quantity": 8,
+            "packageKey": "[\"构元教学件\",\"BOLT-M8\",\"1\"]"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "构元教学件",
+      "model": "BATTERY-PACK",
+      "revision": "1",
+      "source": {
+        "title": "双线数控车间教学分解 BOM",
+        "url": "",
+        "locator": "电池组件 · BATTERY-PACK",
+        "excerpt": "教学电池包装入八枚密封电芯与一套管理板，按电芯外壳作为单件边界。",
+        "kind": "local"
+      },
+      "ports": [],
+      "rules": [],
+      "composition": {
+        "kind": "assembly",
+        "shape": "box",
+        "parts": [
+          {
+            "id": "cells",
+            "label": "密封电芯",
+            "quantity": 8,
+            "packageKey": "[\"构元教学件\",\"CELL-LI\",\"1\"]"
+          },
+          {
+            "id": "tray",
+            "label": "绝缘托盘",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"BAT-TRAY\",\"1\"]"
+          },
+          {
+            "id": "bms",
+            "label": "电池管理板",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"CTRL-BOARD\",\"1\"]"
+          },
+          {
+            "id": "wires",
+            "label": "接线",
+            "quantity": 4,
+            "packageKey": "[\"构元教学件\",\"CABLE\",\"1\"]"
+          },
+          {
+            "id": "connector",
+            "label": "输出接插件",
+            "quantity": 1,
+            "packageKey": "[\"构元教学件\",\"PLUG\",\"1\"]"
+          }
+        ]
       }
     }
   ],
@@ -214,82 +3539,82 @@
         {
           "id": "load",
           "name": "主线上料位",
-          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"2\"]",
           "positionM": [
             0,
             0
           ],
-          "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+          "materialId": "bom-f34a2718da1e69573fcd77803a117ed6"
         },
         {
           "id": "belt",
           "name": "主线输送带",
-          "packageKey": "[\"构元教学件\",\"CELL-BELT-100\",\"1\"]",
+          "packageKey": "[\"构元教学件\",\"CELL-BELT-100\",\"2\"]",
           "positionM": [
             2,
             0
           ],
-          "materialId": "bom-c47731c551eb430637502d2ef9776760"
+          "materialId": "bom-e18c1a3ba0ac2ab6aaaa6109377b5ae5"
         },
         {
           "id": "handoff",
           "name": "线尾接驳位",
-          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-2S\",\"1\"]",
+          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-2S\",\"2\"]",
           "positionM": [
             4,
             0
           ],
-          "materialId": "bom-73ea1663c68c63ca0fe4e0c87f7722a9"
+          "materialId": "bom-6dd56610e1164a620901877f4c1b76c8"
         },
         {
           "id": "aux-load",
           "name": "辅线上料位",
-          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"2\"]",
           "positionM": [
             2,
             -4
           ],
-          "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+          "materialId": "bom-f34a2718da1e69573fcd77803a117ed6"
         },
         {
           "id": "amr",
           "name": "共享移动机器人",
-          "packageKey": "[\"构元教学件\",\"CELL-AMR-100\",\"1\"]",
+          "packageKey": "[\"构元教学件\",\"CELL-AMR-100\",\"2\"]",
           "positionM": [
             4,
             -2
           ],
-          "materialId": "bom-dd6f274e8d2b49dfd6e4a6d45ba1d2ff"
+          "materialId": "bom-3a217afc3410e9e021a2a5096913404a"
         },
         {
           "id": "cnc-a",
           "name": "CNC-A",
-          "packageKey": "[\"构元教学件\",\"CELL-CNC-60S\",\"1\"]",
+          "packageKey": "[\"构元教学件\",\"CELL-CNC-60S\",\"2\"]",
           "positionM": [
             8,
             2
           ],
-          "materialId": "bom-d9a7b4b5428024f81a87207e80b08816"
+          "materialId": "bom-8202d08639036fa45acb87e6d6c18f6d"
         },
         {
           "id": "cnc-b",
           "name": "CNC-B",
-          "packageKey": "[\"构元教学件\",\"CELL-CNC-F900\",\"1\"]",
+          "packageKey": "[\"构元教学件\",\"CELL-CNC-F900\",\"2\"]",
           "positionM": [
             8,
             -2
           ],
-          "materialId": "bom-a3e4226b18002b4a54d7c155599f80f6"
+          "materialId": "bom-3e4eeacd76b5f9aa3b37a6815d1aca95"
         },
         {
           "id": "unload",
           "name": "共享下料位",
-          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+          "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"2\"]",
           "positionM": [
             12,
             0
           ],
-          "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+          "materialId": "bom-f34a2718da1e69573fcd77803a117ed6"
         }
       ],
       "lines": [
@@ -395,115 +3720,115 @@
     "models": [],
     "materials": [
       {
-        "id": "bom-30564a6221d7a773772cec16388dfe93",
+        "id": "bom-f34a2718da1e69573fcd77803a117ed6",
         "name": "标准上下料单元",
         "quantity": 4,
         "unit": "套",
         "manufacturer": "构元教学件",
         "model": "CELL-HANDLER-4S",
-        "source": "双线数控车间教学设计",
+        "source": "双线数控车间教学设计 · 整机修订 2",
         "notes": "主线上料、辅线上料、共享下料使用此修订",
         "binding": {
           "kind": "device",
-          "key": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]"
+          "key": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"2\"]"
         }
       },
       {
-        "id": "bom-73ea1663c68c63ca0fe4e0c87f7722a9",
+        "id": "bom-6dd56610e1164a620901877f4c1b76c8",
         "name": "快速上下料单元",
         "quantity": 4,
         "unit": "套",
         "manufacturer": "构元教学件",
         "model": "CELL-HANDLER-2S",
-        "source": "双线数控车间教学设计",
+        "source": "双线数控车间教学设计 · 整机修订 2",
         "notes": "主线接驳位使用此修订，另有可替换件",
         "binding": {
           "kind": "device",
-          "key": "[\"构元教学件\",\"CELL-HANDLER-2S\",\"1\"]"
+          "key": "[\"构元教学件\",\"CELL-HANDLER-2S\",\"2\"]"
         }
       },
       {
-        "id": "bom-c47731c551eb430637502d2ef9776760",
+        "id": "bom-e18c1a3ba0ac2ab6aaaa6109377b5ae5",
         "name": "标准输送带",
         "quantity": 1,
         "unit": "条",
         "manufacturer": "构元教学件",
         "model": "CELL-BELT-100",
-        "source": "双线数控车间教学设计",
+        "source": "双线数控车间教学设计 · 整机修订 2",
         "notes": "主线上料位至接驳位，沿正向输送",
         "binding": {
           "kind": "device",
-          "key": "[\"构元教学件\",\"CELL-BELT-100\",\"1\"]"
+          "key": "[\"构元教学件\",\"CELL-BELT-100\",\"2\"]"
         }
       },
       {
-        "id": "bom-bb6707efbf4d45bc6016bba5c99fa51c",
+        "id": "bom-49815b45c7a292ff94f8e807297d389d",
         "name": "快速输送带",
         "quantity": 1,
         "unit": "条",
         "manufacturer": "构元教学件",
         "model": "CELL-BELT-200",
-        "source": "双线数控车间教学设计",
+        "source": "双线数控车间教学设计 · 整机修订 2",
         "notes": "同一路段的替换设备",
         "binding": {
           "kind": "device",
-          "key": "[\"构元教学件\",\"CELL-BELT-200\",\"1\"]"
+          "key": "[\"构元教学件\",\"CELL-BELT-200\",\"2\"]"
         }
       },
       {
-        "id": "bom-dd6f274e8d2b49dfd6e4a6d45ba1d2ff",
+        "id": "bom-3a217afc3410e9e021a2a5096913404a",
         "name": "标准移动机器人",
         "quantity": 1,
         "unit": "台",
         "manufacturer": "构元教学件",
         "model": "CELL-AMR-100",
-        "source": "双线数控车间教学设计",
+        "source": "双线数控车间教学设计 · 整机修订 2",
         "notes": "两条线往返机床与下料位共用",
         "binding": {
           "kind": "device",
-          "key": "[\"构元教学件\",\"CELL-AMR-100\",\"1\"]"
+          "key": "[\"构元教学件\",\"CELL-AMR-100\",\"2\"]"
         }
       },
       {
-        "id": "bom-5f076d686d101463952a05a7584ba8e1",
+        "id": "bom-50b9cb7a0d04862ef80154faa824640e",
         "name": "快速移动机器人",
         "quantity": 1,
         "unit": "台",
         "manufacturer": "构元教学件",
         "model": "CELL-AMR-180",
-        "source": "双线数控车间教学设计",
+        "source": "双线数控车间教学设计 · 整机修订 2",
         "notes": "可替换共享移动机器人，保留起点与两线派工关系",
         "binding": {
           "kind": "device",
-          "key": "[\"构元教学件\",\"CELL-AMR-180\",\"1\"]"
+          "key": "[\"构元教学件\",\"CELL-AMR-180\",\"2\"]"
         }
       },
       {
-        "id": "bom-d9a7b4b5428024f81a87207e80b08816",
+        "id": "bom-8202d08639036fa45acb87e6d6c18f6d",
         "name": "定节拍数控机床",
         "quantity": 2,
         "unit": "台",
         "manufacturer": "构元教学件",
         "model": "CELL-CNC-60S",
-        "source": "双线数控车间教学设计",
+        "source": "双线数控车间教学设计 · 整机修订 2",
         "notes": "CNC-A 初始机型，数量包含可替换 CNC-B 的设备",
         "binding": {
           "kind": "device",
-          "key": "[\"构元教学件\",\"CELL-CNC-60S\",\"1\"]"
+          "key": "[\"构元教学件\",\"CELL-CNC-60S\",\"2\"]"
         }
       },
       {
-        "id": "bom-a3e4226b18002b4a54d7c155599f80f6",
+        "id": "bom-3e4eeacd76b5f9aa3b37a6815d1aca95",
         "name": "进给节拍数控机床",
         "quantity": 2,
         "unit": "台",
         "manufacturer": "构元教学件",
         "model": "CELL-CNC-F900",
-        "source": "双线数控车间教学设计",
+        "source": "双线数控车间教学设计 · 整机修订 2",
         "notes": "CNC-B 初始机型，数量包含可替换 CNC-A 的设备",
         "binding": {
           "kind": "device",
-          "key": "[\"构元教学件\",\"CELL-CNC-F900\",\"1\"]"
+          "key": "[\"构元教学件\",\"CELL-CNC-F900\",\"2\"]"
         }
       }
     ]

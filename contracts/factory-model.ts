@@ -23,19 +23,20 @@ export const factoryParametersSchema = z.unknown()
   .pipe(z.record(signalIdSchema, z.number().finite()))
   .transform(values => Object.fromEntries(Object.keys(values).sort().map(key => [key, values[key]])) as Record<string, number>);
 
+export function factoryParameterValueIssue(spec: FactoryModel["parameters"][number], value: number | undefined, requireValue: boolean) {
+  const label = `${spec.label}（${spec.key}，${spec.unit}）`;
+  if (value === undefined) return requireValue ? `缺少${label}。` : undefined;
+  if (!Number.isFinite(value) || (spec.positive ? value <= 0 : value < 0))
+    return `${label}必须为${spec.positive ? "正" : "非负"}有限数。`;
+}
+
 /** 厂家资料可暂缺参数。在实例上显式补齐后才能运行该模型。 */
 export function factoryParameterIssues(model: FactoryModel, values: Record<string, number>, requireAll: boolean): string[] {
   const issues = Object.keys(values).filter(key => !model.parameters.some(p => p.key === key))
     .map(key => `模型 ${model.id} 未声明参数 ${key}。`);
   for (const spec of model.parameters) {
-    const label = `${spec.label}（${spec.key}，${spec.unit}）`;
-    if (!Object.hasOwn(values, spec.key)) {
-      if (requireAll) issues.push(`缺少${label}。`);
-    } else {
-      const value = values[spec.key];
-      if (!Number.isFinite(value) || (spec.positive ? value <= 0 : value < 0))
-        issues.push(`${label}必须为${spec.positive ? "正" : "非负"}有限数。`);
-    }
+    const issue = factoryParameterValueIssue(spec, Object.hasOwn(values, spec.key) ? values[spec.key] : undefined, requireAll);
+    if (issue) issues.push(issue);
   }
   return issues;
 }

@@ -1,5 +1,8 @@
 import { resolveFactoryLayout, type FactoryLayout } from "@contracts/factory";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { MAX_PROJECT_JSON_BYTES } from "@contracts/import-catalog";
+import { compositionRollupCsv } from "@contracts/device-composition";
+import { factoryStructureSnapshot } from "@contracts/factory-structure";
 import deviceManifest from "../../public/modelica/runtime/factory-models.json";
 import scheduleManifest from "../../public/modelica/runtime/factory-scheduler.json";
 import { factoryModelicaFiles } from "./factory-modelica";
@@ -22,6 +25,14 @@ export async function exportFactoryModelica(workspace: TwinWorkspace, layout: Fa
   }))]);
   signal?.throwIfAborted();
   const text = new TextEncoder();
-  const files = { ...factoryModelicaFiles(factory, result.makespanS), "layout.factory.json": JSON.stringify(layout, null, 2) + "\n" };
-  return archiveBlob([...dependencies, ...Object.entries(files).map(([path, body]) => ({ path, data: text.encode(body) }))]);
+  const snapshot = factoryStructureSnapshot(workspace, layout);
+  const files = { ...factoryModelicaFiles(factory, result.makespanS),
+    "layout.factory.json": JSON.stringify(layout, null, 2) + "\n",
+    "factory.twin.json": JSON.stringify(snapshot.workspace) + "\n",
+    "parts-bom.csv": "\uFEFF" + compositionRollupCsv(snapshot.report) };
+  const documents = Object.entries(files).map(([path, body]) => ({ path, data: text.encode(body) }));
+  if (documents.some(f => (f.path === "factory.twin.json" || f.path === "factory-map.json") && f.data.length > MAX_PROJECT_JSON_BYTES)) {
+    throw new Error("工厂快照或参数映射超过 8 MiB，请核对设备资料的大小后再导出。");
+  }
+  return archiveBlob([...dependencies, ...documents]);
 }

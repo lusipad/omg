@@ -7,7 +7,7 @@ import { downloadBlob } from "@/lib/download";
 import FactoryScene from "./FactoryScene";
 import { Button } from "./ui/button";
 
-type Props = { layout: FactoryLayout; result: FactoryRunResult; onEditResource?: (id: string) => void };
+type Props = { layout: FactoryLayout; result: FactoryRunResult; active?: boolean; onEditResource?: (id: string) => void; onOpenStructure?: (id: string) => void };
 const number = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2, useGrouping: false });
 const seconds = (t: number) => number.format(t) + " s";
 const selectClass = "h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm";
@@ -106,7 +106,7 @@ function ResourceTimeline({
   );
 }
 
-function Playback({ layout, result, onEditResource }: Props) {
+function Playback({ layout, result, active = true, onEditResource, onOpenStructure }: Props) {
   const timeline = useMemo(() => indexFactoryRun(result), [result]),
     slider = useId();
   const sliderEnd = useMemo(() => {
@@ -158,7 +158,7 @@ function Playback({ layout, result, onEditResource }: Props) {
     seek(0);
   }
   useEffect(() => {
-    if (!playing) return;
+    if (!active || !playing) return;
     let raf = 0,
       lastPaint = -Infinity;
     const origin = performance.now(),
@@ -175,7 +175,7 @@ function Playback({ layout, result, onEditResource }: Props) {
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, result.makespanS, speed]);
+  }, [active, playing, result.makespanS, speed]);
 
   return (
     <section aria-label="工厂运行回放" className="surface min-w-0 space-y-4 p-3 sm:p-5">
@@ -344,6 +344,7 @@ function Playback({ layout, result, onEditResource }: Props) {
               <p className="break-words text-[11px] text-muted-foreground">{lines.map(l => l.name).join(" · ")}</p>
             )}
           </div>
+          {onOpenStructure && <Button size="sm" variant="outline" onClick={() => { seek(time); onOpenStructure(resource.id); }}>拆解此设备</Button>}
           {onEditResource && (
             <Button size="sm" variant="outline" onClick={() => onEditResource(resource.id)}>
               <SlidersHorizontal />

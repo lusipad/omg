@@ -17,7 +17,7 @@ MODEL_ROOT = ROOT / "public/modelica"
 PACKAGE = Path("GouyuanFactory/package.mo")
 HEADER = Path("GouyuanFactory/Resources/Include/factory_schedule.h")
 PROJECT_FILES = (Path("FactoryRun.mo"), Path("run.mos"), PACKAGE, HEADER)
-CASES = ("baseline", "fast-amr", "alternate-cnc", "single-cnc")
+CASES = ("baseline", "fast-amr", "alternate-cnc", "single-cnc", "reduced-feed-part")
 FIELDS = ("station", "carrier", "fromStation", "carrierOrigin", "readyS", "dispatchS",
           "pickupStartS", "loadedStartS", "dropStartS", "serviceStartS", "finishS")
 EPS = 1e-8  # seconds; all identifiers are compared exactly
@@ -94,8 +94,37 @@ def check_topology(expected, rows):
     return releases, finishes, states, {"operations": operations, "transfers": transfers, "peakSimultaneousCnc": peak}
 
 
+def check_cnc_part(case, mapping, rows, makespan):
+    """Compare the exported slot provenance with the observed native CNC-B service interval."""
+    if case not in ("baseline", "reduced-feed-part"):
+        return {}
+    reduced = case == "reduced-feed-part"
+    machines = [(i, r) for i, r in enumerate(mapping["resources"], 1) if r["id"] == "cnc-b"]
+    require(len(machines) == 1, "Export must identify the selected CNC-B")
+    slot, machine = machines[0]
+    source = machine["parameterSources"]["feedMmMin"]
+    chain = [json.loads(key) for key in source["packagePath"]]
+    feed, service_s = (600, 51) if reduced else (900, 36)
+    require(machine["slot"] == f"Device{slot}" and machine["model"] == "GouyuanFactory.FeedCNC" and
+            source["kind"] == "part" and source["path"] == ["feed", "x"] and source["rating"] == "nominalFeed" and
+            source["value"] == feed and source["unit"] == "mm/min", "Incorrect CNC-B feed parameter or slot path")
+    require(len(chain) == 3 and source["packagePath"][0] == machine["packageKey"] and
+            source["packagePath"][2] == source["packageKey"] and
+            chain[0] == ["构元教学件", "CELL-CNC-F900", "2-reduced-feed" if reduced else "2"] and
+            len(chain[1]) == 3 and chain[1][:2] == ["构元教学件", "CNC-FEED-900"] and
+            bool(chain[1][2]) and ((chain[1][2] != "1") == reduced) and
+            chain[2] == ["构元教学件", f"FEED-AXIS-{feed}", "1"], "Incorrect CNC-B part revision chain")
+    intervals = [row[-1]-row[-2] for row in rows if row[0] == slot]
+    require(intervals and all(abs(t-service_s) <= EPS for t in intervals), "Wrong native service duration on CNC-B")
+    require(abs(makespan - (339.299595775 if reduced else 324.499266257)) <= EPS, "Unexpected factory duration")
+    return {"verifiedPartParameter": {"resource": "cnc-b", "parameter": "feedMmMin", "serviceS": service_s, **source}}
+
+
 def compare_case(case, folder, omc, evidence):
     expected = json.loads((folder/"expected.json").read_text(encoding="utf-8"))
+    map_file = folder/"factory-map.json"
+    require(digest(map_file) == expected["mapSha256"], "Exported Modelica instance map differs")
+    mapping = json.loads(map_file.read_text(encoding="utf-8"))
     nr, ns, nj = (expected[k] for k in ("nr", "ns", "nj"))
     require(all(type(n) is int and 0 < n <= high for n, high in zip((nr, ns, nj), (32, 16, 64))),
             "Expected run dimensions exceed the factory ABI")
@@ -171,12 +200,13 @@ def compare_case(case, folder, omc, evidence):
             "Native trace does not cover the entire batch")
     require(complete == nj and wip == 0, "Some parts were lost or unfinished")
     return {
+        **check_cnc_part(case, mapping, native_rows, span),
         **topology, "passed": True, "jobs": nj, "stages": ns, "resources": nr, "nativeSamples": samples,
         "recordFieldsChecked": len(wanted), "completed": int(complete), "endingWip": int(wip),
         "makespanS": span, "durationMaxAbsErrorS": max_makespan_error, "maxAbsError": observation,
         "nativeEventSha256": hashlib.sha256(json.dumps(native_rows, separators=(",", ":")).encode()).hexdigest(),
         "sourceSha256": digest(folder/"FactoryRun.mo"), "mosSha256": digest(folder/"run.mos"),
-        "expectedSha256": digest(folder/"expected.json"), "nativeCsv": native_csv.name, "nativeCsvSha256": digest(native_csv),
+        "expectedSha256": digest(folder/"expected.json"), "mapSha256": digest(map_file), "nativeCsv": native_csv.name, "nativeCsvSha256": digest(native_csv),
         "log": log.name, "logSha256": digest(log)
     }
 
@@ -226,7 +256,7 @@ def main():
         raise SystemExit(str(failure)) from failure
     finally:
         summary.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-    print(f"PASS: four exported factory models, native inventory and all eleven event fields. {summary}")
+    print(f"PASS: {len(CASES)} exported factory models, part parameter provenance, native inventory and all eleven event fields. {summary}")
 
 
 if __name__ == "__main__":

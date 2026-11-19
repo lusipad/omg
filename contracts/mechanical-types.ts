@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isPackageKey } from "./package-identity";
 
 export const signalIdSchema = z.string().max(80).regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/, "标识只支持字母、数字、连字符与下划线")
   .refine((id) => id !== "prototype" && !Object.hasOwn(Object.prototype, id), "标识使用了保留属性名");
@@ -78,10 +79,7 @@ const packagedAssembly = mechanicalAssemblySchema.superRefine((a, ctx) => {
   for (const issue of mechanicalTopology(a).issues) ctx.addIssue({ code: "custom", message: issue });
   for (const [i, node] of a.nodes.entries()) {
     if (node.materialId !== undefined) ctx.addIssue({ code: "custom", path: ["nodes", i, "materialId"], message: "封装设备应使用固定设备修订，不能依赖源工程的 BOM 行" });
-    let key: unknown;
-    try { key = JSON.parse(node.packageKey); } catch { /* 完整设备的引用须为 packageKey 的三字段形式。 */ }
-    if (!Array.isArray(key) || key.length !== 3 || !key.every((v) => typeof v === "string" && v.length > 0 && v.length <= 160 && v === v.trim()) ||
-      JSON.stringify(key) !== node.packageKey) ctx.addIssue({ code: "custom", path: ["nodes", i, "packageKey"], message: `节点 ${node.id} 请引用已锁定制造商、型号和版本的完整设备修订` });
+    if (!isPackageKey(node.packageKey)) ctx.addIssue({ code: "custom", path: ["nodes", i, "packageKey"], message: `节点 ${node.id} 请引用已锁定制造商、型号和版本的完整设备修订` });
   }
   const ids = new Set(a.nodes.map((n) => n.id));
   for (const path of Object.keys(a.commands)) if (!ids.has(path.split("/")[0])) ctx.addIssue({ code: "custom", path: ["commands", path], message: "没有对应的机械实例" });

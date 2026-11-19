@@ -83,8 +83,9 @@ getErrorString();
 if not regularFileExists("FactoryRun_res.csv") then exit(1); end if;
 `;
   const map = {
-    resources: resources.map(({ resource, device, model }, i) => ({ slot: `Device${i + 1}`, id: resource.id, name: resource.name,
-      packageKey: resource.packageKey, model: model.id, version: device.factory!.modelRef.version })),
+    kind: "factory-modelica-map", schemaVersion: 1,
+    resources: resources.map(({ resource, device, model, parameterSources }, i) => ({ slot: `Device${i + 1}`, id: resource.id, name: resource.name,
+      packageKey: resource.packageKey, model: model.id, version: device.factory!.modelRef.version, parameterSources })),
     stages: stages.map(({ line, stage }, i) => ({ index: i + 1, lineId: line.id, id: stage.id, name: stage.name })),
     jobs: jobs.map(({ line, serial, releaseS }, i) => ({ index: i + 1, lineId: line.id, serial, releaseS })),
     traceColumns: ["station", "carrier", "fromStation", "carrierOrigin", "readyS", "dispatchS", "pickupStartS", "loadedStartS", "dropStartS", "serviceStartS", "finishS"],

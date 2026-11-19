@@ -3,6 +3,7 @@ import { ExternalLink, Loader2 } from "lucide-react";
 import { applyMiloBomImport, importedServoPair } from "@contracts/import-apply";
 import type { MaterialRow } from "@contracts/import-catalog";
 import { inspectFactoryLayout, type FactoryLayout } from "@contracts/factory";
+import { compositionKind } from "@contracts/device-composition";
 import { inspectLinearAssembly, type LinearAssembly } from "@contracts/linear-assembly";
 import { inspectMechanicalAssembly, installMechanicalBundle, type MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { matchMaterials } from "@contracts/material-import";
@@ -11,11 +12,13 @@ import { isSo101ServoPart, so101BomNotes } from "@contracts/so101-bom";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import { installPackage, type TwinWorkspace } from "@contracts/twin-simulation";
 import { importMaterialRows, type ImportOverrides, type WorkbenchImportCandidate } from "@/lib/workbench-import";
+import { deviceLibraryGroups, previewDevicePackages } from "@/lib/device-library";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import TwinPackagePreview, { DeviceSourceEvidence, FactoryRatings, FeedRatings, MechanicalDefinitionDetails, MechanicalDetails, ServoRatings } from "./TwinPackagePreview";
+import PackageStructure, { type ApplyDeviceRevision } from "./PackageStructure";
 
 type Props = {
   candidate: WorkbenchImportCandidate;
@@ -27,6 +30,7 @@ type Props = {
   onUseManual: (overrides: ImportOverrides) => void;
   onClose: () => void;
   onAssemble: (device: DevicePackage, mode?: "factory") => void;
+  onApplyDeviceRevision?: ApplyDeviceRevision;
 };
 const labels = {
   project: ["核对工程", "确认替换工程"],
@@ -52,6 +56,7 @@ function lineCount(text: string) {
 
 function ProjectSummary({ candidate, current }: { candidate: Extract<WorkbenchImportCandidate, { kind: "project" }>; current: TwinWorkspace }) {
   const next = candidate.workspace;
+  const [showDevices, setShowDevices] = useState(false);
   const rows: [string, number | string, number | string][] = [
     ["设备包", current.packages.length, next.packages.length],
     ["设备实例", current.instances.length, next.instances.length],
@@ -91,6 +96,11 @@ function ProjectSummary({ candidate, current }: { candidate: Extract<WorkbenchIm
     </table>
     {candidate.models !== undefined ? <p className="text-xs text-muted-foreground">工程 ZIP 附带 {candidate.models.length} 组物理模型资源，确认后一起恢复。</p> :
       !!next.catalog?.models.length && <p className="text-xs text-muted-foreground">工程 JSON 引用本机的 {next.catalog.models.length} 个物理模型。恢复这些模型需要已保存在此浏览器中的对应文件。</p>}
+    {next.packages.some(p => compositionKind(p) === "assembly") && <details className="rounded-md border p-3 text-sm"
+      onToggle={event => setShowDevices(event.currentTarget.open)}>
+      <summary className="cursor-pointer font-medium">查看工程设备与子件</summary>
+      {showDevices && <div className="mt-3"><PackageList workspace={next} devices={next.packages} /></div>}
+    </details>}
   </>;
 }
 
@@ -164,22 +174,42 @@ function FactorySummary({ layout, workspace }: { layout: FactoryLayout; workspac
   </div>;
 }
 
-function PackageList({ devices, rootKey }: { devices: DevicePackage[]; rootKey?: string }) {
-  return <ul aria-label="待安装设备包" className="max-h-72 divide-y overflow-auto rounded-md border px-3">
-    {devices.map((device) => {
+function PackageList({ workspace, devices, rootKey }: { workspace: TwinWorkspace; devices: DevicePackage[]; rootKey?: string }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [showParts, setShowParts] = useState(false);
+  const groups = useMemo(() => deviceLibraryGroups(devices), [devices]);
+  const preview = useMemo(() => previewDevicePackages(workspace, devices), [workspace, devices]);
+  const active = devices.find(device => packageKey(device) === selected);
+  if (active) return <div className="space-y-3">
+    <Button size="sm" variant="outline" onClick={() => setSelected(null)}>返回设备包清单</Button>
+    <PackageStructure device={active} workspace={preview} />
+  </div>;
+  function rows(items: DevicePackage[], label: string) {
+    return <ul aria-label={label} className="max-h-72 divide-y overflow-auto rounded-md border px-3">
+    {items.map((device) => {
       const key = packageKey(device);
-      return <li key={key} className="py-2"><details>
-        <summary className="cursor-pointer break-words text-sm"><strong>{device.model}</strong> · {device.manufacturer} · {device.revision}{key === rootKey && " · 根设备"}</summary>
+      return <li key={key} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-1 py-2"><details className="min-w-0">
+        <summary className="cursor-pointer break-words text-sm"><strong>{device.model}</strong>
+          <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{device.manufacturer} · 修订 {device.revision}{key === rootKey && " · 根设备"}</span></summary>
         <div className="mt-2 space-y-2"><DeviceSourceEvidence source={device.source} />
           {device.mechanics && <MechanicalDetails mechanics={device.mechanics} />}
           {device.feed && <FeedRatings feed={device.feed} />}
-          {device.factory && <FactoryRatings station={device.factory} />}
+          {device.factory && <FactoryRatings device={device} packages={preview.packages} />}
           {device.servo && <ServoRatings servo={device.servo} />}
           {device.ports.length > 0 && <p className="text-xs text-muted-foreground">{device.ports.length} 个端口 · {device.rules.length} 条行为规则</p>}
         </div>
-      </details></li>;
+      </details><Button size="sm" variant="ghost" className="h-7 px-2 text-xs" aria-label={device.model + " 部件结构"} onClick={() => setSelected(key)}>部件结构</Button></li>;
     })}
   </ul>;
+  }
+  return <div className="space-y-2">
+    {groups.parts.length > 0 && <p className="text-xs text-muted-foreground">根设备与独立修订 {groups.roots.length} 个 · 随附子件 {groups.parts.length} 个修订</p>}
+    {rows(groups.roots, "待安装设备包")}
+    {groups.parts.length > 0 && <details className="rounded-md border p-3 text-xs" onToggle={event => setShowParts(event.currentTarget.open)}>
+      <summary className="cursor-pointer font-medium">随附子件（{groups.parts.length} 个修订）</summary>
+      {showParts && <div className="mt-2">{rows(groups.parts, "待安装子件")}</div>}
+    </details>}
+  </div>;
 }
 
 function BomTable({ rows }: { rows: { name: string; quantity: string | number }[] }) {
@@ -228,7 +258,7 @@ function MaterialRows({ rows }: { rows: MaterialRow[] }) {
   </>;
 }
 
-export default function WorkbenchImportPreview({ candidate, workspace, busy, confirmed, error, onConfirm, onUseManual, onClose, onAssemble }: Props) {
+export default function WorkbenchImportPreview({ candidate, workspace, busy, confirmed, error, onConfirm, onUseManual, onClose, onAssemble, onApplyDeviceRevision }: Props) {
   const [edit, setEdit] = useState<{ owner: WorkbenchImportCandidate; title: string; source: string; text: string } | null>(null);
   const draft = edit?.owner === candidate ? edit : {
     owner: candidate, title: candidate.title ?? candidate.name.replace(/\.[^./\\]+$/, ""), source: candidate.source ?? "",
@@ -254,6 +284,7 @@ export default function WorkbenchImportPreview({ candidate, workspace, busy, con
     }
   }}>
     <TwinPackagePreview device={candidate.device} workspace={workspace} installed={confirmed} error={error} onClose={close}
+      onApplyDeviceRevision={confirmed ? onApplyDeviceRevision : undefined}
       onInstall={() => { if (!busy && !confirmed) onConfirm(); }} onAssemble={mode => { if (!busy && confirmed) onAssemble(candidate.device, mode); }} />
   </div>;
 
@@ -275,12 +306,12 @@ export default function WorkbenchImportPreview({ candidate, workspace, busy, con
       {candidate.kind === "mechanical-bundle" && <>
         <p className="text-sm leading-6">根设备和依赖共 {candidate.bundle.packages.length} 个设备修订，将增量安装到当前工程。相同修订可复用，任一同修订内容冲突会阻止整批安装。</p>
         {checked.added !== undefined && <p className="text-xs text-muted-foreground">新增 {checked.added} 个 · 复用 {candidate.bundle.packages.length - checked.added} 个</p>}
-        <PackageList devices={candidate.bundle.packages} rootKey={candidate.bundle.rootKey} />
+        <PackageList workspace={workspace} devices={candidate.bundle.packages} rootKey={candidate.bundle.rootKey} />
       </>}
       {candidate.kind === "devices" && <>
-        <p className="text-sm">确认后将这 {candidate.devices.length} 个设备包一起安装到当前工程。相同型号及修订出现内容冲突时，整批安装会停止。</p>
-        <p className="text-xs text-muted-foreground">{importedServoPair(candidate.devices) ? "这组驱动器和电机已声明配套，可用于组装伺服轴。" : "安装后可在设备包列表逐个选用。"}</p>
-        <PackageList devices={candidate.devices} />
+        <p className="text-sm">即将安装 {candidate.devices.length} 个设备修订。{checked.added !== undefined && `新增 ${checked.added} 个，复用 ${candidate.devices.length - checked.added} 个。`}</p>
+        {importedServoPair(candidate.devices) && <p className="text-xs text-muted-foreground">这组驱动器和电机已声明配套，可用于组装伺服轴。</p>}
+        <PackageList workspace={workspace} devices={candidate.devices} />
       </>}
       {candidate.kind === "milo-bom" && <MiloSummary candidate={candidate} workspace={workspace} kept={checked.kept} />}
       {candidate.kind === "so101-bom" && <>

@@ -56,7 +56,7 @@ export const RELEASE_MANIFEST: { release: string; name: string; checks: ReleaseC
       key: "modelica-factory",
       title: "GouyuanFactory 1.0.0 整厂过程回归",
       status: "passed",
-      evidence: "两条线共享移动机器人与数控机床，9 件完成 33 道工序。4 种设备配置的原生 Modelica 导出与浏览器逐项核对派工记录和设备占用。",
+      evidence: "两条线共享移动机器人与数控机床，9 件完成 33 道工序。5 种配置包含只更换机床 X 轴的工况，原生 Modelica 与浏览器逐项核对派工、设备占用和子件额定值来源。",
       boundary: "工厂模型使用单件运输、固定工艺路线和标定节拍。现场通行能力和设备节拍需要实测。",
     },
     {

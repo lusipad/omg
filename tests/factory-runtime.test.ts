@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { unzipSync } from "three/examples/jsm/libs/fflate.module.js";
-import { parseWorkspace } from "../contracts/twin-simulation";
+import { maxPackages, parseWorkspace } from "../contracts/twin-simulation";
 import { replaceFactoryResourcePackage } from "../contracts/factory";
 import { packageKey } from "../contracts/twin-device";
 import { parseImportText } from "../contracts/workbench-import";
@@ -23,12 +23,12 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("整厂工作台运行已编译的设备方程和同一调度核心", () => {
   it("设备库整体核对，只复用相同修订的相同内容", () => {
-    const standard = project.packages.find(p => p.factory.modelRef.id.endsWith(".PickPlace"))!;
+    const standard = project.packages.find(p => p.factory?.modelRef.id.endsWith(".PickPlace"))!;
     const open = (packages: unknown[]) => parseImportText(JSON.stringify({ schemaVersion: 1, kind: "device-library", packages }), "devices.library.json");
     expect(open([standard, standard])).toMatchObject({ kind: "devices", devices: [standard] });
     expect(() => open([standard, { ...standard, factory: { ...standard.factory, parameters: { handlingS: 999 } } }])).toThrow(/相同修订/);
     expect(() => open([])).toThrow(/设备库/);
-    expect(() => open(Array(129).fill(standard))).toThrow(/128/);
+    expect(() => open(Array(maxPackages + 1).fill(standard))).toThrow(String(maxPackages));
   });
 
   it("跟踪两条产线的全部工件、共用载具的空驶及并行加工，并导出同批事件", async () => {

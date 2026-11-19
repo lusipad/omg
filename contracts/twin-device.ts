@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { mechanicsSchema, signalIdSchema } from "./mechanical-types";
 import { factoryParameterIssues, factoryParametersSchema, getFactoryModel } from "./factory-model";
+import { deviceCompositionSchema, factoryPartParametersSchema } from "./device-composition";
+import { packageKey } from "./package-identity";
 export { signalIdSchema } from "./mechanical-types";
+export { packageKey } from "./package-identity";
 
 const text = (limit: number) => z.string().trim().min(1).max(limit);
 
@@ -45,8 +48,9 @@ const packageSchema = z.strictObject({
   }).refine(source => source.kind === "local" ? !source.url && !source.productUrl : Boolean(source.url),
     "本地资料请标为 local 并留空链接，在线资料须提供 HTTP 或 HTTPS 来源链接"),
   ports: z.array(portSchema).max(256), rules: z.array(ruleSchema).max(128), servo: servoSchema.optional(), feed: feedSchema.optional(),
-  factory: z.strictObject({ modelRef: modelRefSchema, parameters: factoryParametersSchema }).optional(),
+  factory: z.strictObject({ modelRef: modelRefSchema, parameters: factoryParametersSchema, partParameters: factoryPartParametersSchema.optional() }).optional(),
   calibration: calibrationSchema.optional(), mechanics: mechanicsSchema.optional(),
+  composition: deviceCompositionSchema.optional(),
 });
 
 export type SignalPort = z.infer<typeof portSchema>;
@@ -70,16 +74,22 @@ export function readTwinData<T>(schema: z.ZodType<T>, value: unknown, label: str
   throw new Error(`${label}格式有误（${issue.path.map(String).join(".") || "根节点"}）${issue.message}`);
 }
 
-export function packageKey(pkg: Pick<DevicePackage, "manufacturer" | "model" | "revision">): string {
-  return JSON.stringify([pkg.manufacturer.trim(), pkg.model.trim(), pkg.revision.trim()]);
-}
-
 export function parseDevicePackage(value: unknown): DevicePackage {
   const model = value && typeof value === "object" && "mechanics" in value && "model" in value && typeof value.model === "string" ? value.model.trim().slice(0, 160) : "";
   const pkg = readTwinData(packageSchema, value, model ? `设备包“${model}”` : "设备包");
+  if (pkg.composition && pkg.mechanics?.kind === "assembly") {
+    throw new Error(`设备包“${pkg.model}”已用机械装配节点声明组成，请通过安装点装配维护该层结构。`);
+  }
+  if (pkg.composition?.kind === "assembly" && pkg.composition.parts.some(p => p.packageKey === packageKey(pkg))) {
+    throw new Error(`设备包“${pkg.model}”的子件直接引用本修订，会形成循环。`);
+  }
   if (pkg.factory) {
     if (pkg.ports.length || pkg.rules.length) throw new Error("工厂设备使用工艺工位或搬运接口，请将信号端口和规则留空。");
     const template = getFactoryModel(pkg.factory.modelRef);
+    for (const name of Object.keys(pkg.factory.partParameters ?? {})) {
+      if (Object.hasOwn(pkg.factory.parameters, name)) throw new Error(`设备包“${pkg.model}”的工厂参数 ${name} 不能同时声明字面值和部件来源。`);
+      if (template && !template.parameters.some(p => p.key === name)) throw new Error(`模型 ${template.id} 未声明工厂参数 ${name}。`);
+    }
     if (template) {
       const issues = factoryParameterIssues(template, pkg.factory.parameters, false);
       if (issues.length) throw new Error(`设备包“${pkg.model}”的工厂模型参数有误。\n${issues.join("\n")}`);
@@ -107,7 +117,7 @@ export function parseDevicePackage(value: unknown): DevicePackage {
     if (/[*?□…]/u.test(pkg.model)) throw new Error("伺服设备需要完整型号");
     return pkg;
   }
-  if (pkg.ports.length === 0 && !pkg.mechanics && !pkg.feed && !pkg.factory) throw new Error("信号设备至少需要一个端口");
+  if (pkg.ports.length === 0 && !pkg.mechanics && !pkg.feed && !pkg.factory && !pkg.composition) throw new Error("信号设备至少需要一个端口");
   const ports = new Map(pkg.ports.map((port) => [port.id, port]));
   if (ports.size !== pkg.ports.length) throw new Error("设备包内的端口标识必须唯一");
   for (const port of pkg.ports) {

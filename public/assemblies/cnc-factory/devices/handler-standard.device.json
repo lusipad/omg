@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "manufacturer": "构元教学件",
   "model": "CELL-HANDLER-4S",
-  "revision": "1",
+  "revision": "2",
   "source": {
     "kind": "local",
     "title": "双线数控车间教学设计",
@@ -20,5 +20,42 @@
     "parameters": {
       "handlingS": 4
     }
+  },
+  "composition": {
+    "kind": "assembly",
+    "shape": "box",
+    "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+    "parts": [
+      {
+        "id": "base",
+        "label": "上下料底座",
+        "packageKey": "[\"构元教学件\",\"STATION-BASE\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "arm",
+        "label": "上下料臂总成",
+        "packageKey": "[\"构元教学件\",\"HANDLER-ARM-STD\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "gripper",
+        "label": "气动夹持组件",
+        "packageKey": "[\"构元教学件\",\"CLAMP-UNIT\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "sensor",
+        "label": "工件检测",
+        "packageKey": "[\"构元教学件\",\"OPT-SENSOR\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "control",
+        "label": "电控组件",
+        "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]",
+        "quantity": 1
+      }
+    ]
   }
 }

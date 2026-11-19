@@ -1,6 +1,6 @@
 import { useState, type RefObject } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2, Upload } from "lucide-react";
-import { FACTORY_LIMITS, getFactoryModel, replaceFactoryResourcePackage, type FactoryLayout, type FactoryLine, type FactoryResource, type FactoryRole, type FactoryStage } from "@contracts/factory";
+import { FACTORY_LIMITS, getFactoryModel, replaceFactoryResourcePackage, resolveFactoryParameters, type FactoryLayout, type FactoryLine, type FactoryResource, type FactoryRole, type FactoryStage } from "@contracts/factory";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { Button } from "@/components/ui/button";
@@ -26,16 +26,17 @@ function newStage(stages: FactoryStage[]): FactoryStage {
 type Props = {
   workspace: TwinWorkspace; draft: FactoryLayout; tab: "devices" | "lines"; selectedId: string;
   onSelect: (id: string) => void; onChange: (next: FactoryLayout) => void;
-  onAddResource: (pkg: DevicePackage) => void; onImport?: () => void; replacementRef: RefObject<HTMLSelectElement | null>;
+  onAddResource: (pkg: DevicePackage) => void; onImport?: () => void; onOpenStructure: (id: string) => void; replacementRef: RefObject<HTMLSelectElement | null>;
 };
 
-function DeviceEditor({ workspace, draft, selectedId, onSelect, onChange, onAddResource, onImport, replacementRef }: Props) {
+function DeviceEditor({ workspace, draft, selectedId, onSelect, onChange, onAddResource, onImport, onOpenStructure, replacementRef }: Props) {
   const [addKey, setAddKey] = useState("");
   const packages = workspace.packages.filter(p => p.factory);
   const add = packages.find(p => packageKey(p) === addKey) ?? packages[0];
   const selected = draft.resources.find(r => r.id === selectedId) ?? draft.resources[0];
   const current = packages.find(p => packageKey(p) === selected?.packageKey);
   const model = getFactoryModel(current?.factory?.modelRef);
+  const sources = current && model ? resolveFactoryParameters(current, model, new Map(workspace.packages.map(pkg => [packageKey(pkg), pkg])), {}, false).parameterSources : {};
   const materials = workspace.catalog?.materials ?? [];
   const matchingRows = materials.filter(r => r.binding?.kind === "device" && r.binding.key === selected?.packageKey);
   const stages = draft.lines.flatMap(line => line.stages);
@@ -119,15 +120,19 @@ function DeviceEditor({ workspace, draft, selectedId, onSelect, onChange, onAddR
           {model && <div className="grid min-w-0 gap-3 sm:grid-cols-2">
             {model.parameters.map(spec => <label key={spec.key} className="min-w-0"><span className="field-label">{spec.label}（{spec.unit}）</span>
               <Input type="number" step="any" min="0" value={numeric(selected.parameters?.[spec.key])}
-                placeholder={current.factory?.parameters[spec.key] === undefined ? "待填写" : `设备包 · ${current.factory.parameters[spec.key]}`}
+                placeholder={sources[spec.key] ? `${sources[spec.key].kind === "part" ? "部件" : "设备包"} · ${sources[spec.key].value}` : "待填写"}
                 onChange={e => {
                   const parameters = { ...selected.parameters };
                   if (e.target.value === "") delete parameters[spec.key]; else parameters[spec.key] = e.target.valueAsNumber;
                   const updated = { ...selected };
                   if (Object.keys(parameters).length) updated.parameters = parameters; else delete updated.parameters;
                   replace(updated);
-                }} /></label>)}
+                }} />
+              {current.factory?.partParameters?.[spec.key] && <span className="mt-1 block break-words text-xs text-muted-foreground">
+                {selected.parameters?.[spec.key] === undefined ? "取自部件" : "实例值覆盖部件"} · {current.factory.partParameters[spec.key].path.join(" / ")} · {current.factory.partParameters[spec.key].rating}
+              </span>}</label>)}
           </div>}
+          <Button size="sm" variant="outline" onClick={() => onOpenStructure(selected.id)}>拆解此设备</Button>
           <details className="pt-1 text-xs leading-5 text-muted-foreground"><summary className="cursor-pointer font-medium text-foreground">设备修订与资料来源</summary>
             <p className="mt-2 break-words">{displayPackage(current)}</p>
             {model && <p className="break-all">模型接口 · {model.interface}</p>}

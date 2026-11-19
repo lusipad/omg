@@ -6,10 +6,11 @@ import { parseImportCatalog, type ImportCatalog } from "./import-catalog";
 import { linearAssemblyListSchema, type LinearAssembly } from "./linear-assembly";
 import { factoryListSchema, type FactoryLayout } from "./factory";
 import { mechanismListSchema, type MechanicalAssembly } from "./mechanical-types";
+import { deviceCompositionClosure, getDeviceParts } from "./device-composition";
 import { packageKey, parseDevicePackage, readTwinData, signalIdSchema, type DevicePackage, type SignalPort } from "./twin-device";
 
 export type SignalValue = number | boolean;
-export const maxPackages = 128;
+export const maxPackages = 512;
 const maxInstances = 256, maxConnections = 2048;
 const nameSchema = z.string().trim().min(1).max(160);
 const endpointSchema = z.strictObject({ instanceId: signalIdSchema, portId: signalIdSchema });
@@ -92,7 +93,7 @@ function evaluationOrder(ws: TwinWorkspace): NodePlan[] {
     if (definition.pkg.factory) throw new Error("请将工厂设备用于产线工序或运输装配。");
     if (definition.pkg.servo) throw new Error("请将伺服设备装配到伺服轴");
     if (definition.pkg.feed) throw new Error("请将丝杠或工作台用于直线轴装配。");
-    if (!definition.pkg.ports.length) throw new Error("纯机械设备没有信号端口，请使用机械装配。");
+    if (!definition.pkg.ports.length) throw new Error("该设备没有信号端口，请使用部件结构或机械装配。");
     for (const [id, value] of Object.entries(instance.inputs)) checkInput(definition.ports.get(id), id, value);
     nodes.set(instance.id, { ...definition, instance, incoming: new Map(), downstream: [], dependencies: 0 });
   }
@@ -122,6 +123,7 @@ function evaluationOrder(ws: TwinWorkspace): NodePlan[] {
 export function parseWorkspace(value: unknown): TwinWorkspace {
   const { so101, milo, catalog, ...data } = readTwinData(workspaceSchema, value, "仿真场景");
   const ws: TwinWorkspace = { ...data, packages: data.packages.map(parseDevicePackage) };
+  deviceCompositionClosure(ws.packages, ws.packages.map(packageKey));
   if (so101 !== undefined) ws.so101 = parseSo101Assembly(so101);
   if (milo !== undefined) ws.milo = parseMiloWorkspace(milo);
   if (catalog !== undefined) ws.catalog = parseImportCatalog(catalog, ws.packages);
@@ -133,13 +135,22 @@ export function installPackage(ws: TwinWorkspace, value: unknown): TwinWorkspace
   const pkg = parseDevicePackage(value), key = packageKey(pkg);
   const existing = ws.packages.find((entry) => packageKey(entry) === key);
   if (existing) {
-    // 正在使用的旧装配也按当前指令映射顺序比较，保留真正的数值和数组差异。
-    const stored = existing.mechanics?.kind === "assembly" ? parseDevicePackage(existing) : existing;
+    // 旧装配指令、额定值和参数来源都按规范键序比较；槽位的排列仍是修订内容。
+    const stored = existing.mechanics?.kind === "assembly" || existing.composition || existing.factory?.partParameters
+      ? parseDevicePackage(existing) : existing;
     if (JSON.stringify(stored) !== JSON.stringify(pkg)) throw new Error("该型号的相同修订已有不同内容，请核对版本后安装");
     return ws;
   }
   if (ws.packages.length >= maxPackages) throw new Error(`单个工作区最多安装 ${maxPackages} 个设备修订`);
-  return { ...ws, packages: [...ws.packages, pkg] };
+  const packages = [...ws.packages, pkg];
+  if (getDeviceParts(pkg).length) deviceCompositionClosure(packages, [key]);
+  return { ...ws, packages };
+}
+
+export function installDeviceDependencies(workspace: TwinWorkspace, available: readonly DevicePackage[], keys: string[]) {
+  const closure = deviceCompositionClosure(available, keys);
+  if (closure.missing.length) throw new Error(`设备结构缺少已引用的修订，请先补全设备库：${closure.missing.join("、")}。`);
+  return closure.packages.reduce(installPackage, workspace);
 }
 
 export function addInstance(ws: TwinWorkspace, key: string, name: string): TwinWorkspace {
@@ -148,7 +159,7 @@ export function addInstance(ws: TwinWorkspace, key: string, name: string): TwinW
   if (pkg.factory) throw new Error("请将工厂设备用于产线工序或运输装配。");
   if (pkg.servo) throw new Error("请将伺服设备装配到伺服轴");
   if (pkg.feed) throw new Error("请将丝杠或工作台用于直线轴装配。");
-  if (!pkg.ports.length) throw new Error("纯机械设备没有信号端口，请使用机械装配。");
+  if (!pkg.ports.length) throw new Error("该设备没有信号端口，请使用部件结构或机械装配。");
   if (ws.instances.length >= maxInstances) throw new Error(`单个场景最多容纳 ${maxInstances} 个设备实例`);
   const label = readTwinData(nameSchema, name, "实例名称");
   const ids = new Set(ws.instances.map((instance) => instance.id));

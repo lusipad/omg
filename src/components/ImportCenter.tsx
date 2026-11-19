@@ -7,6 +7,8 @@ import type { MaterialRow, ModelRef } from "@contracts/import-catalog";
 import { readStudioRoute, studioHref } from "@contracts/studio-navigation";
 import { WORKBENCH_FILE_ACCEPT } from "@/lib/workbench-import";
 import { downloadFile } from "@/lib/download";
+import { deviceLibraryGroups, isStructureOnly } from "@/lib/device-library";
+import { compositionKind } from "@contracts/device-composition";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -145,9 +147,10 @@ function projectResources(workspace: TwinWorkspace) {
     const kind = device.factory ? `工厂设备 · ${device.factory.modelRef.id} @ ${device.factory.modelRef.version}`
       : device.feed ? (device.feed.kind === "lead-screw" ? `丝杠 · ${device.feed.leadMmPerRev} mm/rev` : `移动工作台 · ${device.feed.massKg} kg`)
       : device.mechanics ? (device.mechanics.kind === "assembly" ? "机械子装配" : "机械部件")
-      : device.servo ? (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机") : `${device.ports.length} 个端口`;
-    rows.push({ kind: "device", section: "device", id: "pkg:" + packageKey(device), category: "设备包", name: device.model,
-      detail: `${device.manufacturer} · ${device.revision} · ${kind}`, device });
+      : device.servo ? (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机")
+      : isStructureOnly(device) ? (compositionKind(device) === "leaf" ? "最小件" : "结构总成") : `${device.ports.length} 个端口`;
+    rows.push({ kind: "device", section: "device", id: "pkg:" + packageKey(device), category: isStructureOnly(device) ? "结构件" : "设备包", name: device.model,
+      detail: [device.manufacturer, device.revision, kind, isStructureOnly(device) && device.source.locator].filter(Boolean).join(" · "), device });
   }
   for (const model of workspace.catalog?.models ?? []) rows.push({ kind: "physics", section: "physics", id: "model:" + model.id, category: "物理模型", name: model.name,
     detail: `${model.entry} · ${model.id.slice(0, 10)}`, model });
@@ -169,16 +172,19 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
   const section = route.view === "resources" ? route.section : undefined;
   const filter: Filter = section === "physics" || section === "device" || section === "material" || section === "system" ? section : "all";
   const [query, setQuery] = useState("");
+  const [showComponents, setShowComponents] = useState(false);
   const [cursor, setCursor] = useState({ filter, query, page: 0 });
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   if (!active && selected !== null) setSelected(null);
   const resources = useMemo(() => projectResources(workspace), [workspace]);
+  const componentKeys = useMemo(() => new Set(deviceLibraryGroups(workspace.packages).parts.map(packageKey)), [workspace.packages]);
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return resources.filter(item => (filter === "all" || item.section === filter)
-      && (!needle || `${item.name} ${item.category} ${item.detail}`.toLowerCase().includes(needle)));
-  }, [resources, filter, query]);
+      && (item.kind !== "device" || showComponents || needle || !componentKeys.has(packageKey(item.device)))
+      && (!needle || [item.name, item.category, item.detail, item.kind === "device" ? item.device.source.title : ""].join(" ").toLowerCase().includes(needle)));
+  }, [resources, filter, query, showComponents, componentKeys]);
   const lastPage = Math.max(0, Math.ceil(matches.length / pageSize) - 1);
   const page = cursor.filter === filter && cursor.query === query ? Math.min(cursor.page, lastPage) : 0;
   const rows = matches.slice(page * pageSize, (page + 1) * pageSize);
@@ -199,7 +205,8 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
   }
   function actions(item: Resource) {
     switch (item.kind) {
-      case "device": return <><Button size="sm" variant="ghost" onClick={() => void run(() => onPreviewDevice(item.device, true))}>详情</Button>
+      case "device": return isStructureOnly(item.device) ? <Button size="sm" variant="outline" onClick={() => void run(() => onPreviewDevice(item.device, true))}>部件结构</Button>
+        : <><Button size="sm" variant="ghost" onClick={() => void run(() => onPreviewDevice(item.device, true))}>详情</Button>
         <Button size="sm" variant="outline" onClick={() => void run(() => onOpenDevice(item.device))}><Package />选用设备</Button></>;
       case "physics": return <><Button size="sm" variant="outline" onClick={() => void run(() => onOpenModel(item.model))}><Play />打开模型</Button>
         <Button size="sm" variant="ghost" aria-label="下载模型 ZIP" onClick={() => void run(() => download(item.model))}><Download />下载 ZIP</Button></>;
@@ -219,7 +226,7 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
         {resources.length > 0 && <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:w-auto">
           <label className="relative block min-w-0 sm:w-64">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input type="search" className="pl-8" aria-label="搜索工程资源" placeholder="搜索资源" value={query} onChange={(event) => setQuery(event.target.value)} />
+            <Input type="search" className="pl-8" aria-label="搜索工程资源" placeholder={componentKeys.size ? "搜索资源和子件" : "搜索资源"} value={query} onChange={(event) => setQuery(event.target.value)} />
           </label>
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><span>资源类型</span>
             <select aria-label="资源类型" className="h-9 rounded-md border bg-background px-2 text-sm text-foreground" value={filter} onChange={(event) => choose(event.target.value as Filter)}>
@@ -228,6 +235,11 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
           </label>
         </div>}
       </div>
+      {!!componentKeys.size && !query.trim() && (filter === "all" || filter === "device") && <label className="mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground">
+        <input type="checkbox" checked={showComponents} onChange={event => {
+          setShowComponents(event.currentTarget.checked); setCursor({ filter, query, page: 0 });
+        }} />显示随附子件（{componentKeys.size} 个修订）
+      </label>}
       {!resources.length ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t py-5">
         <p className="text-sm text-muted-foreground">当前工程还没有资源。可导入自己的文件，也可从示例开始。</p>
         <Button size="sm" variant="outline" onClick={onBrowseExamples}><BookOpen />浏览示例库</Button>

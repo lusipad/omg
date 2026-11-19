@@ -498,8 +498,26 @@ async function restoreProject(files: ModelFile[], workspace: TwinWorkspace, sign
   return { workspace, models };
 }
 
+/** The accompanying Modelica source is for native tools. Restore the versioned Studio snapshot in this archive. */
+async function readFactorySnapshot(entries: SourceFile[], signal?: AbortSignal) {
+  const meta = entries.find(e => e.path === "factory.twin.json"), map = entries.find(e => e.path === "factory-map.json");
+  if (!meta || !map || !entries.some(e => e.path === "FactoryRun.mo") || !entries.some(e => e.path === "run.mos")) return;
+  if (map.size > MAX_PROJECT_JSON_BYTES || meta.size > MAX_PROJECT_JSON_BYTES) throw new Error("工厂工程或设备映射超过 8 MiB。");
+  const descriptor = JSON.parse(utf8.decode((await map.read(signal)).data));
+  if (descriptor?.kind !== "factory-modelica-map" || descriptor.schemaVersion !== 1) return;
+  const workspace = parseWorkspace(JSON.parse(utf8.decode((await meta.read(signal)).data)));
+  signal?.throwIfAborted();
+  if (workspace.factories?.length !== 1 || workspace.catalog?.models.length) throw new Error("Modelica 工厂快照须包含一座自带设备修订的工厂。");
+  return { workspace, models: [] as StoredModel[] };
+}
+
 export async function readProjectArchive(file: File): Promise<{ workspace: TwinWorkspace; models: StoredModel[] }> {
-  const index = await indexZip(file), meta = (await readManifest(index, true))!;
+  const index = await indexZip(file);
+  if (!index.some(entry => entry.path === "workspace.json")) {
+    const factory = await readFactorySnapshot(index);
+    if (factory) return factory;
+  }
+  const meta = (await readManifest(index, true))!;
   const workspace = parseWorkspace(meta.value);
   return restoreProject(await readIndexedFiles(index, meta.file), workspace);
 }
@@ -512,6 +530,10 @@ export async function readWorkbenchBundle(input: File[], signal?: AbortSignal): 
   if (meta?.isProject) {
     const workspace = parseWorkspace(meta.value);
     return { kind: "project", ...await restoreProject(await readIndexedFiles(index, meta.file, signal), workspace, signal) };
+  }
+  if (!meta) {
+    const factory = await readFactorySnapshot(index, signal);
+    if (factory) return { kind: "project", ...factory };
   }
   return { kind: "model", selection: await selectModelFiles(index, meta?.file, signal) };
 }

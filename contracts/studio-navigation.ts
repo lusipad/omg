@@ -72,7 +72,7 @@ export type StudioRoute =
   | { view: "examples" }
   | ({ view: "workbench" } & (
     | { target?: StudioTarget; part?: string; exampleId?: never; unavailableTarget?: never }
-    | { exampleId: string; target?: never; unavailableTarget?: never }
+    | { exampleId: string; structure?: string; target?: never; unavailableTarget?: never }
     | { unavailableTarget: string; target?: never; exampleId?: never }
   ));
 
@@ -86,7 +86,11 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
   }
   if (view === "workbench") {
     const exampleId = params.get("example"), target = params.get("target");
-    if (exampleId !== null) return { view, exampleId };
+    if (exampleId !== null) {
+      const device = signalIdSchema.safeParse(params.get("structure"));
+      return getStudioExample(exampleId)?.kind === "factory" && device.success
+        ? { view, exampleId, structure: device.data } : { view, exampleId };
+    }
     if (target === null) return { view };
     if (target === "wiring" || target === "servo" || target === "so101" || target === "milo" || target === "incoming") return { view, target };
     if (target === "mechanism-new" || target === "assembly-new" || target === "factory-new") {
@@ -125,7 +129,10 @@ export function studioHref(route: StudioRoute, hash = ""): string {
   if (route.view === "resources" && route.section) params.set("section", route.section);
   if (route.view === "resources" && route.source) params.set("source", route.source);
   if (route.view === "workbench") {
-    if (route.exampleId !== undefined) params.set("example", route.exampleId);
+    if (route.exampleId !== undefined) {
+      params.set("example", route.exampleId);
+      if (route.structure) params.set("structure", route.structure);
+    }
     else if (route.target !== undefined) {
       params.set("target", route.target);
       if ((route.target === "mechanism-new" || route.target === "assembly-new" || route.target === "factory-new") && route.part) params.set("part", route.part);

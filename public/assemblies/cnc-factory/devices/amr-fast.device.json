@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "manufacturer": "构元教学件",
   "model": "CELL-AMR-180",
-  "revision": "1",
+  "revision": "2",
   "source": {
     "kind": "local",
     "title": "双线数控车间教学设计",
@@ -18,10 +18,61 @@
       "version": "1.0.0"
     },
     "parameters": {
-      "emptySpeedMps": 2.4,
-      "loadedSpeedMps": 1.8,
       "pickTimeS": 1.2,
       "dropTimeS": 0.8
+    },
+    "partParameters": {
+      "emptySpeedMps": {
+        "path": [
+          "chassis",
+          "traction"
+        ],
+        "rating": "emptySpeed"
+      },
+      "loadedSpeedMps": {
+        "path": [
+          "chassis",
+          "traction"
+        ],
+        "rating": "loadedSpeed"
+      }
     }
+  },
+  "composition": {
+    "kind": "assembly",
+    "shape": "box",
+    "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+    "parts": [
+      {
+        "id": "chassis",
+        "label": "移动底盘",
+        "packageKey": "[\"构元教学件\",\"AMR-CHASSIS-180\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "battery",
+        "label": "电池组件",
+        "packageKey": "[\"构元教学件\",\"BATTERY-PACK\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "sensors",
+        "label": "定位传感器",
+        "packageKey": "[\"构元教学件\",\"OPT-SENSOR\",\"1\"]",
+        "quantity": 2
+      },
+      {
+        "id": "body",
+        "label": "上罩盖板",
+        "packageKey": "[\"构元教学件\",\"BODY-COVER\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "control",
+        "label": "电控组件",
+        "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]",
+        "quantity": 1
+      }
+    ]
   }
 }

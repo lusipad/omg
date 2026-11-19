@@ -4,7 +4,8 @@ import {
   MECHANICAL_LIMITS, mechanicalAssemblySchema, mechanicalTopology, type MechanicalAssembly, type MechanicalPart,
 } from "./mechanical-types";
 import { packageKey, parseDevicePackage, readTwinData, type DevicePackage } from "./twin-device";
-import { emptyWorkspace, installPackage, type TwinWorkspace } from "./twin-simulation";
+import { emptyWorkspace, installPackage, maxPackages, type TwinWorkspace } from "./twin-simulation";
+import { deviceCompositionClosure } from "./device-composition";
 
 export { MECHANICAL_LIMITS, type MechanicalAssembly, type MechanicalFrame, type MechanicalPart } from "./mechanical-types";
 export interface MechanicalBundle { kind: "mechanical-package"; schemaVersion: 1; rootKey: string; packages: DevicePackage[] }
@@ -15,7 +16,7 @@ export interface ResolvedMechanicalAssembly {
 }
 const bundleSchema = z.strictObject({
   kind: z.literal("mechanical-package"), schemaVersion: z.literal(1), rootKey: z.string().min(1).max(4096),
-  packages: z.array(z.unknown()).min(1).max(MECHANICAL_LIMITS.packages),
+  packages: z.array(z.unknown()).min(1).max(maxPackages),
 });
 export function parseMechanicalAssembly(raw: unknown): MechanicalAssembly {
   return readTwinData(mechanicalAssemblySchema, raw, "机械装配");
@@ -147,9 +148,7 @@ export function parseMechanicalBundle(raw: unknown): MechanicalBundle {
   const packages = data.packages.map((item, index) => {
     const model = item && typeof item === "object" && "model" in item && typeof item.model === "string" ? item.model.trim().slice(0, 160) : "";
     try {
-      const pkg = parseDevicePackage(item);
-      if (!pkg.mechanics) throw new Error("缺少机械部件或机械装配声明。");
-      return pkg;
+      return parseDevicePackage(item);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error), label = model ? `“${model}”` : "";
       throw new Error(`机械设备包第 ${index + 1} 项${message.includes(label) ? "" : label}无效。 ${message}`);
@@ -157,15 +156,21 @@ export function parseMechanicalBundle(raw: unknown): MechanicalBundle {
   });
   const catalog = new Map(packages.map((p) => [packageKey(p), p]));
   if (catalog.size !== packages.length) throw new Error("机械设备包中同一设备修订重复。");
+  if (packages.filter(p => p.mechanics).length > MECHANICAL_LIMITS.packages) {
+    throw new Error(`同一机械包最多包含 ${MECHANICAL_LIMITS.packages} 个带运动学定义的设备修订。`);
+  }
   const root = catalog.get(data.rootKey);
   if (!root) throw new Error("机械设备包缺少 rootKey 指定的根设备修订。");
-  const needed = new Set([data.rootKey]);
-  if (root.mechanics?.kind === "assembly") {
-    const result = inspect({ ...emptyWorkspace(), packages }, root.mechanics.assembly, data.rootKey);
-    if (result.issues.length) throw new Error(`机械设备包“${root.model}”未通过装配校验。\n${result.issues.join("\n")}`);
-    for (const key of result.dependencies.keys()) needed.add(key);
+  if (!root.mechanics) throw new Error(`机械设备包的根设备“${root.model}”缺少机械声明。`);
+  const closure = deviceCompositionClosure(packages, [data.rootKey]);
+  if (closure.missing.length) throw new Error(`机械设备包缺少依赖修订：${closure.missing.join("、")}。`);
+  if (closure.packages.length !== packages.length) throw new Error("机械设备包含有不在根设备依赖闭包内的多余修订。");
+  const workspace = { ...emptyWorkspace(), packages };
+  for (const pkg of closure.packages) {
+    if (pkg.mechanics?.kind !== "assembly") continue;
+    const result = inspect(workspace, pkg.mechanics.assembly, packageKey(pkg));
+    if (result.issues.length) throw new Error(`机械设备包“${pkg.model}”未通过装配校验。\n${result.issues.join("\n")}`);
   }
-  if (needed.size !== packages.length) throw new Error("机械设备包含有不在根设备依赖闭包内的多余修订。");
   return { ...data, packages };
 }
 
@@ -179,7 +184,12 @@ function bundleWithDependencies(ws: TwinWorkspace, root: DevicePackage, dependen
   if (dependencies.has(key)) throw new Error("导出身份与依赖设备修订相同，会形成递归。请使用新的设备型号或修订。");
   const existing = ws.packages.find((p) => packageKey(p) === key);
   if (existing && JSON.stringify(parseDevicePackage(existing)) !== JSON.stringify(root)) throw new Error("工程中同一设备修订已有不同内容，请核对要导出的修订。");
-  return parseMechanicalBundle({ schemaVersion: 1, kind: "mechanical-package", rootKey: key, packages: [root, ...dependencies.values()] });
+  // 保留原机械包的节点顺序，再附上机械件内部声明的采购子件。
+  const closure = deviceCompositionClosure([root, ...ws.packages.filter(p => packageKey(p) !== key)], [key]);
+  if (closure.missing.length) throw new Error(`设备“${root.model}”缺少依赖修订：${closure.missing.join("、")}。`);
+  const packages = new Map([[key, root], ...dependencies]);
+  for (const pkg of closure.packages) packages.set(packageKey(pkg), pkg);
+  return parseMechanicalBundle({ schemaVersion: 1, kind: "mechanical-package", rootKey: key, packages: [...packages.values()] });
 }
 
 /** 从库存或导入预览导出，保留根设备原始身份和来源。 */

@@ -1,5 +1,5 @@
-import { useCallback, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
-import { ArrowRight, BookOpen, Copy, FileJson, FileUp, Link2, Loader2, Sparkles } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { ArrowRight, BookOpen, Box, Copy, FileJson, FileUp, Link2, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +13,7 @@ import { parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
 import { deviceExtractionPrompt, deviceSourceFromMaterial, generateDevicePackage, inovanceSource, suggestSourceMetadata, type DeviceSourceInput } from "@contracts/twin-extract";
 
 const emptySource: DeviceSourceInput = { manufacturer: "", model: "", revision: "", title: "", url: "", locator: "", text: "" };
+const LocalLeafForm = lazy(() => import("./DeviceCompositionEditor").then(module => ({ default: module.LocalLeafForm })));
 const sourceFields = [
   { key: "manufacturer", label: "制造商", hint: "资料中的制造商名称" },
   { key: "model", label: "设备型号", hint: "完整订货型号" },
@@ -45,7 +46,7 @@ export default function TwinDeviceLibrary({ initialSource, incomingSource, onImp
   onImportText: (text: string, name: string, options?: WorkbenchImportOptions) => void;
   onPreviewDevice: (device: DevicePackage, installed?: boolean) => void;
 }) {
-  const [mode, setMode] = useState<"source" | "package">("source");
+  const [mode, setMode] = useState<"source" | "package" | "leaf">("source");
   const [source, setSource] = useState<DeviceSourceInput>(() => ({ ...emptySource, ...initialSource }));
   const latestSource = useRef(source);
   useLayoutEffect(() => { latestSource.current = source; }, [source]);
@@ -256,6 +257,7 @@ export default function TwinDeviceLibrary({ initialSource, incomingSource, onImp
           <div className="flex flex-wrap gap-1 rounded-md border bg-background/50 p-1">
             <Button size="sm" variant={mode === "source" ? "secondary" : "ghost"} aria-pressed={mode === "source"} onClick={() => switchMode("source")}><BookOpen />从资料生成</Button>
             <Button size="sm" variant={mode === "package" ? "secondary" : "ghost"} aria-pressed={mode === "package"} onClick={() => switchMode("package")}><FileJson />导入设备包</Button>
+            <Button size="sm" variant={mode === "leaf" ? "secondary" : "ghost"} aria-pressed={mode === "leaf"} onClick={() => switchMode("leaf")}><Box />创建最小件</Button>
           </div>
         </header>
         <div className="space-y-4 p-4 sm:p-5">
@@ -322,7 +324,9 @@ export default function TwinDeviceLibrary({ initialSource, incomingSource, onImp
                 </div>}
               </div>
             </details>
-          </> : <>
+          </> : mode === "leaf" ? <Suspense fallback={<p role="status">正在打开部件表单…</p>}>
+            <LocalLeafForm onCreate={device => onPreviewDevice(device)} submitLabel="核对最小件" />
+          </Suspense> : <>
             <p className="text-xs leading-5 text-muted-foreground">选择已有设备包，或粘贴人工编写、AI 提取的设备包 JSON。</p>
             <input ref={packageFile} type="file" accept=".json,application/json" className="hidden" aria-label="设备包 JSON 文件" onChange={(event) => {
               const file = event.target.files?.[0];

@@ -31,7 +31,7 @@ type Props = {
   incoming: IncomingWorkbenchModel | null;
   onChange: (next: TwinWorkspace) => void;
   onSaveAssembly: (assembly: LinearAssembly) => void;
-  onSaveFactory: (layout: FactoryLayout) => void;
+  onSaveFactory: (layout: FactoryLayout, revised?: TwinWorkspace) => void;
   onOpenImport: () => void;
   onSaveMechanism: (assembly: MechanicalAssembly) => void;
   onInstallBundle: (bundle: MechanicalBundle) => void;
@@ -98,7 +98,8 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
       </div>
     </div>}
     {route && !missing && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开运行台…</p>}>
-      {example && example.kind !== "physics" && <ExampleBench key={example.id} example={example} workspace={workspace} onApply={(next, destination) => {
+      {example && example.kind !== "physics" && <ExampleBench key={example.id} example={example} workspace={workspace}
+        initialStructureId={route.exampleId !== undefined ? route.structure : undefined} onApply={(next, destination) => {
         onApplyExample(next, destination, example.name);
         if (destination === "wiring") setWiringRevision(revision => revision + 1);
       }} />}

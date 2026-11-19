@@ -1,10 +1,12 @@
 import { z } from "zod";
-import { factoryParameterIssues, factoryParametersSchema, getFactoryModel, type FactoryModel } from "./factory-model";
+import { factoryParametersSchema, getFactoryModel, type FactoryModel } from "./factory-model";
+import { resolveFactoryParameters, type FactoryParameterSource } from "./factory-part-parameters";
 import { isMeasuredMaterialUnit } from "./material-import";
 import { packageKey, readTwinData, signalIdSchema, type DevicePackage } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
 
 export { FACTORY_MODELS, getFactoryModel, type FactoryModel, type FactoryRole } from "./factory-model";
+export { resolveFactoryParameters, type FactoryParameterSource } from "./factory-part-parameters";
 export const FACTORY_LIMITS = { factories: 32, resources: 32, lines: 16, stages: 16, jobs: 64 } as const;
 
 const nameSchema = z.string().trim().min(1).max(160);
@@ -42,7 +44,8 @@ export type FactoryLine = FactoryLayout["lines"][number];
 export type FactoryStage = FactoryLine["stages"][number];
 
 export interface ResolvedFactoryLayout {
-  resources: { resource: FactoryResource; device: DevicePackage; model: FactoryModel; parameters: Record<string, number> }[];
+  resources: { resource: FactoryResource; device: DevicePackage; model: FactoryModel;
+    parameters: Record<string, number>; parameterSources: Record<string, FactoryParameterSource> }[];
   stages: { line: FactoryLine; stage: FactoryStage }[];
   /** firstStage / lastStage 是展平工序表中的一基闭区间，serial 是产线内的一基工件号。 */
   jobs: { line: FactoryLine; serial: number; firstStage: number; lastStage: number; releaseS: number }[];
@@ -95,9 +98,9 @@ function bindResources(workspace: TwinWorkspace, layout: FactoryLayout, issues: 
       issues.add(`${label}引用的过程模型 ${ref.id} @ ${ref.version} 尚未安装。`);
       continue;
     }
-    const parameters = { ...device.factory.parameters, ...resource.parameters };
-    for (const issue of factoryParameterIssues(model, parameters, true)) issues.add(`${label}：${issue}`);
-    resolved.push({ resource, device, model, parameters });
+    const binding = resolveFactoryParameters(device, model, devices, resource.parameters);
+    for (const issue of binding.issues) issues.add(`${label}：${issue}`);
+    resolved.push({ resource, device, model, parameters: binding.parameters, parameterSources: binding.parameterSources });
   }
   for (const [rowId, count] of usage) {
     const row = materials.get(rowId)!;

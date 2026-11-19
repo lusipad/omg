@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "manufacturer": "构元教学件",
   "model": "CELL-BELT-100",
-  "revision": "1",
+  "revision": "2",
   "source": {
     "kind": "local",
     "title": "双线数控车间教学设计",
@@ -17,8 +17,57 @@
       "id": "GouyuanFactory.BeltConveyor",
       "version": "1.0.0"
     },
-    "parameters": {
-      "speedMps": 1
+    "parameters": {},
+    "partParameters": {
+      "speedMps": {
+        "path": [
+          "drive"
+        ],
+        "rating": "lineSpeed"
+      }
     }
+  },
+  "composition": {
+    "kind": "assembly",
+    "shape": "box",
+    "note": "教学结构修订 2。物理用量按每台整机及各直接安装槽位展开。",
+    "parts": [
+      {
+        "id": "frame",
+        "label": "输送机架",
+        "packageKey": "[\"构元教学件\",\"BELT-FRAME\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "drive",
+        "label": "输送驱动组件",
+        "packageKey": "[\"构元教学件\",\"BELT-DRIVE-100\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "belt",
+        "label": "闭合输送胶带",
+        "packageKey": "[\"构元教学件\",\"BELT-LOOP\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "rollers",
+        "label": "输送托辊",
+        "packageKey": "[\"构元教学件\",\"ROLLER-UNIT\",\"1\"]",
+        "quantity": 2
+      },
+      {
+        "id": "sensor",
+        "label": "工件检测",
+        "packageKey": "[\"构元教学件\",\"OPT-SENSOR\",\"1\"]",
+        "quantity": 1
+      },
+      {
+        "id": "control",
+        "label": "电控组件",
+        "packageKey": "[\"构元教学件\",\"EDU-CONTROL\",\"1\"]",
+        "quantity": 1
+      }
+    ]
   }
 }

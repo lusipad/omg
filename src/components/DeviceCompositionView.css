@@ -1,0 +1,10 @@
+.composition-view { container-type: inline-size; }
+.composition-browser { display: grid; gap: .75rem; align-items: start; }
+.composition-index[data-open="false"] { display: none; }
+.composition-index ol, .composition-index ul { list-style: none; }
+.composition-crumbs { scrollbar-width: thin; }
+@container (min-width: 49rem) {
+  .composition-browser { grid-template-columns: minmax(12rem, .68fr) minmax(0, 2fr); }
+  .composition-index[data-open="false"] { display: block; }
+  .composition-tree-toggle { display: none; }
+}

@@ -10,7 +10,7 @@ import { DEFAULT_SO101_MOTION, parseSo101Assembly, SO101_MODEL_ID } from "@contr
 import { modelicaServoProjectPath, type StudioExampleKind } from "@contracts/studio-navigation";
 import { createTwinDemo } from "@contracts/twin-demo";
 import { packageKey } from "@contracts/twin-device";
-import { emptyWorkspace, installPackage, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
+import { emptyWorkspace, installDeviceDependencies, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
 import { decodeImportUtf8, parseImportText } from "@contracts/workbench-import";
 import { miloBomSource, so101BomSource } from "./bom-sources";
 
@@ -73,15 +73,6 @@ export async function loadStudioExample(kind: StudioBenchKind, signal: AbortSign
   }
 }
 
-function installUsedPackages(project: TwinWorkspace, sample: TwinWorkspace, keys: string[]) {
-  const available = new Map(sample.packages.map(device => [packageKey(device), device]));
-  return [...new Set(keys)].reduce((next, key) => {
-    const device = available.get(key);
-    if (!device) throw new Error("示例引用的设备修订缺失，请重新打开示例。");
-    return installPackage(next, device);
-  }, project);
-}
-
 function orderedFields(_key: string, value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const record = value as Record<string, unknown>;
@@ -112,7 +103,7 @@ function preserveBomSelection(assembly: LinearAssembly, before: ReturnType<typeo
 function joinMaterials(project: TwinWorkspace, sample: TwinWorkspace, extra: string[] = []) {
   const rows = sample.catalog?.materials ?? [];
   const used = rows.flatMap(row => row.binding?.kind === "device" ? [row.binding.key] : []);
-  const merged = mergeImportedMaterials(installUsedPackages(project, sample, [...used, ...extra]), rows);
+  const merged = mergeImportedMaterials(installDeviceDependencies(project, sample.packages, [...used, ...extra]), rows);
   const materials = new Map(merged.catalog!.materials.map(row => [row.id, row]));
   for (const row of rows) {
     if (row.binding && !same(materials.get(row.id)?.binding, row.binding)) {
@@ -129,7 +120,7 @@ function joinMaterials(project: TwinWorkspace, sample: TwinWorkspace, extra: str
 export function prepareStudioExampleJoin(kind: StudioBenchKind, project: TwinWorkspace, sample: TwinWorkspace): ExampleJoin {
   switch (kind) {
     case "wiring": {
-      const base = installUsedPackages(project, sample, sample.instances.map(instance => instance.packageKey));
+      const base = installDeviceDependencies(project, sample.packages, sample.instances.map(instance => instance.packageKey));
       const { instances, connections } = parseWorkspace({ ...emptyWorkspace(), packages: base.packages,
         instances: sample.instances, connections: sample.connections });
       if (same(project.instances, instances) && same(project.connections, connections)) return { next: base };
@@ -140,7 +131,7 @@ export function prepareStudioExampleJoin(kind: StudioBenchKind, project: TwinWor
     case "servo": {
       const axis = sample.servoAxis;
       if (!axis) throw new Error("请先组装示例伺服轴。");
-      const base = installUsedPackages(project, sample, [axis.driveKey, axis.motorKey]);
+      const base = installDeviceDependencies(project, sample.packages, [axis.driveKey, axis.motorKey]);
       const next = assembleServoAxis(base, axis);
       if (same(project.servoAxis, next.servoAxis)) return { next: base };
       const deviceNames = new Map(base.packages.map(device => [packageKey(device), `${device.model} · ${device.revision}`]));

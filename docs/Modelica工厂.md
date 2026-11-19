@@ -7,7 +7,7 @@
 ## 从空工程逐步装配
 
 1. 在 **工程资源** 导入 BOM。8 行列出上下料单元、输送带、移动机器人和机床的可选型号与数量。库存按安装的设备实例计数，每加工一件工件仍使用同一台设备。[下载 BOM](https://lusipad.com/omg/assemblies/cnc-factory/bom.csv)
-2. 在同一入口导入设备库并确认安装。8 种型号各引用一个具名 Modelica 模型及版本。BOM 通过制造商、型号匹配设备包。如要逐件核对，下面的设备表提供独立文件。[下载设备库](https://lusipad.com/omg/assemblies/cnc-factory/devices.library.json)
+2. 在同一入口导入设备库并确认安装。库中有 8 种整机和 105 种可复用的内部部件修订。也可逐个导入下表的整机包，再补装共享子件库。遇到同型号的多个修订，按工程指定的版本核对采购行绑定。[下载完整设备库](https://lusipad.com/omg/assemblies/cnc-factory/devices.library.json) · [下载共享子件库](https://lusipad.com/omg/assemblies/cnc-factory/parts.library.json)
 3. 导入工厂布局并运行。布局保存设备实例、安装位置、两条线的投料计划、工序顺序、候选机床和载具。也可以在工厂编辑器中新建布局，按下表放置设备，再逐条添加工序。[下载工厂布局](https://lusipad.com/omg/assemblies/cnc-factory/layout.factory.json)
 
 | 设备与坐标（米） | 当前实例采用的设备包 | 可替换设备包 |
@@ -26,6 +26,8 @@
 补料线从 0 s 起每 17 s 释放一件，共 3 件。第一道工序使用辅线上料位，第二、三道工序分别加工和下料。加工工序勾选同一组 CNC-A、CNC-B，两段搬运都选择同一个移动机器人实例。这样两条产线会竞争实际建在车间中的一辆车和两台机床。
 
 ## 读懂一件工件的等待和运输
+
+在回放中点选设备后，点 **拆解此设备** 可查看该实例当前安装的内部修订，再切回 **工厂回放** 继续观察同一时刻。单台设备、整条线与整厂都可以汇总最小件数量。[直接打开 CNC-A 的结构](https://lusipad.com/omg/?view=workbench&example=cnc-factory&structure=cnc-a) · [结构修订与换件教程](设备分解.md)
 
 主线第 1 件在 **10.00 s** 完成接驳。此时机器人正在为补料线服务。机器人在 **14.59 s** 从 CNC-B 出发，**17.39 s** 空驶到线尾接驳位，取件后在 **18.89 s** 开始载货行驶，**23.36 s** 到达 CNC-A。放件结束后 CNC-A 在 **24.36–84.36 s** 加工这件工件。把回放切换到机器人，可以按这些时刻观察空驶、取件、载货和放件。
 
@@ -48,7 +50,7 @@
 
 ## 导出当前布局并原生复算
 
-在工作台打开 **导出 → Modelica 工程 ZIP**。解压后，根目录的 `FactoryRun.mo` 给出本次布局中的设备、参数、工件批次和工序连接。`factory-map.json` 列出了每个可替换槽位对应的设备实例、型号和模型版本。随包的 `GouyuanFactory/package.mo` 定义设备接口和具体设备模型，`GouyuanFactory/Resources/Include/factory_schedule.h` 实现多条产线共用的事件排程。网站与原生模型使用同一份排程实现。
+在工作台打开 **导出 → Modelica 工程 ZIP**。解压后，`FactoryRun.mo` 给出本次运行的布局和参数。`factory-map.json` 记录参数使用的设备修订、子件路径、额定值及单位。`GouyuanFactory/package.mo` 定义设备模型，`GouyuanFactory/Resources/Include/factory_schedule.h` 实现多线共享的事件调度。把该 ZIP 重新导入工作台，还能恢复导出时的装机结构。快照 `factory.twin.json` 含在场设备及其子件，`parts-bom.csv` 列出最小件和待补项。工程文件菜单的完整工程导出同时保留设备库中的备选型号。
 
 使用 OpenModelica 1.27.2 和 Modelica Standard Library 4.0.0，在解压根目录运行下列命令。脚本先在原生端求出工厂完工时间，再运行到最后一件下料。改用较慢的设备后，观察窗也会随之延长。`FactoryRun_res.csv` 保留整批完工时间、各时刻在制和已完工的件数及工序的调度记录。复算初始布局可用 **324.49927 s** 核对 `makespan`。工作台的时间线 CSV 按具名工件、工序、设备与各个交接时刻展开，便于逐件核对。[固定版本工具链安装说明](Modelica伺服轴.md#用-openmodelica-原生复算)
 

@@ -14,11 +14,11 @@ const Linear = lazy(() => import("./LinearAssemblyBench"));
 const Factory = lazy(() => import("./FactoryBench"));
 const Follower = lazy(() => import("./So101MotionBench"));
 const Mill = lazy(() => import("./MiloWorkbench"));
-type ProjectProps = { workspace: TwinWorkspace; onApply: (next: TwinWorkspace, target: StudioTarget) => void };
+type ProjectProps = { workspace: TwinWorkspace; initialStructureId?: string; onApply: (next: TwinWorkspace, target: StudioTarget) => void };
 type Confirmation = { project: TwinWorkspace; sample: TwinWorkspace; next: TwinWorkspace; description: string };
 const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message : "示例操作失败，请重试。";
 
-function ExampleSession({ kind, download, workspace, onApply }: ProjectProps & { kind: StudioBenchKind; download?: string }) {
+function ExampleSession({ kind, download, workspace, initialStructureId, onApply }: ProjectProps & { kind: StudioBenchKind; download?: string }) {
   const [loaded, setLoaded] = useState<LoadedStudioExample | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -91,8 +91,8 @@ function ExampleSession({ kind, download, workspace, onApply }: ProjectProps & {
       {kind === "servo" && <Servo workspace={sample} onChange={edit} />}
       {kind === "linear-assembly" && <Linear trial workspace={sample} assembly={sample.assemblies?.[0]} onTrialReady={setAssemblyReady}
         onSave={assembly => edit(upsertLinearAssembly(sample, assembly))} />}
-      {kind === "factory" && <Factory trial workspace={sample} layout={sample.factories?.[0]} onTrialReady={setAssemblyReady}
-        onSave={layout => edit(upsertFactoryLayout(sample, layout))} />}
+      {kind === "factory" && <Factory trial workspace={sample} layout={sample.factories?.[0]} initialStructureId={initialStructureId} onTrialReady={setAssemblyReady}
+        onSave={(layout, revised) => edit(upsertFactoryLayout(revised ?? sample, layout))} />}
       {kind === "so101" && follower && <Follower waypoints={follower.waypoints}
         onChange={waypoints => edit({ ...sample, so101: { ...follower, waypoints } })} />}
       {kind === "milo" && <Mill workspace={sample} initialPlan={loaded.plan} onChange={edit} />}
@@ -111,5 +111,5 @@ function ExampleSession({ kind, download, workspace, onApply }: ProjectProps & {
 
 export default function StudioExampleBench({ example, ...project }: ProjectProps & { example: StudioExample }) {
   if (example.kind === "physics") return null;
-  return <ExampleSession key={example.id} kind={example.kind} download={example.download} {...project} />;
+  return <ExampleSession key={example.id + "/" + (project.initialStructureId ?? "")} kind={example.kind} download={example.download} {...project} />;
 }

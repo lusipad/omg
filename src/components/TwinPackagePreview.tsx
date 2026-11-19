@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Box, Download, ExternalLink, PackageCheck, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -6,16 +6,26 @@ import { downloadJson } from "@/lib/download";
 import { bundleMechanicalDevice, type MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { packageKey, type DevicePackage, type ModelReference } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
-import { getFactoryModel } from "@contracts/factory-model";
+import { getFactoryModel, resolveFactoryParameters } from "@contracts/factory";
+import { compositionKind } from "@contracts/device-composition";
+import { exportDeviceLibrary, previewDevicePackages } from "@/lib/device-library";
+import PackageStructure, { type ApplyDeviceRevision } from "./PackageStructure";
 
-export function FactoryRatings({ station }: { station: NonNullable<DevicePackage["factory"]> }) {
+export function FactoryRatings({ device, packages }: { device: DevicePackage; packages: readonly DevicePackage[] }) {
+  const station = device.factory!;
   const model = getFactoryModel(station.modelRef);
+  const bound = model && resolveFactoryParameters(device, model, new Map(packages.map(pkg => [packageKey(pkg), pkg])));
   return <div className="space-y-1 break-words text-sm">
     <p className="font-medium">{model?.label ?? "尚未安装的工厂模型"}</p>
     <p className="mono break-all text-xs text-muted-foreground">{station.modelRef.id} @ {station.modelRef.version}</p>
-    {model ? <dl className="grid grid-cols-2 gap-2">{model.parameters.map(p => <div key={p.key}><dt className="text-xs text-muted-foreground">{p.label}</dt>
-      <dd>{Object.hasOwn(station.parameters, p.key) ? `${station.parameters[p.key]} ${p.unit}` : "待补参数"}</dd></div>)}</dl>
+    {model && bound ? <dl className="grid grid-cols-2 gap-2">{model.parameters.map(p => {
+      const source = bound.parameterSources[p.key];
+      return <div key={p.key}><dt className="text-xs text-muted-foreground">{p.label}</dt>
+        <dd>{source ? `${source.value} ${source.unit}` : "待补参数"}
+          {source?.kind === "part" && <small className="block break-all text-muted-foreground">{source.path.join(" / ")} · {source.label}</small>}</dd></div>;
+    })}</dl>
       : Object.entries(station.parameters).map(([key, value]) => <p key={key} className="text-xs">{key} · {value}</p>)}
+    {bound?.issues.map(issue => <p key={issue} className="break-words text-xs text-amber-300">{issue}</p>)}
   </div>;
 }
 
@@ -124,7 +134,7 @@ export function MechanicalDetails({ mechanics }: { mechanics: NonNullable<Device
   </section>;
 }
 
-export default function TwinPackagePreview({ device, workspace, installed, error, onClose, onInstall, onAssemble }: {
+export default function TwinPackagePreview({ device, workspace, installed, error, onClose, onInstall, onAssemble, onApplyDeviceRevision }: {
   device: DevicePackage;
   workspace: TwinWorkspace;
   installed: boolean;
@@ -132,7 +142,13 @@ export default function TwinPackagePreview({ device, workspace, installed, error
   onClose: () => void;
   onInstall: () => void;
   onAssemble: (mode?: "factory") => void;
+  onApplyDeviceRevision?: ApplyDeviceRevision;
 }) {
+  const canAssemble = Boolean(device.feed || device.mechanics || device.servo || device.ports.length);
+  const [structure, setStructure] = useState(!canAssemble && !device.factory);
+  const [editing, setEditing] = useState(false);
+  const preview = useMemo(() => installed ? workspace : previewDevicePackages(workspace, [device]), [installed, workspace, device]);
+  const kind = compositionKind(device);
   const [failedExport, setFailedExport] = useState<{ device: DevicePackage; workspace: TwinWorkspace; message: string } | null>(null);
   const exportError = failedExport?.device === device && failedExport.workspace === workspace ? failedExport.message : "";
   const ports = new Map(device.ports.map((port) => [port.id, port]));
@@ -141,13 +157,16 @@ export default function TwinPackagePreview({ device, workspace, installed, error
     device.mechanics && (device.mechanics.kind === "part" ? "机械部件" : "可复用机械装配"),
     device.servo && (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机"),
     device.feed && (device.feed.kind === "lead-screw" ? "丝杠" : "移动工作台"),
+    device.composition && (kind === "leaf" ? "最小件" : "结构总成"),
     device.ports.length > 0 && (device.ports.length + " 个端口 · " + device.rules.length + " 条行为规则"),
   ].filter(Boolean).join(" · ");
-  function exportPackage() {
+  function exportPackage(format: "single" | "library" | "mechanical") {
     const filename = device.model + "-" + device.revision;
     try {
-      if (device.mechanics?.kind === "assembly") {
-        downloadJson(bundleMechanicalDevice(workspace, device), filename + ".mechanical-bundle.json");
+      if (format === "mechanical") {
+        downloadJson(bundleMechanicalDevice(preview, device), filename + ".mechanical-bundle.json");
+      } else if (format === "library") {
+        downloadJson(exportDeviceLibrary(preview.packages, packageKey(device)), filename + ".device-library.json");
       } else {
         downloadJson(device, filename + ".device.json");
       }
@@ -158,14 +177,19 @@ export default function TwinPackagePreview({ device, workspace, installed, error
   }
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto thin-scrollbar sm:max-w-[740px]">
+      <DialogContent className={`max-h-[90dvh] min-w-0 overflow-y-auto thin-scrollbar ${structure ? "sm:max-w-5xl" : "sm:max-w-[740px]"}`}>
         <DialogHeader>
           <div className="flex items-center gap-2 text-xs font-medium text-primary"><Box size={15} />{installed ? "已安装设备" : "安装前核对"}</div>
           <DialogTitle className="break-words text-xl">{device.model}</DialogTitle>
           <DialogDescription>{device.manufacturer} · 设备包版本 {device.revision} · {capabilities}</DialogDescription>
         </DialogHeader>
+        <div role="group" aria-label="设备详情视图" className="flex flex-wrap gap-1">
+          <Button size="sm" variant={!structure ? "secondary" : "ghost"} aria-pressed={!structure} disabled={editing} onClick={() => setStructure(false)}>设备资料</Button>
+          <Button size="sm" variant={structure ? "secondary" : "ghost"} aria-pressed={structure} onClick={() => setStructure(true)}>部件结构</Button>
+        </div>
+        {structure ? <PackageStructure device={device} workspace={preview} onApply={installed ? onApplyDeviceRevision : undefined} onEditingChange={setEditing} /> : <>
         <DeviceSourceEvidence source={device.source} />
-        {device.factory && <section aria-label="工厂设备模型" className="surface-inset p-3"><FactoryRatings station={device.factory} /></section>}
+        {device.factory && <section aria-label="工厂设备模型" className="surface-inset p-3"><FactoryRatings device={device} packages={preview.packages} /></section>}
         {device.calibration && <p className="surface-inset p-3 text-xs">
           已记录的两组标定值为 {device.calibration.inputPoints[0]} → {device.calibration.outputPoints[0]} 和 {device.calibration.inputPoints[1]} → {device.calibration.outputPoints[1]}，范围外按同一条直线外推。
         </p>}
@@ -197,14 +221,17 @@ export default function TwinPackagePreview({ device, workspace, installed, error
             <li key={port.id} className="break-words">{port.label} <span className="text-muted-foreground">· {port.direction === "input" ? "输入" : "输出"} · {port.type === "number" ? "数值" : "布尔"}{port.unit ? ` · ${port.unit}` : ""} · {port.id}</span></li>
           ))}</ul>
         </details></>}
+        </>}
         {(error || exportError) && <p role="alert" className="whitespace-pre-line break-words text-sm text-destructive">{[error, exportError].filter(Boolean).join("\n")}</p>}
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" onClick={exportPackage}><Download />{device.mechanics?.kind === "assembly" ? "导出含依赖机械包" : "导出设备包"}</Button>
+        <fieldset aria-label="设备操作" disabled={editing} className="flex min-w-0 flex-wrap justify-end gap-2">
+          <Button variant="outline" onClick={() => exportPackage("single")}><Download />导出设备包</Button>
+          {kind === "assembly" && <Button variant="outline" onClick={() => exportPackage("library")}><Download />导出含子件设备库</Button>}
+          {device.mechanics?.kind === "assembly" && <Button variant="outline" onClick={() => exportPackage("mechanical")}><Download />导出含依赖机械包</Button>}
           {installed && device.factory && <Button onClick={() => onAssemble("factory")}><Plus />用于工厂装配</Button>}
-          {installed && (!device.factory || device.feed || device.mechanics || device.servo) && <Button onClick={() => onAssemble()}><Plus />
+          {installed && canAssemble && <Button onClick={() => onAssemble()}><Plus />
             {device.feed ? "用于直线轴装配" : device.mechanics ? "用于机械装配" : device.servo ? "用于伺服仿真" : "添加到仿真装配"}</Button>}
           {!installed && <Button onClick={onInstall}><PackageCheck />确认安装</Button>}
-        </div>
+        </fieldset>
       </DialogContent>
     </Dialog>
   );

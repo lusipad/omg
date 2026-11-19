@@ -1,7 +1,9 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Boxes, ChevronDown, Download, Factory, Play, Save, Workflow } from "lucide-react";
+import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Boxes, ChevronDown, Download, Factory, GitBranch, Play, Save, Workflow } from "lucide-react";
 import { nanoid } from "nanoid";
 import { FACTORY_LIMITS, inspectFactoryLayout, parseFactoryLayout, type FactoryLayout, type FactoryResource } from "@contracts/factory";
+import { deviceCompositionClosure } from "@contracts/device-composition";
+import { applyFactoryStructureRevision, factoryStructureRoots } from "@contracts/factory-structure";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { runFactory, type FactoryRunResult } from "@/lib/factory-runtime";
@@ -11,18 +13,19 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import FactoryEditor from "./FactoryEditor";
 import FactoryPlayback from "./FactoryPlayback";
 
+const DeviceCompositionView = lazy(() => import("./DeviceCompositionView"));
 type Props = {
-  workspace: TwinWorkspace; layout?: FactoryLayout; initialPackageKey?: string; trial?: boolean;
-  onSave: (value: FactoryLayout) => void; onTrialReady?: (ready: boolean) => void; onImport?: () => void;
+  workspace: TwinWorkspace; layout?: FactoryLayout; initialPackageKey?: string; initialStructureId?: string; trial?: boolean;
+  onSave: (value: FactoryLayout, revised?: TwinWorkspace) => void; onTrialReady?: (ready: boolean) => void; onImport?: () => void;
 };
-type Tab = "playback" | "devices" | "lines";
+type Tab = "playback" | "devices" | "lines" | "structure";
 type RunSpec = { layout: FactoryLayout; signature: string; basis: string };
 type Request = RunSpec & { action: "run" | "export"; workspace: TwinWorkspace; save?: Props["onSave"] };
 type Completed = RunSpec & { result: FactoryRunResult };
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : "工厂操作失败，请重试。";
 const tabs = [
   { id: "playback", name: "工厂回放", icon: Factory }, { id: "devices", name: "设备布局", icon: Boxes },
-  { id: "lines", name: "产线工序", icon: Workflow },
+  { id: "lines", name: "产线工序", icon: Workflow }, { id: "structure", name: "设备结构", icon: GitBranch },
 ] as const;
 
 function resourceFor(resources: FactoryResource[], pkg: DevicePackage, workspace: TwinWorkspace): FactoryResource {
@@ -40,23 +43,28 @@ function resourceFor(resources: FactoryResource[], pkg: DevicePackage, workspace
 
 function inputs(workspace: TwinWorkspace, layout: FactoryLayout) {
   const keys = new Set(layout.resources.map(r => r.packageKey)), ids = new Set(layout.resources.map(r => r.materialId));
-  return JSON.stringify([workspace.packages.filter(p => keys.has(packageKey(p))).map(p => [packageKey(p), p.factory]),
+  const closure = deviceCompositionClosure(workspace.packages, [...keys].filter(Boolean));
+  return JSON.stringify([closure.packages.map(p => [packageKey(p), p.factory, p.composition, p.mechanics?.kind === "assembly" && p.mechanics.assembly.nodes]),
+    closure.missing,
     workspace.catalog?.materials.filter(row => ids.has(row.id)).map(row => [row.id, row.quantity, row.unit, row.binding])]);
 }
 
-function fresh(workspace: TwinWorkspace, saved?: FactoryLayout, initialPackageKey?: string) {
+function fresh(workspace: TwinWorkspace, saved?: FactoryLayout, initialPackageKey?: string, initialStructureId?: string) {
   const draft: FactoryLayout = saved ?? { schemaVersion: 1, kind: "factory-layout", id: "factory-" + nanoid(), name: "新工厂", resources: [], lines: [] };
   const initial = !saved && initialPackageKey ? workspace.packages.find(p => p.factory && packageKey(p) === initialPackageKey) : undefined;
   if (initial) draft.resources.push(resourceFor(draft.resources, initial, workspace));
   const seen = saved ? JSON.stringify(saved) : "";
   const pending: Request | null = saved && !inspectFactoryLayout(workspace, saved).length
     ? { layout: saved, workspace, signature: seen, basis: inputs(workspace, saved), action: "run" } : null;
-  return { draft, seen, initialPackageKey, submitted: "", tab: (pending ? "playback" : "devices") as Tab, selected: draft.resources[0]?.id ?? "",
+  const structure = initialStructureId && saved?.resources.some(resource => resource.id === initialStructureId);
+  return { draft, seen, initialPackageKey, submitted: "", tab: (structure ? "structure" : pending ? "playback" : "devices") as Tab, selected: draft.resources[0]?.id ?? "",
     request: pending, completed: null as Completed | null, error: "", notice: "" };
 }
 
-export default function FactoryBench({ workspace, layout, initialPackageKey, trial = false, onSave, onTrialReady, onImport }: Props) {
-  const [session, setSession] = useState(() => fresh(workspace, layout, initialPackageKey));
+export default function FactoryBench({ workspace, layout, initialPackageKey, initialStructureId, trial = false, onSave, onTrialReady, onImport }: Props) {
+  const [session, setSession] = useState(() => fresh(workspace, layout, initialPackageKey, initialStructureId));
+  const [structureRoot, setStructureRoot] = useState(initialStructureId);
+  const [editingStructure, setEditingStructure] = useState(false);
   const replacementSelect = useRef<HTMLSelectElement>(null), focusReplacement = useRef(false);
   const incoming = useMemo(() => layout ? JSON.stringify(layout) : "", [layout]);
   if (incoming !== session.seen || initialPackageKey !== session.initialPackageKey) {
@@ -64,6 +72,10 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, tri
     else setSession(fresh(workspace, layout, initialPackageKey));
   }
   const { draft, tab } = session;
+  const structureRoots = useMemo(() => factoryStructureRoots(draft), [draft]);
+  const structureLines = useMemo(() => draft.lines.map(line => ({
+    id: line.id, name: line.name, resourceIds: [...new Set(line.stages.flatMap(stage => [...stage.stations, ...stage.carriers]))],
+  })), [draft.lines]);
   useLayoutEffect(() => {
     if (tab === "devices" && focusReplacement.current) {
       focusReplacement.current = false;
@@ -81,7 +93,7 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, tri
   if (session.seen === incoming && pending && !job) setSession({ ...session, request: null, completed: null, notice: "工程资料已变动，请重新运行。" });
   const prior = session.completed;
   const completed = prior && !checked.issues.length && prior.signature === checked.signature && prior.basis === checked.basis ? prior : null;
-  const ready = !!checked.value && !checked.issues.length && checked.signature === incoming && !job && !session.error;
+  const ready = !!checked.value && !checked.issues.length && checked.signature === incoming && !job && !session.error && !editingStructure;
   useLayoutEffect(() => { if (trial) onTrialReady?.(ready); }, [trial, onTrialReady, ready]);
 
   useLayoutEffect(() => {
@@ -115,7 +127,18 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, tri
     setSession(s => ({ ...s, draft: next, request: null, completed: null, submitted: "", notice: "", error: "" }));
   }
   function chooseTab(next: Tab, id?: string) {
+    if (next === "structure") setStructureRoot(id);
     setSession(s => ({ ...s, tab: next, selected: id ?? s.selected }));
+  }
+  function applyStructure(id: string, revisions: TwinWorkspace, rootKey: string) {
+    const original = draft.resources.find(r => r.id === id);
+    if (!original) throw new Error("这个设备实例已移除。");
+    const change = applyFactoryStructureRevision(workspace, draft, id, original.packageKey, revisions, rootKey);
+    onSave(change.layout, change.workspace);
+    const linked = change.layout.resources.find(r => r.id === id)!;
+    const purchase = original.materialId && !linked.materialId ? " 原采购行仍绑定原修订，可在设备布局中另选匹配行。" : "";
+    setSession(s => ({ ...s, draft: change.layout, submitted: JSON.stringify(change.layout), request: null, completed: null,
+      tab: "structure", selected: id, error: "", notice: `已为“${original.name}”应用新修订，可重新运行工厂。${purchase}` }));
   }
   function act(action: "save" | "run" | "export") {
     const { value, signature, basis, issues } = checked;
@@ -134,25 +157,30 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, tri
     <div className="grid min-w-0 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
       <div className="flex max-w-full flex-wrap items-center gap-1" role="group" aria-label="工厂工作区视图">
         {tabs.map(item => <Button key={item.id} type="button" size="sm" variant={tab === item.id ? "secondary" : "ghost"} aria-pressed={tab === item.id}
-          disabled={item.id === "playback" && !completed && !job && tab !== "playback"} onClick={() => chooseTab(item.id)}><item.icon className="hidden sm:block" />{item.name}</Button>)}
+          disabled={editingStructure || (item.id === "playback" && !completed && !job && tab !== "playback")} onClick={() => chooseTab(item.id)}><item.icon className="hidden sm:block" />{item.name}</Button>)}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button size="sm" variant="ghost"><Download className="hidden sm:block" />导出<ChevronDown className="size-3" /></Button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><Button size="sm" variant="ghost" disabled={editingStructure}><Download className="hidden sm:block" />导出<ChevronDown className="size-3" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem disabled={!checked.value} onSelect={() => { if (checked.value) downloadJson(checked.value, draft.name + ".factory.json"); }}>工厂定义 JSON</DropdownMenuItem>
             <DropdownMenuItem disabled={!canRun || !!job} onSelect={() => act("export")}>Modelica 工程 ZIP</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        {tab !== "playback" && <Button type="button" size="sm" variant="outline" disabled={!checked.value || !!job || checked.signature === incoming}
+        {tab !== "playback" && <Button type="button" size="sm" variant="outline" disabled={editingStructure || !checked.value || !!job || checked.signature === incoming}
           onClick={() => act("save")}><Save className="hidden sm:block" />{trial ? "应用到示例" : "保存布局"}</Button>}
-        <Button type="button" size="sm" disabled={!canRun || !!job} onClick={() => act("run")}><Play />{trial ? "运行工厂" : "保存并运行"}</Button>
+        <Button type="button" size="sm" disabled={editingStructure || !canRun || !!job} onClick={() => act("run")}><Play />{trial ? "运行工厂" : "保存并运行"}</Button>
       </div>
     </div>
     {job && <p role="status" className="text-sm text-primary">{job.action === "run" ? "正在计算整厂作业与运输时序…" : "正在准备 Modelica 工程…"}</p>}
     {session.error && <p role="alert" className="break-words text-sm text-destructive">{session.error}</p>}
     {session.notice && <p role="status" className="text-xs text-muted-foreground">{session.notice}</p>}
-    {tab !== "playback" && <FactoryEditor draft={draft} workspace={workspace} selectedId={session.selected} tab={tab} onChange={edit} replacementRef={replacementSelect}
+    {tab === "structure" && <Suspense fallback={<p role="status" className="p-4 text-sm">正在打开设备结构…</p>}>
+      <DeviceCompositionView workspace={workspace} roots={structureRoots} lines={structureLines} initialRootId={structureRoot}
+        onEditingChange={setEditingStructure} onApplyRevision={applyStructure} />
+    </Suspense>}
+    {(tab === "devices" || tab === "lines") && <FactoryEditor draft={draft} workspace={workspace} selectedId={session.selected} tab={tab} onChange={edit} replacementRef={replacementSelect}
+      onOpenStructure={id => chooseTab("structure", id)}
       onSelect={id => chooseTab("devices", id)} onImport={trial ? undefined : onImport} onAddResource={pkg => {
         if (draft.resources.length >= FACTORY_LIMITS.resources) return;
         const next = resourceFor(draft.resources, pkg, workspace); edit({ ...draft, resources: [...draft.resources, next] }); chooseTab("devices", next.id);
@@ -161,8 +189,9 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, tri
       <summary className="cursor-pointer font-medium">运行前待补全 {checked.issues.length} 项</summary>
       <ul className="mt-2 list-disc space-y-1 break-words pl-5 text-xs leading-5 text-amber-300">{checked.issues.map((msg, i) => <li key={i}>{msg}</li>)}</ul>
     </details>}
-    {tab === "playback" && completed && <FactoryPlayback layout={completed.layout} result={completed.result}
-      onEditResource={id => { focusReplacement.current = true; chooseTab("devices", id); }} />}
+    {completed && <div hidden={tab !== "playback"}><FactoryPlayback layout={completed.layout} result={completed.result} active={tab === "playback"}
+      onOpenStructure={id => chooseTab("structure", id)}
+      onEditResource={id => { focusReplacement.current = true; chooseTab("devices", id); }} /></div>}
     {tab === "playback" && !completed && !job && !session.error && canRun && <p className="surface p-4 text-sm text-muted-foreground">运行当前布局后可回放工件与设备。</p>}
   </section>;
 }

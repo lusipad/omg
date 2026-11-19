@@ -7,82 +7,82 @@
     {
       "id": "load",
       "name": "主线上料位",
-      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"2\"]",
       "positionM": [
         0,
         0
       ],
-      "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+      "materialId": "bom-f34a2718da1e69573fcd77803a117ed6"
     },
     {
       "id": "belt",
       "name": "主线输送带",
-      "packageKey": "[\"构元教学件\",\"CELL-BELT-100\",\"1\"]",
+      "packageKey": "[\"构元教学件\",\"CELL-BELT-100\",\"2\"]",
       "positionM": [
         2,
         0
       ],
-      "materialId": "bom-c47731c551eb430637502d2ef9776760"
+      "materialId": "bom-e18c1a3ba0ac2ab6aaaa6109377b5ae5"
     },
     {
       "id": "handoff",
       "name": "线尾接驳位",
-      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-2S\",\"1\"]",
+      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-2S\",\"2\"]",
       "positionM": [
         4,
         0
       ],
-      "materialId": "bom-73ea1663c68c63ca0fe4e0c87f7722a9"
+      "materialId": "bom-6dd56610e1164a620901877f4c1b76c8"
     },
     {
       "id": "aux-load",
       "name": "辅线上料位",
-      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"2\"]",
       "positionM": [
         2,
         -4
       ],
-      "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+      "materialId": "bom-f34a2718da1e69573fcd77803a117ed6"
     },
     {
       "id": "amr",
       "name": "共享移动机器人",
-      "packageKey": "[\"构元教学件\",\"CELL-AMR-100\",\"1\"]",
+      "packageKey": "[\"构元教学件\",\"CELL-AMR-100\",\"2\"]",
       "positionM": [
         4,
         -2
       ],
-      "materialId": "bom-dd6f274e8d2b49dfd6e4a6d45ba1d2ff"
+      "materialId": "bom-3a217afc3410e9e021a2a5096913404a"
     },
     {
       "id": "cnc-a",
       "name": "CNC-A",
-      "packageKey": "[\"构元教学件\",\"CELL-CNC-60S\",\"1\"]",
+      "packageKey": "[\"构元教学件\",\"CELL-CNC-60S\",\"2\"]",
       "positionM": [
         8,
         2
       ],
-      "materialId": "bom-d9a7b4b5428024f81a87207e80b08816"
+      "materialId": "bom-8202d08639036fa45acb87e6d6c18f6d"
     },
     {
       "id": "cnc-b",
       "name": "CNC-B",
-      "packageKey": "[\"构元教学件\",\"CELL-CNC-F900\",\"1\"]",
+      "packageKey": "[\"构元教学件\",\"CELL-CNC-F900\",\"2\"]",
       "positionM": [
         8,
         -2
       ],
-      "materialId": "bom-a3e4226b18002b4a54d7c155599f80f6"
+      "materialId": "bom-3e4eeacd76b5f9aa3b37a6815d1aca95"
     },
     {
       "id": "unload",
       "name": "共享下料位",
-      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"1\"]",
+      "packageKey": "[\"构元教学件\",\"CELL-HANDLER-4S\",\"2\"]",
       "positionM": [
         12,
         0
       ],
-      "materialId": "bom-30564a6221d7a773772cec16388dfe93"
+      "materialId": "bom-f34a2718da1e69573fcd77803a117ed6"
     }
   ],
   "lines": [

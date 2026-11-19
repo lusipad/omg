@@ -13,7 +13,7 @@ import { upsertFactoryLayout, type FactoryLayout } from "@contracts/factory";
 import { installMechanicalBundle, upsertMechanicalAssembly, type MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { deviceSourceFromMaterial, type DeviceSourceInput } from "@contracts/twin-extract";
 import { getWorkbenchTargets, publishedStudioFile, readStudioRoute, studioHref, type StudioRoute, type StudioTarget } from "@contracts/studio-navigation";
-import { addInstance, emptyWorkspace, installPackage, nextInstanceName, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
+import { addInstance, emptyWorkspace, installDeviceDependencies, installPackage, nextInstanceName, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -159,7 +159,7 @@ export default function TwinStudio() {
       next = { ...next, catalog: parseImportCatalog(catalog, next.packages) };
     }
     const raw = JSON.stringify(next);
-    if ((next.catalog || next.assemblies?.length || next.mechanisms?.length || next.factories?.length || next.packages.some(p => p.mechanics || p.factory)) &&
+    if ((next.catalog || next.assemblies?.length || next.mechanisms?.length || next.factories?.length || next.packages.some(p => p.mechanics || p.factory || p.composition)) &&
       new TextEncoder().encode(raw).byteLength > MAX_PROJECT_JSON_BYTES) {
       throw new Error("工程文字资料超过 8 MiB，请将本次清单拆分到单独工程。");
     }
@@ -381,6 +381,10 @@ export default function TwinStudio() {
       go({ view: "workbench", target: "servo" }, `已选中 ${pkg.model}，可在伺服轴中核对配套型号。`);
       return;
     }
+    if (pkg.composition && !pkg.ports.length) {
+      intake.previewDevice(pkg, true);
+      return;
+    }
     const name = nextInstanceName(workspace, pkg.model);
     save(addInstance(workspace, packageKey(pkg), name));
     go({ view: "workbench", target: "wiring" }, `已将“${name}”加入信号接线装配。`);
@@ -404,9 +408,16 @@ export default function TwinStudio() {
     go({ view: "workbench", target: `assembly:${assembly.id}` }, "", target === "assembly-new");
   }
 
-  function saveFactory(layout: FactoryLayout) {
-    save(upsertFactoryLayout(workspace, layout));
+  function saveFactory(layout: FactoryLayout, revised?: TwinWorkspace) {
+    save(upsertFactoryLayout(revised ?? workspace, layout));
     go({ view: "workbench", target: `factory:${layout.id}` }, "", target === "factory-new");
+  }
+
+  function saveDeviceRevision(revised: TwinWorkspace, key: string) {
+    const next = installDeviceDependencies(workspace, revised.packages, [key]);
+    const device = next.packages.find(pkg => packageKey(pkg) === key)!;
+    persist(next);
+    intake.previewDevice(device, true);
   }
 
   function saveMechanism(assembly: MechanicalAssembly) {
@@ -468,7 +479,8 @@ export default function TwinStudio() {
         </Dialog>}
         {intake.state.phase === "preview" && <WorkbenchImportPreview key={intake.state.candidate.name} candidate={intake.state.candidate} workspace={workspace}
           confirmed={intake.state.confirmed} busy={intake.state.busy} error={intake.state.error} onClose={cancelImport}
-          onConfirm={confirmImport} onUseManual={overrides => confirmImport(overrides, true)} onAssemble={(device, mode) => run(() => assemble(device, mode))} />}
+          onConfirm={confirmImport} onUseManual={overrides => confirmImport(overrides, true)} onAssemble={(device, mode) => run(() => assemble(device, mode))}
+          onApplyDeviceRevision={saveDeviceRevision} />}
         {notice && <div role="status" className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs">
           <span>{notice}</span><button type="button" className="shrink-0 text-muted-foreground hover:underline" onClick={() => setNotice("")}>关闭提示</button>
         </div>}
