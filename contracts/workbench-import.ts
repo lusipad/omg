@@ -1,4 +1,5 @@
 import { MAX_PROJECT_JSON_BYTES, type MaterialRow } from "./import-catalog";
+import { parseLinearAssembly, type LinearAssembly } from "./linear-assembly";
 import { hasMaterialTableHeader, parseMarkdownMaterialTable, parseMaterialTable } from "./material-import";
 import { parseMiloBom, type MiloBom } from "./milo-bom";
 import { MILO_MAX_PROGRAM_CHARS } from "./milo-motion";
@@ -9,6 +10,7 @@ import { hasWorkspaceShape, parseWorkspace, type TwinWorkspace } from "./twin-si
 export type TextImportHint = "auto" | "manual" | "bom" | "gcode" | "json";
 export type ParsedTextImport =
   | { kind: "device"; device: DevicePackage }
+  | { kind: "assembly"; assembly: LinearAssembly }
   | { kind: "project"; workspace: TwinWorkspace }
   | { kind: "milo-bom"; bom: MiloBom }
   | { kind: "so101-bom"; bom: So101BomRow[] }
@@ -33,7 +35,7 @@ export function decodeImportUtf8(bytes: ArrayBuffer | Uint8Array): string {
 function byteLimit(text: string, json: boolean) {
   const limit = json ? IMPORT_TEXT_LIMITS.jsonBytes : IMPORT_TEXT_LIMITS.materialBytes;
   if (text.length > limit || encoder.encode(text).length > limit) {
-    throw new Error(json ? "JSON 超过 8 MiB，请缩小设备包或工程清单。" : "资料超过 2 MiB，请选择相关章节或物料表。");
+    throw new Error(json ? "JSON 超过 8 MiB，请缩小导入文件。" : "资料超过 2 MiB，请选择相关章节或物料表。");
   }
 }
 
@@ -56,9 +58,7 @@ export function outerFence(text: string) {
   return { language: open[2].toLowerCase(), body: close ? content.slice(0, close.index) : undefined };
 }
 
-function jsonImport(text: string, name: string): ParsedTextImport {
-  let raw: unknown;
-  try { raw = JSON.parse(text.trim()); } catch { throw new Error("JSON 格式有误，请检查括号、引号和内容完整性。"); }
+function jsonImport(raw: unknown, name: string): ParsedTextImport {
   if (raw && typeof raw === "object") {
     if ("missing" in raw && Array.isArray(raw.missing)) {
       const missing = raw.missing.filter((s): s is string => typeof s === "string" && !!s.trim()).slice(0, 12);
@@ -153,14 +153,21 @@ export function parseImportText(text: string, name: string, options: { hint?: Te
   if (!text.trim()) throw new Error("导入文本为空。");
   if (text.includes("\0")) throw new Error("文本含有 NUL 字节，请选择 UTF-8 文本文件。");
   const plain = text.replace(/^\uFEFF/, "");
-  if (format === "manual") { byteLimit(text, false); return { kind: "manual", text: plain }; }
   const fence = outerFence(plain), body = fence?.body ?? plain;
   const inferredJson = /^\s*(?:\{\s*(?:["}]|$)|\[\s*(?:\{|\]))/.test(body) || fence?.language === "json";
-  if (format === "json" || (format === "auto" && inferredJson)) {
+  const asJson = format === "json" || (format === "auto" && inferredJson);
+  const assemblyMarker = !asJson && (/^\s*\{/.test(body) || fence?.language === "json") && /"kind"\s*:\s*"linear-axis-assembly"/.test(body);
+  if (asJson || assemblyMarker) {
     byteLimit(text, true);
     if (fence && fence.body === undefined) throw new Error("JSON 代码围栏未闭合。");
-    return jsonImport(body, name);
+    let raw: unknown;
+    try { raw = JSON.parse(body.trim()); } catch { throw new Error("JSON 格式有误，请检查括号、引号和内容完整性。"); }
+    if (raw && typeof raw === "object" && "kind" in raw && raw.kind === "linear-axis-assembly") {
+      return { kind: "assembly", assembly: parseLinearAssembly(raw) };
+    }
+    if (asJson) return jsonImport(raw, name);
   }
+  if (format === "manual") { byteLimit(text, false); return { kind: "manual", text: plain }; }
   const draft = (): ParsedTextImport => {
     if (body.length > MILO_MAX_PROGRAM_CHARS) throw new Error(`G 代码超过 ${MILO_MAX_PROGRAM_CHARS} 个字符。`);
     if (!body.trim()) throw new Error("G 代码程序为空。");

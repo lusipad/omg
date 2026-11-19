@@ -1,6 +1,7 @@
 import digitalModule from "../examples/GL10-1600END-A03.device.json";
 import servoDrive from "../examples/SV660NS2R8I-FS-INT.device.json";
 import { PICK_PLACE_EXAMPLE, ROBOT_EXAMPLES } from "./robot-examples";
+import { signalIdSchema } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
 
 export type StudioExampleKind = "wiring" | "servo" | "so101" | "milo" | "physics";
@@ -54,7 +55,7 @@ export function getStudioExample(id: string | null | undefined): StudioExample |
 }
 
 export type StudioResourceSection = "device" | "material" | "physics" | "system" | "author";
-export type StudioTarget = "wiring" | "servo" | "so101" | "milo" | "incoming" | `model:${string}`;
+export type StudioTarget = "wiring" | "servo" | "so101" | "milo" | "incoming" | "assembly-new" | `model:${string}` | `assembly:${string}`;
 export type StudioRoute =
   | { view: "resources"; section?: StudioResourceSection }
   | { view: "examples" }
@@ -76,7 +77,11 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
     const exampleId = params.get("example"), target = params.get("target");
     if (exampleId !== null) return { view, exampleId };
     if (target === null) return { view };
-    if (target === "wiring" || target === "servo" || target === "so101" || target === "milo" || target === "incoming") return { view, target };
+    if (target === "wiring" || target === "servo" || target === "so101" || target === "milo" || target === "incoming" || target === "assembly-new") return { view, target };
+    if (target.startsWith("assembly:")) {
+      const id = signalIdSchema.safeParse(target.slice("assembly:".length));
+      if (id.success) return { view, target: `assembly:${id.data}` };
+    }
     if (/^model:[a-f0-9]{64}$/.test(target)) return { view, target: `model:${target.slice(6)}` };
     return { view, unavailableTarget: target };
   }
@@ -115,6 +120,7 @@ export function getWorkbenchTargets(workspace: TwinWorkspace): StudioTargetOptio
   if (workspace.servoAxis) targets.push(servo);
   if (workspace.so101) targets.push({ id: "so101", name: "SO-101 从臂" });
   if (workspace.milo?.assembled.length) targets.push(milo);
+  for (const assembly of workspace.assemblies ?? []) targets.push({ id: `assembly:${assembly.id}`, name: assembly.name });
   for (const model of workspace.catalog?.models ?? []) targets.push({ id: `model:${model.id}`, name: model.name });
   if (workspace.milo && !workspace.milo.assembled.length && (workspace.milo.bom?.length || workspace.milo.program.trim())) targets.push(milo);
   if (!workspace.instances.length && workspace.packages.some((p) => !p.servo)) targets.push(wiring);

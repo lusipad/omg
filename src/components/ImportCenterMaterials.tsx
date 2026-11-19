@@ -116,8 +116,9 @@ export default function MaterialDetails({ workspace, row, onChange, onOpenDevice
   return <Dialog open onOpenChange={(open) => { if (!open) { onClose(); setError(""); } }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[680px]">
         <DialogHeader><DialogTitle className="break-words">{row.name}</DialogTitle>
-          <DialogDescription>{row.quantity} {row.unit} · {row.manufacturer && `${row.manufacturer} · `}{row.model && `${row.model} · `}{row.binding ? "已绑定模型" : "待建模"}</DialogDescription>
+          <DialogDescription>{row.quantity} {row.unit} · {row.manufacturer && `${row.manufacturer} · `}{row.model && `${row.model} · `}{row.binding ? "已绑定模型" : row.leadMmPerRev === undefined ? "待建模" : "丝杠传动参数"}</DialogDescription>
         </DialogHeader>
+        {row.leadMmPerRev !== undefined && <div className="text-sm"><span className="field-label">BOM 丝杠导程</span>{row.leadMmPerRev} mm/rev</div>}
         {row.source && <div className="break-words text-sm"><span className="field-label">资料来源</span>{url
           ? <a href={url} target="_blank" rel="noreferrer" className="text-primary hover:underline">{row.source}</a> : row.source}</div>}
         {row.notes && <div><h3 className="field-label">资料原文与备注</h3><pre className="max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-md border p-3 font-sans text-xs leading-5">{row.notes}</pre></div>}
@@ -128,7 +129,7 @@ export default function MaterialDetails({ workspace, row, onChange, onOpenDevice
               bind(row, pair ? { kind: pair[0] === "physics" ? "physics" : "device", key: pair[1] } : undefined); setError("");
             } catch (cause) { setError(errorText(cause)); }
           }}>
-            <option value="">待建模 · 尚未绑定</option>
+            <option value="">{row.leadMmPerRev === undefined ? "待建模 · 尚未绑定" : "仅使用 BOM 传动参数"}</option>
             {models.size > 0 && <optgroup label="物理模型">{catalog.models.map((ref) => <option value={JSON.stringify(["physics", ref.id])} key={ref.id}>{ref.name} · {ref.entry} · {ref.id.slice(0, 10)}</option>)}</optgroup>}
             {devices.size > 0 && <optgroup label="设备包">{workspace.packages.map((device) => <option key={packageKey(device)} value={JSON.stringify(["device", packageKey(device)])}>{device.manufacturer} · {device.model} · {device.revision}</option>)}</optgroup>}
           </select>

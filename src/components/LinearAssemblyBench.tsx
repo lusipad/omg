@@ -1,0 +1,242 @@
+import { useMemo, useState } from "react";
+import { Download, ExternalLink, Play, Plus, Save, Trash2 } from "lucide-react";
+import { nanoid } from "nanoid";
+import type { MaterialRow } from "@contracts/import-catalog";
+import { LINEAR_ASSEMBLY_LIMITS, parseLinearAssembly, inspectLinearAssembly, runLinearAssembly, type LinearAssembly, type LinearAssemblyResult } from "@contracts/linear-assembly";
+import { packageKey } from "@contracts/twin-device";
+import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { downloadJson } from "@/lib/download";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import LinearAssemblyResults from "./LinearAssemblyResults";
+
+type Props = { workspace: TwinWorkspace; assembly?: LinearAssembly; onSave: (value: LinearAssembly) => void };
+type Role = "drive" | "motor" | "screw";
+type Vector = [number, number, number];
+type TextVector = [string, string, string];
+type ModuleDraft = { key: string; id: string; drive: string; motor: string; screw: string; lead: string; load: string };
+type AxisDraft = { key: string; id: string; moduleKey: string; direction: TextVector; custom: boolean; target: string };
+type Draft = { id: string; name: string; modules: ModuleDraft[]; axes: AxisDraft[] };
+type Run = { assembly: LinearAssembly; signature: string; basis: string; result: LinearAssemblyResult };
+const presets: { label: string; vector: Vector }[] = [
+  { label: "+X", vector: [1, 0, 0] }, { label: "-X", vector: [-1, 0, 0] },
+  { label: "+Y", vector: [0, 1, 0] }, { label: "-Y", vector: [0, -1, 0] },
+  { label: "+Z", vector: [0, 0, 1] }, { label: "-Z", vector: [0, 0, -1] },
+];
+const roles: Record<Role, string> = { drive: "驱动器物料", motor: "电机物料", screw: "丝杠物料" };
+const selectClass = "h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm";
+const errorText = (cause: unknown) => cause instanceof Error ? cause.message : "装配操作失败，请重试。";
+const asText = (v: Vector): TextVector => [String(v[0]), String(v[1]), String(v[2])];
+const presetOf = (v: TextVector) => presets.find(p => p.vector.every((n, i) => v[i] !== "" && n === Number(v[i])));
+
+function defaultModule(id: string): ModuleDraft {
+  return { key: nanoid(), id, drive: "", motor: "", screw: "", lead: "", load: "1" };
+}
+function defaultAxis(id: string, moduleKey: string): AxisDraft {
+  const preset = presets.find(p => p.label === "+" + id) ?? presets[0];
+  return { key: nanoid(), id, moduleKey, direction: asText(preset.vector), custom: false, target: "0" };
+}
+function draftFrom(assembly?: LinearAssembly): Draft {
+  if (!assembly) {
+    const module = defaultModule("module1");
+    return { id: "linear-" + nanoid(), name: "新直线装配", modules: [module], axes: [defaultAxis("X", module.key)] };
+  }
+  const modules = assembly.modules.map(m => ({ key: nanoid(), id: m.id, drive: m.drive, motor: m.motor, screw: m.screw,
+    lead: m.leadMmPerRev === null ? "" : String(m.leadMmPerRev), load: String(m.loadInertiaRatio) }));
+  const axes = assembly.axes.map(axis => {
+    const direction = asText(axis.direction);
+    return { key: nanoid(), id: axis.id, moduleKey: modules.find(m => m.id === axis.module)?.key ?? axis.module,
+      direction, custom: !presetOf(direction), target: String(axis.targetMm) };
+  });
+  return { id: assembly.id, name: assembly.name, modules, axes };
+}
+function numberField(text: string, caption: string) {
+  if (!text.trim() || !Number.isFinite(Number(text))) throw new Error(`请填写${caption}的有限数值。`);
+  return Number(text);
+}
+function definitionOf(d: Draft): LinearAssembly {
+  return parseLinearAssembly({
+    schemaVersion: 1, kind: "linear-axis-assembly", id: d.id, name: d.name,
+    modules: d.modules.map(m => ({
+      id: m.id, drive: m.drive, motor: m.motor, screw: m.screw,
+      leadMmPerRev: m.lead.trim() ? numberField(m.lead, "丝杠导程") : null, loadInertiaRatio: numberField(m.load, "负载惯量比"),
+    })),
+    axes: d.axes.map(a => ({ id: a.id, module: d.modules.find(m => m.key === a.moduleKey)?.id ?? a.moduleKey,
+      direction: a.direction.map(v => numberField(v, "方向分量")), targetMm: numberField(a.target, "目标位移") })),
+  });
+}
+function signature(a?: LinearAssembly) {
+  return a ? JSON.stringify([a.id, a.name, a.modules.map(m => [m.id, m.drive, m.motor, m.screw, m.leadMmPerRev, m.loadInertiaRatio]),
+    a.axes.map(axis => [axis.id, axis.module, axis.direction, axis.targetMm])]) : null;
+}
+function runBasis(ws: TwinWorkspace, assembly: LinearAssembly) {
+  const used = new Set(assembly.axes.map(a => a.module));
+  const refs = new Set(assembly.modules.filter(m => used.has(m.id)).flatMap(m => [m.drive, m.motor, m.screw]));
+  const rows = ws.catalog?.materials.filter(r => refs.has(r.id) || refs.has(r.name)) ?? [];
+  const keys = new Set(rows.map(r => r.binding?.key)), models = new Set(rows.map(r => r.model));
+  const devices = ws.packages.filter(p => keys.has(packageKey(p)) || models.has(p.model));
+  return JSON.stringify([rows.map(r => [r.id, r.name, r.quantity, r.unit, r.model, r.manufacturer, r.source, r.leadMmPerRev, r.binding?.kind, r.binding?.key]),
+    devices.map(p => [packageKey(p), p.servo]), ws.catalog?.models.filter(m => keys.has(m.id)).map(m => m.id)]);
+}
+function nextId(prefix: string, ids: string[]) {
+  let i = 1;
+  while (ids.includes(prefix + i)) i++;
+  return prefix + i;
+}
+function materialIndex(rows: MaterialRow[]) {
+  const byId = new Map(rows.map(row => [row.id, row]));
+  const byName = new Map<string, MaterialRow[]>();
+  rows.forEach(row => { const group = byName.get(row.name); if (group) group.push(row); else byName.set(row.name, [row]); });
+  const resolve = (ref: string) => byId.get(ref) ?? (byName.get(ref)?.length === 1 ? byName.get(ref)?.[0] : undefined);
+  const options = rows.map(row => {
+    const duplicate = byName.get(row.name)!.length > 1;
+    const label = [row.name, row.manufacturer, row.model, `${row.quantity}${row.unit ? " " + row.unit : ""}`,
+      ...(duplicate ? [row.source, row.id] : [])].filter(Boolean).join(" · ");
+    return { value: row.id, ref: duplicate || (byId.has(row.name) && row.name !== row.id) ? row.id : row.name, label };
+  });
+  return { resolve, byName, options, refs: new Map(options.map(o => [o.value, o.ref])) };
+}
+
+function fresh(assembly?: LinearAssembly) {
+  return { draft: draftFrom(assembly), seen: signature(assembly), submitted: null as string | null,
+    run: null as Run | null, error: "", notice: "" };
+}
+
+export default function LinearAssemblyBench({ workspace, assembly, onSave }: Props) {
+  const [session, setSession] = useState(() => fresh(assembly));
+  const incoming = signature(assembly);
+  if (session.seen !== incoming) {
+    // A parent save can return a newly parsed copy of our own submission.
+    if (assembly?.id === session.draft.id && incoming === session.submitted) setSession({ ...session, seen: incoming, submitted: null });
+    else setSession(fresh(assembly));
+  }
+  const draft = session.draft;
+  const materials = workspace.catalog?.materials;
+  const index = useMemo(() => materialIndex(materials ?? []), [materials]);
+  const packages = useMemo(() => new Map(workspace.packages.map(p => [packageKey(p), p])), [workspace.packages]);
+  const checked = useMemo(() => {
+    try {
+      const value = definitionOf(draft);
+      return { value, signature: signature(value), issues: inspectLinearAssembly(workspace, value) };
+    } catch (cause) { return { value: null, signature: null, issues: [errorText(cause)] }; }
+  }, [draft, workspace]);
+  const priorRun = session.run;
+  const basis = useMemo(() => priorRun ? runBasis(workspace, priorRun.assembly) : "", [workspace, priorRun]);
+  const visibleRun = priorRun && !checked.issues.length && priorRun.signature === checked.signature && priorRun.basis === basis ? priorRun : null;
+
+  function edit(next: Draft) {
+    setSession(s => ({ ...s, draft: next, error: "", notice: "" }));
+  }
+  function moduleChange(key: string, patch: Partial<ModuleDraft>) {
+    edit({ ...draft, modules: draft.modules.map(m => m.key === key ? { ...m, ...patch } : m) });
+  }
+  function axisChange(key: string, patch: Partial<AxisDraft>) {
+    edit({ ...draft, axes: draft.axes.map(a => a.key === key ? { ...a, ...patch } : a) });
+  }
+  function submit(run: boolean) {
+    try {
+      if (!checked.value || !checked.signature) throw new Error(checked.issues[0] ?? "请核对装配定义。");
+      const value = checked.value;
+      const nextRun = run ? { assembly: value, signature: checked.signature, basis: runBasis(workspace, value), result: runLinearAssembly(workspace, value) } : priorRun;
+      onSave(value);
+      setSession(s => ({ ...s, submitted: checked.signature, run: nextRun, error: "", notice: run ? "装配已保存，仿真已完成。" : "装配已保存。" }));
+    } catch (cause) { setSession(s => ({ ...s, error: errorText(cause), notice: "" })); }
+  }
+
+  return <section aria-label="直线轴装配工作台" className="min-w-0 space-y-4">
+    <div className="surface space-y-3 p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-semibold">{assembly ? "直线装配设置" : "新建直线装配"}</h3>
+        <div className="flex flex-wrap items-center gap-3">
+          {assembly && <Button variant="outline" size="sm" onClick={() => downloadJson(assembly, assembly.name + ".assembly.json")}><Download />导出装配关系</Button>}
+          <a className="inline-flex items-center gap-1 text-xs text-primary hover:underline" href="https://github.com/lusipad/omg/blob/main/docs/直线轴装配.md" target="_blank" rel="noreferrer">装配文件格式<ExternalLink className="size-3" /></a>
+        </div>
+      </div>
+      <label className="block max-w-xl"><span className="field-label">系统名称</span>
+        <Input value={draft.name} maxLength={160} onChange={e => edit({ ...draft, name: e.target.value })} /></label>
+      {!materials?.length && <p className="text-sm text-muted-foreground">工程还没有 BOM 物料。可用右上角“导入文件”补充清单和设备包，或先保存装配草稿。</p>}
+    </div>
+    <section className="surface space-y-3 p-4 sm:p-5" aria-label="轴模块">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-base font-semibold">轴模块</h3>
+        <Button variant="outline" size="sm" disabled={draft.modules.length >= LINEAR_ASSEMBLY_LIMITS.modules} onClick={() => edit({ ...draft,
+          modules: [...draft.modules, defaultModule(nextId("module", draft.modules.map(m => m.id)))] })}><Plus />添加模块</Button></div>
+      <p className="text-xs leading-5 text-muted-foreground">每个模块选用一组驱动器、电机和丝杠。模块和轴标识以英文字母或数字开头，可含连字符或下划线。</p>
+      {draft.modules.map(m => {
+        const usage = draft.axes.filter(a => a.moduleKey === m.key).length;
+        const screw = index.resolve(m.screw);
+        return <article className="surface-inset min-w-0 space-y-3 p-3" key={m.key} aria-label={`轴模块 ${m.id}`}>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="min-w-0 flex-1"><span className="field-label">模块标识</span><Input value={m.id} maxLength={80} onChange={e => moduleChange(m.key, { id: e.target.value })} /></label>
+            <span className="mb-2 text-xs text-muted-foreground">{usage} 根轴引用</span>
+            <Button variant="ghost" size="sm" disabled={!!usage || draft.modules.length === 1} title={usage ? "先为引用此模块的轴选择其他模块" : "移除模块"}
+              onClick={() => edit({ ...draft, modules: draft.modules.filter(other => other.key !== m.key) })}><Trash2 />移除模块</Button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">{(Object.keys(roles) as Role[]).map(role => {
+            const ref = m[role], row = index.resolve(ref);
+            const actual = role !== "screw" && row?.binding?.kind === "device" ? packages.get(row.binding.key) : undefined;
+            const substitute = row && actual?.servo?.kind === role && ((row.manufacturer && row.manufacturer !== actual.manufacturer) || (row.model && row.model !== actual.model));
+            return <div key={role} className="min-w-0"><label><span className="field-label">{roles[role]}</span>
+              <select aria-label={roles[role]} className={selectClass} value={row?.id ?? ref} onChange={e => moduleChange(m.key, { [role]: index.refs.get(e.target.value) ?? "", ...(role === "screw" && { lead: "" }) })}>
+                <option value="">请选择工程物料</option>
+                {ref && !row && <option value={ref}>{ref}（{index.byName.has(ref) ? "同名物料待选" : "工程中未找到"}）</option>}
+                {index.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select></label>
+              {actual && <p className={`mt-1 break-words text-xs ${substitute ? "text-amber-300" : "text-muted-foreground"}`}>
+                {substitute && <>按已绑定的替代件运行。BOM 标注 {[row.manufacturer, row.model].filter(Boolean).join(" · ")}。</>}
+                已绑定 {actual.manufacturer} · {actual.model} · 修订 {actual.revision}。
+              </p>}
+            </div>;
+          })}</div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="min-w-0"><label><span className="field-label">丝杠导程（mm/rev）</span>
+              <Input type="number" step="any" value={m.lead} placeholder={screw?.leadMmPerRev === undefined ? "资料未给出，可留空" : "沿用 BOM 值"}
+                onChange={e => moduleChange(m.key, { lead: e.target.value })} /></label>
+              {screw?.leadMmPerRev !== undefined && <p className="mt-1 break-all text-xs text-muted-foreground">BOM 导程 {screw.leadMmPerRev} mm/rev。{screw.source && `来源为 ${screw.source}。`}
+                {m.lead.trim() && <button type="button" className="ml-1 text-primary hover:underline" onClick={() => moduleChange(m.key, { lead: "" })}>沿用 BOM 值</button>}</p>}
+            </div>
+            <label className="min-w-0"><span className="field-label">负载惯量比（仿真假设）</span><Input aria-label="负载惯量比（仿真假设）" type="number" min="0" max="100" step="any" value={m.load}
+              onChange={e => moduleChange(m.key, { load: e.target.value })} /><span className="mt-1 block text-xs text-muted-foreground">负载折算惯量与转子惯量之比。</span></label>
+          </div>
+        </article>;
+      })}
+    </section>
+    <section className="surface space-y-3 p-4 sm:p-5" aria-label="轴实例">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-base font-semibold">轴实例</h3>
+        <Button variant="outline" size="sm" disabled={draft.axes.length >= LINEAR_ASSEMBLY_LIMITS.axes} onClick={() => {
+          const ids = draft.axes.map(a => a.id), id = ["X", "Y", "Z"].find(n => !ids.includes(n)) ?? nextId("axis", ids);
+          edit({ ...draft, axes: [...draft.axes, defaultAxis(id, draft.modules[0].key)] });
+        }}><Plus />添加轴</Button></div>
+      {draft.axes.map(a => <article key={a.key} className="surface-inset min-w-0 space-y-3 p-3" aria-label={`轴实例 ${a.id}`}>
+        <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+          <label className="min-w-0"><span className="field-label">轴标识</span><Input value={a.id} maxLength={80} onChange={e => axisChange(a.key, { id: e.target.value })} /></label>
+          <label className="min-w-0"><span className="field-label">使用模块</span><select aria-label="使用模块" className={selectClass} value={a.moduleKey} onChange={e => axisChange(a.key, { moduleKey: e.target.value })}>
+            {draft.modules.map(m => <option value={m.key} key={m.key}>{m.id || "未填写标识"}</option>)}</select></label>
+          <label className="min-w-0"><span className="field-label">安装方向</span>
+            <select aria-label="安装方向" className={selectClass} value={a.custom ? "custom" : presetOf(a.direction)?.label ?? "custom"} onChange={e => {
+              const chosen = presets.find(p => p.label === e.target.value);
+              axisChange(a.key, chosen ? { custom: false, direction: asText(chosen.vector) } : { custom: true });
+            }}>{presets.map(p => <option key={p.label} value={p.label}>{p.label}</option>)}<option value="custom">自定义向量</option></select>
+          </label>
+          <label className="min-w-0"><span className="field-label">目标位移（mm）</span><Input type="number" step="any" value={a.target} onChange={e => axisChange(a.key, { target: e.target.value })} /></label>
+          <Button variant="ghost" size="sm" disabled={draft.axes.length === 1} onClick={() => edit({ ...draft, axes: draft.axes.filter(other => other.key !== a.key) })}><Trash2 />移除轴</Button>
+        </div>
+        {a.custom && <div className="grid grid-cols-3 gap-2">{["X", "Y", "Z"].map((name, i) => <label className="min-w-0" key={name}>
+          <span className="field-label">方向 {name} 分量</span><Input type="number" step="any" value={a.direction[i]} onChange={e => {
+            const direction: TextVector = [...a.direction]; direction[i] = e.target.value; axisChange(a.key, { direction });
+          }} /></label>)}</div>}
+      </article>)}
+    </section>
+    <div className="surface space-y-3 p-4 sm:p-5">
+      {checked.issues.length > 0 && <div><h3 className="text-sm font-medium">装配待核对</h3><ul className="mt-1 list-disc space-y-1 pl-5 text-xs leading-5 text-amber-300">
+        {checked.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul></div>}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" onClick={() => submit(false)}><Save />保存装配</Button>
+        <Button disabled={!checked.value || !!checked.issues.length} onClick={() => submit(true)}><Play />保存并运行</Button>
+      </div>
+      {session.error && <p role="alert" className="text-sm text-destructive">{session.error}</p>}
+      {session.notice && <p role="status" className="text-xs text-primary">{session.notice}</p>}
+      {priorRun && !visibleRun && <p className="text-xs text-muted-foreground">配置或物料已更改，请重新运行以查看对应结果。</p>}
+    </div>
+    {visibleRun && <LinearAssemblyResults assembly={visibleRun.assembly} result={visibleRun.result} />}
+  </section>;
+}

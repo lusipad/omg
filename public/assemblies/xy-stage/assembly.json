@@ -1,0 +1,20 @@
+{
+  "kind": "linear-axis-assembly",
+  "schemaVersion": 1,
+  "id": "bench-positioner",
+  "name": "双轴定位台",
+  "modules": [
+    {
+      "id": "slide",
+      "drive": "轴驱动器",
+      "motor": "轴电机",
+      "screw": "5 mm 导程丝杠",
+      "leadMmPerRev": null,
+      "loadInertiaRatio": 1
+    }
+  ],
+  "axes": [
+    { "id": "U", "module": "slide", "direction": [1, 0, 0], "targetMm": 40 },
+    { "id": "V", "module": "slide", "direction": [0, 1, 0], "targetMm": -10 }
+  ]
+}

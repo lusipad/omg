@@ -10,11 +10,37 @@ const device = fixture("../examples/GL10-1600END-A03.device.json");
 const motor = fixture("../examples/MS1H1-40B30CB-A331R-INT.device.json");
 const project = fixture("../examples/inovance-servo-axis.twin.json");
 const bom = fixture("../public/machines/milo-v1-5/bom-facts.md");
+const assembly = fixture("../public/assemblies/xy-stage/assembly.json");
 const xml = '<mujoco model="滑台"><worldbody><body><geom type="box" size="1 1 1"/></body></worldbody></mujoco>';
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("同一工作台导入路径", () => {
+  it("同一装配从 JSON 原件、代码围栏、粘贴及文件直链得到相同定义", async () => {
+    const definition: unknown = JSON.parse(assembly);
+    const expected = { kind: "assembly", assembly: definition };
+    const fenced = "\uFEFF~~~json\n" + assembly + "\n~~~";
+    expect(await inspectWorkbenchFiles([new File([assembly], "零件.json")])).toMatchObject(expected);
+    expect(await inspectWorkbenchFiles([new File([fenced], "说明.md")])).toMatchObject(expected);
+    expect(await inspectWorkbenchText(fenced, "粘贴内容")).toMatchObject(expected);
+    const url = "https://example.org/motion/axes.json";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(fenced, { headers: { "content-type": "application/json" } })));
+    expect(await inspectWorkbenchText(url, "粘贴内容")).toMatchObject({ ...expected, source: url });
+  });
+
+  it("装配 JSON 与设备批量选择时要求分别导入", async () => {
+    await expect(inspectWorkbenchFiles([new File([device], "drive.json"), new File([assembly], "stage.json")])).rejects.toThrow(/装配.*单独|分别.*装配/);
+  });
+
+  it("各入口对同一坏装配都给出装配校验错误，无法借用手册分支", async () => {
+    const broken = JSON.stringify({ kind: "linear-axis-assembly", schemaVersion: 1, id: "bad", name: "待修复", modules: [], axes: [] });
+    const body = "~~~json\n" + broken + "\n~~~";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body)));
+    await expect(inspectWorkbenchFiles([new File([body], "workspace.json")])).rejects.toThrow(/装配/);
+    await expect(inspectWorkbenchText(body, "手册.md", { hint: "manual" })).rejects.toThrow(/装配/);
+    await expect(inspectWorkbenchText("https://example.org/bad.json", "粘贴内容")).rejects.toThrow(/装配/);
+  });
+
   it("文件和粘贴返回同一个已校验候选，误从设备入口选择的工程按工程处理", async () => {
     const input = "\uFEFF```json\n" + device + "\n```";
     const fromFile = await inspectWorkbenchFiles([new File([input], "设备.json")], { hint: "json" });

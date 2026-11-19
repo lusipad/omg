@@ -1,8 +1,9 @@
 import { lazy, Suspense, useState } from "react";
-import { ArrowLeft, FolderInput } from "lucide-react";
+import { ArrowLeft, FolderInput, Plus } from "lucide-react";
 import { Link } from "react-router";
 import { getStudioExample, studioHref, type StudioRoute, type StudioTarget, type StudioTargetOption } from "@contracts/studio-navigation";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
+import type { LinearAssembly } from "@contracts/linear-assembly";
 import { Button } from "@/components/ui/button";
 import type { IncomingWorkbenchModel, WorkbenchImportOptions } from "@/lib/workbench-import";
 import TwinSimulation from "./TwinSimulation";
@@ -12,17 +13,20 @@ const Servo = lazy(() => import("./ServoAxisBench"));
 const Follower = lazy(() => import("./So101Workbench"));
 const Mill = lazy(() => import("./MiloWorkbench"));
 const ExampleBench = lazy(() => import("./StudioExampleBench"));
+const LinearAssemblyBench = lazy(() => import("./LinearAssemblyBench"));
 
 type Props = {
   route: Extract<StudioRoute, { view: "workbench" }> | null;
   workspace: TwinWorkspace;
   generation: number;
+  openedProject: number;
   bomRevision: number;
   servoChoice: { version: number; driveKey?: string; motorKey?: string };
-  lastTarget?: StudioTarget;
+  target?: StudioTarget;
   targets: StudioTargetOption[];
   incoming: IncomingWorkbenchModel | null;
   onChange: (next: TwinWorkspace) => void;
+  onSaveAssembly: (assembly: LinearAssembly) => void;
   onNavigate: (route: StudioRoute, message?: string, replace?: boolean) => void;
   onApplyExample: (next: TwinWorkspace, target: StudioTarget, name: string) => void;
   onImportFile: (file: File, hint?: WorkbenchImportOptions["hint"]) => void;
@@ -31,15 +35,15 @@ type Props = {
 
 const editorNames = { wiring: "信号接线", servo: "伺服轴", so101: "SO-101 从臂", milo: "Milo v1.5 三轴铣床" };
 
-export default function StudioRunArea({ route, workspace, generation, bomRevision, servoChoice, lastTarget, targets, incoming, onChange, onNavigate, onApplyExample, onImportFile, onImportText }: Props) {
+export default function StudioRunArea({ route, workspace, generation, openedProject, bomRevision, servoChoice, target, targets, incoming, onChange, onSaveAssembly, onNavigate, onApplyExample, onImportFile, onImportText }: Props) {
   const isExample = route?.exampleId !== undefined;
   const example = getStudioExample(route?.exampleId);
   const exampleTarget = example?.kind === "physics" ? undefined : example?.kind;
-  const target = route && !isExample && route.unavailableTarget === undefined
-    ? route.target ?? lastTarget ?? targets[0]?.id : undefined;
   const model = target?.startsWith("model:") ? workspace.catalog?.models.find(item => `model:${item.id}` === target) : undefined;
+  const assembly = target?.startsWith("assembly:") ? workspace.assemblies?.find(item => `assembly:${item.id}` === target) : undefined;
+  const creatingAssembly = target === "assembly-new";
   const missing = isExample && !example ? "没有找到这个示例。"
-    : route?.unavailableTarget !== undefined || (target?.startsWith("model:") && !model) ? "当前工程中没有这个对象。"
+    : route?.unavailableTarget !== undefined || (target?.startsWith("model:") && !model) || (target?.startsWith("assembly:") && !assembly) ? "当前工程中没有这个对象。"
     : target === "incoming" && !incoming ? "本次预览的模型文件已关闭，请重新选择文件。"
     : undefined;
   const [wiringRevision, setWiringRevision] = useState(0);
@@ -58,13 +62,17 @@ export default function StudioRunArea({ route, workspace, generation, bomRevisio
         <h1 className="display-title break-words text-2xl font-semibold">{example?.name ?? (isExample ? "示例预览" : "装配与仿真")}</h1>
         {example && <p className="mt-1 text-xs text-muted-foreground">可在此试跑和调整，点“加入当前工程”后保存。</p>}
       </div>
-      {!isExample && !missing && target && <label className="flex max-w-full flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        当前工程对象
-        <select aria-label="当前工程对象" className="h-9 max-w-full rounded border bg-background px-2 text-sm text-foreground"
-          value={target} onChange={event => { const choice = options.find(item => item.id === event.target.value); if (choice) onNavigate({ view: "workbench", target: choice.id }); }}>
-          {options.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </select>
-      </label>}
+      {!isExample && <div className="flex max-w-full flex-wrap items-center gap-3">
+        {!missing && target && (!creatingAssembly || targets.length > 0) && <label className="flex max-w-full flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          当前工程对象
+          <select aria-label="当前工程对象" className="h-9 max-w-full rounded border bg-background px-2 text-sm text-foreground"
+            value={target} onChange={event => { const choice = options.find(item => item.id === event.target.value); if (choice) onNavigate({ view: "workbench", target: choice.id }); }}>
+            {creatingAssembly && <option value="assembly-new">新装配草稿</option>}
+            {options.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </label>}
+        {!creatingAssembly && <Button size="sm" variant="outline" asChild><Link to={studioHref({ view: "workbench", target: "assembly-new" })}><Plus />新建装配</Link></Button>}
+      </div>}
     </header>}
     {route && (missing || (!target && !isExample)) && <div className="surface space-y-3 p-5">
       <p className="text-sm">{missing ?? "当前工程还没有可装配或运行的对象。"}</p>
@@ -86,6 +94,8 @@ export default function StudioRunArea({ route, workspace, generation, bomRevisio
       {target === "servo" && <Servo key={`${generation}-${servoChoice.version}`} workspace={workspace} onChange={onChange} preferred={servoChoice} />}
       {target === "so101" && <Follower key={`${generation}-${bomRevision}`} workspace={workspace} onChange={onChange} onImportFile={onImportFile} onImportText={onImportText} />}
       {target === "milo" && <Mill key={`${generation}-${bomRevision}`} workspace={workspace} onChange={onChange} onImportFile={onImportFile} onImportText={onImportText} />}
+      {(creatingAssembly || assembly) && <LinearAssemblyBench key={openedProject}
+        workspace={workspace} assembly={assembly} onSave={onSaveAssembly} />}
     </Suspense>}
     <div hidden={target !== "wiring"}>
       <TwinSimulation key={`${generation}-${wiringRevision}`} workspace={workspace} onChange={onChange} />

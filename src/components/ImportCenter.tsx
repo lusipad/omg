@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import MaterialDetails, { MaterialIntake, type MaterialIntakeProps } from "./ImportCenterMaterials";
 
 const acceptedSuffixes = WORKBENCH_FILE_ACCEPT.split(",").filter((entry) => entry.startsWith("."));
-type System = "so101" | "milo" | "servo" | "wiring";
+type System = "so101" | "milo" | "servo" | "wiring" | `assembly:${string}`;
 type Props = MaterialIntakeProps & {
   workspace: TwinWorkspace;
   onChange: (next: TwinWorkspace) => void;
@@ -115,6 +115,10 @@ type Resource = { id: string; category: string; name: string; detail: string; se
 function projectResources(workspace: TwinWorkspace) {
   const rows: Resource[] = [];
   const { so101, milo, servoAxis } = workspace;
+  for (const assembly of workspace.assemblies ?? []) {
+    rows.push({ id: `assembly:${assembly.id}`, kind: "system", system: `assembly:${assembly.id}`, section: "system",
+      category: "直线轴装配", name: assembly.name, detail: `${assembly.modules.length} 种轴模块 · ${assembly.axes.length} 根轴`, action: "打开装配" });
+  }
   if (so101) rows.push({ id: "system:so101", kind: "system", system: "so101", section: "material",
     category: "BOM", name: "SO-101 Follower 采购清单", detail: `${so101.bom.length} 行物料 · ${so101.waypoints.length} 个动作关键帧`, action: "打开 SO-101" });
   if (milo?.bom) rows.push({ id: "milo:bom", kind: "system", system: "milo", section: "material",
@@ -134,7 +138,9 @@ function projectResources(workspace: TwinWorkspace) {
     detail: `${model.entry} · ${model.id.slice(0, 10)}`, model });
   for (const row of workspace.catalog?.materials ?? []) rows.push({ kind: "material", section: "material", id: "material:" + row.id,
     category: row.id.startsWith("doc-") ? "设备手册" : row.id.startsWith("bom-") ? "BOM 物料" : "资料记录", name: row.name,
-    detail: [`${row.quantity}${row.unit ? " " + row.unit : ""}`, row.manufacturer, row.model, row.binding ? "已绑定模型" : "待建模"].filter(Boolean).join(" · "), row });
+    detail: [`${row.quantity}${row.unit ? " " + row.unit : ""}`, row.manufacturer, row.model,
+      row.leadMmPerRev !== undefined && `导程 ${row.leadMmPerRev} mm/rev`,
+      row.binding ? "已绑定模型" : row.leadMmPerRev === undefined && "待建模"].filter(Boolean).join(" · "), row });
   return rows;
 }
 

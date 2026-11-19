@@ -3,6 +3,7 @@ import { assembleServoAxis, servoAxisConfigSchema, type ServoAxisConfig } from "
 import { parseSo101Assembly, type So101Assembly } from "./so101";
 import { parseMiloWorkspace, type MiloWorkspaceState } from "./milo-workspace";
 import { parseImportCatalog, type ImportCatalog } from "./import-catalog";
+import { linearAssemblyListSchema, type LinearAssembly } from "./linear-assembly";
 import { packageKey, parseDevicePackage, readTwinData, signalIdSchema, type DevicePackage, type SignalPort } from "./twin-device";
 
 export type SignalValue = number | boolean;
@@ -22,6 +23,7 @@ const workspaceSchema = z.strictObject({
   so101: z.unknown().optional(),
   milo: z.unknown().optional(),
   catalog: z.unknown().optional(),
+  assemblies: linearAssemblyListSchema.optional(),
 });
 
 export type TwinInstance = z.infer<typeof instanceSchema>;
@@ -35,6 +37,7 @@ export interface TwinWorkspace {
   so101?: So101Assembly;
   milo?: MiloWorkspaceState;
   catalog?: ImportCatalog;
+  assemblies?: LinearAssembly[];
 }
 export interface SimulationState {
   timeMs: number;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMaterialTable, createDocumentMaterial, matchMaterials } from "../contracts/material-import";
+import { parseMaterialTable, parseMarkdownMaterialTable, createDocumentMaterial, matchMaterials } from "../contracts/material-import";
 import { packageKey, type DevicePackage } from "../contracts/twin-device";
 import { emptyWorkspace } from "../contracts/twin-simulation";
 import { parseImportCatalog } from "../contracts/import-catalog";
@@ -86,5 +86,52 @@ describe("通用物料资产绑定", () => {
   it("同一标识的内容不一致时不继承旧行绑定或覆盖原资料", () => {
     const ws = { ...emptyWorkspace(), catalog: { materials: [row], models: [] } };
     expect(() => matchMaterials([{ ...row, quantity: 999 }], ws)).toThrow(/标识.*不同/);
+  });
+});
+
+describe("丝杠导程", () => {
+  it("兼容旧物料与手册标识，导程空格与省略整列等价", () => {
+    const header = "名称,数量,单位,厂家,型号,备注";
+    const line = "滚珠丝杠,2,根,AC,P42,图 7";
+    const legacy = parseMaterialTable([header, line, line].join("\n"), "手册 A");
+    expect(legacy.map(row => row.id)).toEqual(["bom-0ad4ebb768b27318fc46525854085a7a", "bom-0ad4ebb768b27318fc46525854085a7a-2"]);
+    expect(parseMaterialTable([header + ",导程(mm/rev)", line + ", ", line + ","].join("\n"), "手册 A")).toEqual(legacy);
+    expect(legacy[0]).not.toHaveProperty("leadMmPerRev");
+    expect(createDocumentMaterial("实验手册", "  始末\r\n", "架 A").id).toBe("doc-f21e5356a5dbe422d7fe7367c49de6ce");
+  });
+
+  it("CSV、TSV 与 Markdown 中带单位的别名解析为同一个数字及物料标识", () => {
+    const [csv] = parseMaterialTable("名称,数量,导程(mm/rev)\n丝杠,1,2.50");
+    const [tsv] = parseMaterialTable("Part\tQty\tleadMmPerRev\n丝杠\t1\t2.5");
+    const md = parseMarkdownMaterialTable("| 名称 | 数量 | 丝杠导程（mm/rev） |\n|---|---|---|\n|丝杠|1|2.5|");
+    expect(csv).toHaveProperty("leadMmPerRev", 2.5);
+    expect(tsv).toEqual(csv);
+    expect(md).toEqual([csv]);
+    expect(csv).not.toHaveProperty("notes");
+    expect(parseMaterialTable("名称,数量,导程(mm/rev)\n丝杠,1,4")[0].id).not.toBe(csv.id);
+    expect(parseMaterialTable("名称,数量\n丝杠,1")[0].id).not.toBe(csv.id);
+  });
+
+  it("名称、备注及未注明单位的列保持原文", () => {
+    const [row] = parseMaterialTable("名称,数量,导程,备注\n丝杠 8 mm/rev,1,8,样本另列 5 mm/rev");
+    expect(row).not.toHaveProperty("leadMmPerRev");
+    expect(row.notes).toBe("样本另列 5 mm/rev\n导程：8");
+  });
+
+  it.each(["0", "-1", "Infinity", "NaN", "0x10", "5 mm", "1e999"])("导程 %s 报告物料行与单位", value => {
+    expect(() => parseMaterialTable("\n名称,数量,leadMmPerRev\n丝杠,1," + value)).toThrow(/第 3 行.*导程.*mm\/rev/i);
+  });
+
+  it("两列导程别名不能共同决定一个值", () => {
+    expect(() => parseMaterialTable("名称,数量,leadMmPerRev,丝杠导程(mm/rev)\n丝杠,1,2,3")).toThrow(/第 1 行.*导程.*重复/);
+  });
+
+  it("重导沿用显式绑定，强行沿用旧 ID 却改写导程时报冲突", () => {
+    const text = "名称,数量,导程(mm/rev)\n丝杠,1,2.5";
+    const [row] = parseMaterialTable(text);
+    const binding = { kind: "device" as const, key: packageKey(pkg) };
+    const ws = { ...emptyWorkspace(), packages: [pkg], catalog: { models: [], materials: [{ ...row, binding }] } };
+    expect(matchMaterials(parseMaterialTable(text), ws)[0].binding).toEqual(binding);
+    expect(() => matchMaterials([{ ...row, leadMmPerRev: 5 }], ws)).toThrow(/标识.*不同/);
   });
 });

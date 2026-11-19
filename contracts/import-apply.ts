@@ -35,7 +35,7 @@ export function mergeImportedMaterials(workspace: TwinWorkspace, rows: MaterialR
       // 同批重复的 ID 使用与已保存资料相同的内容冲突检查。
       matchMaterials([row], { ...workspace, catalog: { models: catalog.models, materials: [old] } });
     }
-    if (!old || (!old.binding && row.binding)) merged.set(row.id, row);
+    if (!old || (!old.binding && row.binding) || (old.leadMmPerRev === undefined && row.leadMmPerRev !== undefined)) merged.set(row.id, row);
     batchIds.add(row.id);
   }
   const next = parseImportCatalog({ ...catalog, materials: [...merged.values()] }, workspace.packages);

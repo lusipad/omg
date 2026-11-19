@@ -8,6 +8,8 @@
 | [装配与仿真](https://lusipad.com/omg/?view=workbench) | 选择当前工程对象，组装、接线、运行并查看曲线与三维结果。 |
 | [示例库](https://lusipad.com/omg/?view=examples) | 集中试用信号接线、伺服、弹簧滑台、机床和机器人。在运行台点 **加入当前工程** 才会保存示例。 |
 
+在 **装配与仿真 → 新建装配** 可用自己的 BOM、驱动器和电机设备包搭直驱丝杠机构。同一轴模块可以沿不同安装方向多次使用，输入各轴的目标位移即可观察位置、速度及三维末端轨迹。[用双轴定位台逐步验证](docs/直线轴装配.md)
+
 例如，可以在 Milo 上分三层铣出 Ø30 × 3 mm 的平底槽，或用 UR5e、2F-85 夹爪及独立方块组装取放工位。试用中可调整程序或工况。[Milo 圆槽](https://lusipad.com/omg/?view=workbench&example=milo-v1-5) · [UR5e 取放工位](https://lusipad.com/omg/?view=workbench&example=ur5e-pick-place) · [下载圆槽 G 代码](public/machines/milo-v1-5/circular-pocket.nc)
 
 公开站点在浏览器内运行模型。轻量工程可导出 JSON，包含用户物理模型的工程可导出带原始资源的 ZIP。客户项目、数据库、官网资料提取、PDF 转换和在线 AI 生成使用下文的完整服务部署。`npm run build:pages` 生成 `dist/pages`，推送到 `main` 后 GitHub Actions 会构建并发布这个目录。[导入格式与操作步骤](docs/通用模型与资料导入.md)

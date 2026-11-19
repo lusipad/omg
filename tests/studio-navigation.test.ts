@@ -13,6 +13,20 @@ describe("工作台路由", () => {
     expect(readStudioRoute("?view=workbench")).toEqual({ view: "workbench" });
     expect(readStudioRoute("?view=examples")).toEqual({ view: "examples" });
   });
+  it("可新建装配或按工程中的装配 ID 打开，不依赖机型目录", () => {
+    const definition = { schemaVersion: 1, kind: "linear-axis-assembly", id: "unlisted-feed", name: "用户送料机构",
+      modules: [{ id: "transmission", drive: "驱动", motor: "电机", screw: "丝杠", leadMmPerRev: 5, loadInertiaRatio: 1 }],
+      axes: [{ id: "feed", module: "transmission", direction: [0, 1, 0], targetMm: 10 }] };
+    const project = parseWorkspace({ ...emptyWorkspace(), assemblies: [definition] });
+    const target = { id: "assembly:unlisted-feed", name: "用户送料机构" };
+    expect(getWorkbenchTargets(project)).toEqual([target]);
+    expect(getStudioExample(definition.id)).toBeUndefined();
+    for (const id of ["assembly-new", target.id]) {
+      expect(readStudioRoute(new URLSearchParams({ view: "workbench", target: id }))).toEqual({ view: "workbench", target: id });
+    }
+    expect(readStudioRoute("?view=workbench&target=assembly:")).toEqual({ view: "workbench", unavailableTarget: "assembly:" });
+    expect(readStudioRoute("?view=workbench&target=assembly:constructor")).toEqual({ view: "workbench", unavailableTarget: "assembly:constructor" });
+  });
   it.each(["device", "material", "physics", "system", "author"] as const)("资源筛选 %s 可往返规范地址", (section) => {
     const route = { view: "resources", section } as const;
     expect(studioHref(route)).toBe(`?view=resources&section=${section}`);

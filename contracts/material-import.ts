@@ -6,6 +6,7 @@ type Fields = Omit<MaterialRow, "id" | "binding">;
 const aliases = {
   name: ["名称", "物料", "物料名称", "零件名称", "零件", "部件名称", "部件", "设备名称", "品名", "name", "part", "partname", "item", "itemname", "component", "componentname"],
   quantity: ["数量", "用量", "采购数量", "需求数量", "quantity", "qty", "amount"],
+  leadMmPerRev: ["导程(mm/rev)", "丝杠导程(mm/rev)", "leadmmperrev"],
   unit: ["单位", "计量单位", "unit", "uom"],
   manufacturer: ["制造商", "厂商", "厂家", "生产商", "制造厂家", "manufacturer", "maker", "mfr"],
   model: ["型号", "设备型号", "规格型号", "订货号", "料号", "模型资产id", "model", "modelnumber", "sku", "partnumber", "physicsmodelid"],
@@ -15,9 +16,14 @@ const aliases = {
 const normalizeHeader = (value: string) => value.normalize("NFKC").trim().toLowerCase().replace(/[\s_-]/g, "");
 const headerKeys = new Map(Object.entries(aliases).flatMap(([key, labels]) => labels.map(word => [word, key as keyof Fields] as const)));
 const limits = { name: 300, unit: 80, manufacturer: 240, model: 240, source: 2048, notes: 80_000 };
+// 旧版本把带单位的导程列存进备注。只用本次原表重建旧身份，工程记录不保存这份凭据。
+const previousLeadRow = new WeakMap<MaterialRow, () => MaterialRow | undefined>();
 
 function signature(fields: Fields): string {
-  return JSON.stringify([fields.name, fields.quantity, fields.unit, fields.manufacturer, fields.model, fields.source, fields.notes]);
+  const values = [fields.name, fields.quantity, fields.unit, fields.manufacturer, fields.model, fields.source, fields.notes];
+  // 保留旧物料的签名，以便重导时找到已有绑定。
+  if (fields.leadMmPerRev !== undefined) values.push(fields.leadMmPerRev);
+  return JSON.stringify(values);
 }
 
 function identify(fields: Fields, kind: "doc" | "bom"): MaterialRow {
@@ -177,6 +183,29 @@ function materialRows(header: TableRecord, records: TableRecord[], defaultSource
     seen.add(field);
   });
   if (!records.length) throw new Error("物料表只有表头，请添加至少一行物料。");
+  const read = (columns: typeof keys) => readMaterialRecords(records, names, columns, defaultSource, markdown);
+  const rows = read(keys);
+  const leadColumn = keys.indexOf("leadMmPerRev");
+  if (leadColumn >= 0) {
+    const oldKeys = [...keys];
+    oldKeys[leadColumn] = undefined;
+    let previous: MaterialRow[] | undefined;
+    rows.forEach((row, index) => {
+      if (row.leadMmPerRev === undefined) return;
+      const imported = signature(row);
+      previousLeadRow.set(row, () => {
+        if (signature(row) !== imported) return;
+        if (!previous) {
+          try { previous = read(oldKeys); } catch { previous = []; } // 例如旧备注超长，原表无法在旧版入库。
+        }
+        return previous[index];
+      });
+    });
+  }
+  return rows;
+}
+
+function readMaterialRecords(records: TableRecord[], names: string[], keys: (keyof Fields | undefined)[], defaultSource: string | undefined, markdown: boolean): MaterialRow[] {
   const occurrences = new Map<string, number>();
   return records.map(({ line, cells }) => {
     if (cells.length !== names.length) throw new Error(`第 ${line} 行有 ${cells.length} 列，表头有 ${names.length} 列。${markdown ? "格内的竖线请写作 \\|。" : "含分隔符的字段请用双引号包住。"}`);
@@ -192,12 +221,14 @@ function materialRows(header: TableRecord, records: TableRecord[], defaultSource
         else if (link) { value = link[1]; nameLink = link[2]; }
       }
       if (key === "name") fields.name = value;
-      else if (key === "quantity") {
-        const quantity = Number(value);
-        if (!/^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value) || !Number.isFinite(quantity) || quantity <= 0) {
-          throw new Error(`第 ${line} 行数量必须是正有限数，计量单位请填写在单位列。`);
+      else if (key === "quantity" || key === "leadMmPerRev") {
+        if (key === "leadMmPerRev" && !value) return;
+        const numeric = Number(value);
+        if (!/^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value) || !Number.isFinite(numeric) || numeric <= 0) {
+          const message = key === "quantity" ? "数量必须是正有限数，计量单位请填写在单位列。" : "导程必须是正有限数，单位为 mm/rev。";
+          throw new Error(`第 ${line} 行${message}`);
         }
-        fields.quantity = quantity;
+        fields[key] = numeric;
       } else if (value && key) fields[key] = key === "notes" ? cell : value;
       else if (value) extra.push(`${names[index]}：${cell}`);
     });
@@ -221,7 +252,15 @@ export function matchMaterials(rows: MaterialRow[], workspace: TwinWorkspace): M
     const { binding, ...fields } = row;
     const old = saved.get(row.id);
     if (old && signature(old) !== signature(row)) throw new Error(`物料“${row.name}”与已有记录标识相同、内容不同，请核对来源。`);
-    const chosen = binding ?? old?.binding;
+    let chosen = binding ?? old?.binding;
+    if (!old && saved.size) {
+      const previous = previousLeadRow.get(row)?.();
+      const archived = previous && saved.get(previous.id);
+      if (archived && (signature(archived) === signature(previous) || signature(archived) === signature(row))) {
+        fields.id = archived.id;
+        chosen = archived.binding ?? binding;
+      }
+    }
     if (chosen) return (chosen.kind === "physics" ? models : devices).has(chosen.key) ? { ...fields, binding: chosen } : fields;
     if (!row.model) return fields;
     const candidates = workspace.packages.filter(pkg => pkg.model === row.model && (!row.manufacturer || pkg.manufacturer === row.manufacturer));

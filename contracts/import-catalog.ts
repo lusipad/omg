@@ -40,6 +40,7 @@ const bindingSchema = z.discriminatedUnion("kind", [
 const materialSchema = z.strictObject({
   id: text(128), name: text(300), quantity: z.number().finite().positive(),
   unit: text(80).optional(), manufacturer: text(240).optional(), model: text(240).optional(),
+  leadMmPerRev: z.number().finite().positive().optional(),
   source: text(2048).optional(), notes: z.string().max(80_000).refine(value => value.trim().length > 0, "资料不能为空").optional(),
   binding: bindingSchema.optional(),
 });

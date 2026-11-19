@@ -1,0 +1,5 @@
+物料名称,数量,单位,制造商,型号,导程(mm/rev),来源,备注
+轴驱动器,2,台,汇川技术,SV660NS2R8I-FS-INT,,https://www.inovance.eu/fileadmin/downloads/Brochures/EN/SV660N_FIyer_Spreads_Web_EN_v0.6.pdf,每根轴使用一台
+轴电机,2,台,汇川技术,MS1H1-40B30CB-A331R-INT,,https://www.inovance.eu/fileadmin/downloads/Brochures/EN/SV660N_FIyer_Spreads_Web_EN_v0.6.pdf,每根轴使用一台
+5 mm 导程丝杠,2,根,,,5,本例装配记录 A,直驱丝杠
+10 mm 导程丝杠,2,根,,,10,本例装配记录 B,用于比较的备用丝杠

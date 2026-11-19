@@ -26,6 +26,14 @@ describe("导入中心的工程契约", () => {
       { models: [], materials: [{ ...row, quantity: 0 }] },
     ]) expect(() => parseImportCatalog(bad, [])).toThrow();
   });
+  it("保存和恢复物料的可选导程，并拒绝非正、非有限或字符串导程", () => {
+    const catalog = { models: [], materials: [{ ...row, leadMmPerRev: 1.25 }] };
+    expect(parseImportCatalog(catalog, [])).toEqual(catalog);
+    expect(parseWorkspace({ ...emptyWorkspace(), catalog }).catalog).toEqual(catalog);
+    for (const invalid of [0, -2, Infinity, NaN, "1.25"]) {
+      expect(() => parseImportCatalog({ models: [], materials: [{ ...row, leadMmPerRev: invalid }] }, [])).toThrow();
+    }
+  });
   it("保存每个模型自己的运行时长、控制值和观测点", () => {
     const run = { durationS: 0.6, controls: [-2], pointId: "site:0" };
     const saved = { models: [{ ...model, run }], materials: [] };

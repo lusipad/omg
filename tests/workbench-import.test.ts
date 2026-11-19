@@ -15,6 +15,26 @@ const pkg = generateDevicePackage(inovanceSource);
 const project = { ...emptyWorkspace(), packages: [pkg] };
 
 describe("文本导入的格式和诊断", () => {
+  it("装配类型标记优先于文件名、工程形状和 AI 待补资料", () => {
+    const marked = JSON.stringify({ kind: "linear-axis-assembly", schemaVersion: 1, packages: [], instances: [], missing: ["电流"] });
+    expect(() => parseImportText(marked, "workspace.json")).toThrow(/装配/);
+    expect(() => parseImportText("~~~json\n" + marked + "\n~~~", "粘贴内容")).toThrow(/装配/);
+    expect(() => parseImportText(marked, "asset.json")).not.toThrow(/额定电流|请补充资料/);
+  });
+
+  it("自定义标识及待补 BOM 的定义可独立导入，也可随完整工程读取", () => {
+    const assembly = {
+      kind: "linear-axis-assembly", schemaVersion: 1, id: "fixture-axis", name: "相机升降",
+      modules: [{ id: "camera-slide", drive: "待配驱动", motor: "待配电机", screw: "", leadMmPerRev: null, loadInertiaRatio: 1 }],
+      axes: [{ id: "Height", module: "camera-slide", direction: [0, 0, 1], targetMm: 3 }],
+    };
+    const text = JSON.stringify(assembly), expected = { kind: "assembly", assembly };
+    expect(parseImportText(text, "workspace.json")).toEqual(expected);
+    expect(parseImportText("~~~json\n" + text + "\n~~~", "装配说明.md", { hint: "manual" })).toEqual(expected);
+    expect(parseImportText("这里是搭建说明。\n~~~json\n" + text + "\n~~~", "手册.md").kind).toBe("manual");
+    const workspace = { ...emptyWorkspace(), assemblies: [assembly] };
+    expect(parseImportText(JSON.stringify(workspace), "workspace.json")).toEqual({ kind: "project", workspace });
+  });
   it("带 UTF-8 BOM 的文件与无名粘贴可使用同一 JSON 或 Markdown 围栏", () => {
     const json = JSON.stringify(pkg);
     const encoded = new TextEncoder().encode("\uFEFF" + json);

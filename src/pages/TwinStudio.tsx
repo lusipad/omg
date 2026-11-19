@@ -7,6 +7,7 @@ import { MAX_PROJECT_JSON_BYTES, parseImportCatalog, type MaterialRow } from "@c
 import { matchMaterials } from "@contracts/material-import";
 import { applyMiloBomImport, applySo101BomImport, importedServoPair, mergeImportedMaterials } from "@contracts/import-apply";
 import { initialMiloWorkspace } from "@contracts/milo-workspace";
+import { upsertLinearAssembly, type LinearAssembly } from "@contracts/linear-assembly";
 import { deviceSourceFromMaterial, type DeviceSourceInput } from "@contracts/twin-extract";
 import { getWorkbenchTargets, readStudioRoute, studioHref, type StudioRoute, type StudioTarget } from "@contracts/studio-navigation";
 import { addInstance, emptyWorkspace, installPackage, nextInstanceName, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
@@ -57,6 +58,7 @@ export default function TwinStudio() {
     route.view === "workbench" && route.target !== "incoming" ? route.target : undefined);
   const [selection, setSelection] = useState<{ driveKey?: string; motorKey?: string; version: number }>({ version: 0 });
   const [generation, setGeneration] = useState(0);
+  const [openedProject, setOpenedProject] = useState(0);
   const [sourceDraft, setSourceDraft] = useState<{ value: Partial<DeviceSourceInput>; key: number }>();
   const [incomingSource, setIncomingSource] = useState<DeviceDraftPatch>();
   const sourceToken = useRef(0);
@@ -68,6 +70,10 @@ export default function TwinStudio() {
   const { workspace } = session;
   const targets = useMemo(() => getWorkbenchTargets(workspace), [workspace]);
   const remembered = targets.find(item => item.id === lastTarget)?.id;
+  const workbenchTarget = route.view === "workbench" && route.exampleId === undefined && route.unavailableTarget === undefined
+    ? route.target ?? remembered ?? targets[0]?.id : undefined;
+  const editingAssembly = workbenchTarget === "assembly-new" ||
+    (workbenchTarget?.startsWith("assembly:") && targets.some(item => item.id === workbenchTarget));
   const intake = useWorkbenchImport((model, onInstalled) => {
     setIncomingModel({ selection: model, token: ++modelToken.current, onInstalled });
     go({ view: "workbench", target: "incoming" });
@@ -124,7 +130,7 @@ export default function TwinStudio() {
       next = { ...next, catalog: parseImportCatalog(catalog, next.packages) };
     }
     const raw = JSON.stringify(next);
-    if (next.catalog && new TextEncoder().encode(raw).byteLength > MAX_PROJECT_JSON_BYTES) {
+    if ((next.catalog || next.assemblies?.length) && new TextEncoder().encode(raw).byteLength > MAX_PROJECT_JSON_BYTES) {
       throw new Error("工程文字资料超过 8 MiB，请将本次清单拆分到单独工程。");
     }
     let current: string | null;
@@ -163,7 +169,7 @@ export default function TwinStudio() {
   }
 
   function confirmOpen(label: string) {
-    const occupied = workspace.packages.length || workspace.so101 || workspace.milo || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
+    const occupied = workspace.packages.length || workspace.so101 || workspace.milo || workspace.assemblies?.length || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
     return !occupied || window.confirm(`用“${label}”替换当前本机工程？如需保留当前工程，请先取消并导出备份。`);
   }
 
@@ -172,9 +178,12 @@ export default function TwinStudio() {
     setSourceDraft(undefined);
     setIncomingSource(undefined);
     setGeneration((value) => value + 1);
+    setOpenedProject((value) => value + 1);
     setSelection({ version: 0 });
     setLastTarget(undefined); setShowPairSource(false);
-    if (next.milo) go({ view: "workbench", target: "milo" }, message);
+    if (next.assemblies?.length === 1) go({ view: "workbench", target: `assembly:${next.assemblies[0].id}` }, message);
+    else if (next.assemblies?.length) go({ view: "resources", section: "system" }, message);
+    else if (next.milo) go({ view: "workbench", target: "milo" }, message);
     else if (next.catalog?.models.length || next.catalog?.materials.length) go({ view: "resources" }, message);
     else if (next.so101) go({ view: "workbench", target: "so101" }, message);
     else if (next.servoAxis) go({ view: "workbench", target: "servo" }, message);
@@ -217,14 +226,21 @@ export default function TwinStudio() {
         case "device":
           persist(installPackage(workspace, item.device));
           setNotice(`已安装 ${item.device.model}。`);
+          if (editingAssembly) cancelImport();
           break;
         case "devices": {
           const pair = importedServoPair(item.devices);
-          if (pair) { installServoPair(pair.drive, pair.motor); break; }
+          if (pair && !editingAssembly) { installServoPair(pair.drive, pair.motor); break; }
           persist(item.devices.reduce(installPackage, workspace));
-          go({ view: "resources", section: "device" }, `已核对并安装 ${item.devices.length} 个设备修订。`);
+          const message = `已核对并安装 ${item.devices.length} 个设备修订。`;
+          if (editingAssembly) setNotice(message);
+          else go({ view: "resources", section: "device" }, message);
           break;
         }
+        case "assembly":
+          persist(upsertLinearAssembly(workspace, item.assembly));
+          go({ view: "workbench", target: `assembly:${item.assembly.id}` }, `已导入装配“${item.assembly.name}”。`);
+          break;
         case "milo-bom":
           persist(applyMiloBomImport(workspace, item.bom, item.source || item.name));
           setBomRevision(v => v + 1);
@@ -251,7 +267,9 @@ export default function TwinStudio() {
           const next = mergeImportedMaterials(workspace, rows);
           const added = (next.catalog?.materials.length ?? 0) - (workspace.catalog?.materials.length ?? 0);
           persist(next);
-          go({ view: "resources", section: "material" }, `已核对 ${rows.length} 条资料，新增 ${added} 条。`);
+          const message = `已核对 ${rows.length} 条资料，新增 ${added} 条。`;
+          if (editingAssembly && item.kind === "materials") setNotice(message);
+          else go({ view: "resources", section: "material" }, message);
           break;
         }
         case "source-link":
@@ -304,6 +322,11 @@ export default function TwinStudio() {
     save(next);
     if (target === "servo") setSelection(previous => ({ version: previous.version + 1 }));
     go({ view: "workbench", target }, `已将“${name}”加入当前工程。`);
+  }
+
+  function saveAssembly(assembly: LinearAssembly) {
+    save(upsertLinearAssembly(workspace, assembly));
+    go({ view: "workbench", target: `assembly:${assembly.id}` }, "", target === "assembly-new");
   }
 
   return (
@@ -383,9 +406,10 @@ export default function TwinStudio() {
             {showPairSource && <div id="servo-sources" className="border-t p-4"><ServoPairImport onInstall={installServoPair} /></div>}
           </section>}
         </section>
-        <StudioRunArea route={route.view === "workbench" ? route : null} workspace={workspace} generation={generation}
-          bomRevision={bomRevision} servoChoice={selection} targets={targets} lastTarget={remembered} incoming={incomingModel}
-          onChange={save} onNavigate={go} onApplyExample={applyExample} onImportFile={importFile} onImportText={importText} />
+        <StudioRunArea route={route.view === "workbench" ? route : null} workspace={workspace} generation={generation} openedProject={openedProject}
+          bomRevision={bomRevision} servoChoice={selection} targets={targets} target={workbenchTarget} incoming={incomingModel}
+          onChange={save} onSaveAssembly={saveAssembly} onNavigate={go}
+          onApplyExample={applyExample} onImportFile={importFile} onImportText={importText} />
         {route.view === "examples" && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开示例库…</p>}>
           <StudioExamples />
         </Suspense>}
