@@ -1,4 +1,5 @@
 import { parseDevicePackage, type DevicePackage } from "./twin-device";
+import type { MaterialRow } from "./import-catalog";
 
 export interface DeviceSourceInput {
   manufacturer: string;
@@ -56,6 +57,21 @@ export const inovanceSource: DeviceSourceInput = {
     "共 16 路数字输入。电压超过 15 V 接通，低于 5 V 关断，滤波时间为 10 ms。",
   ].join("\n"),
 };
+
+export function deviceSourceFromMaterial(row: MaterialRow, filename?: string): DeviceSourceInput {
+  const text = row.notes ?? "";
+  const knownGuide = /\bGL10-1600END\b/i.test(text) && /19011103A03/i.test(text) && /inovance|汇川/i.test(text);
+  const metadata = knownGuide ? inovanceSource : suggestSourceMetadata(text);
+  const origin = row.source?.trim() || "";
+  const url = /^https?:\/\//i.test(origin) ? origin : "";
+  const defaultTitle = filename?.replace(/\.[^./\\]+$/, "").trim();
+  return {
+    manufacturer: row.manufacturer ?? metadata.manufacturer ?? "", model: row.model ?? metadata.model ?? "",
+    revision: metadata.revision ?? "", text,
+    title: knownGuide && row.name === defaultTitle ? inovanceSource.title : row.name,
+    url: url || (knownGuide ? inovanceSource.url : ""), locator: (!url && origin) || metadata.locator || "",
+  };
+}
 
 const separator = /[\s:：|]*(?:(?:为|是|应为?)\s*)?/.source;
 const number = /(?<value>[+-]?(?:\d+(?:\.\d+)?|\.\d+))/.source;

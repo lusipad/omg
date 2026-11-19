@@ -2,9 +2,8 @@ import { execFile } from "node:child_process";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { readLimitedBytes } from "./lib/read-limited-bytes";
+import { canReadOfficialSource, MAX_SOURCE_DOCUMENT_BYTES } from "../contracts/twin-source-url";
 
-const officialHosts = new Set(["portal-file.inovance.com", "www.inovance.com", "www.inovance.eu"]);
-const maxDocumentBytes = 8 * 1024 * 1024;
 const maxTextBytes = 1024 * 1024;
 const maxUrlBytes = 8192;
 
@@ -18,14 +17,14 @@ function officialUrl(value: unknown, base?: URL): URL {
   } catch {
     throw new HTTPException(400, { message: "资料链接格式有误，请复制完整网址。" });
   }
-  if (url.protocol !== "https:" || !officialHosts.has(url.hostname) || url.port || url.username || url.password) {
+  if (!canReadOfficialSource(url)) {
     throw new HTTPException(400, { message: "在线读取仅支持汇川官方资料站；其他来源可上传 PDF 或粘贴规格原文。" });
   }
   return url;
 }
 
 function documentBytes(message: Request | Response): Promise<Buffer> {
-  return readLimitedBytes(message, maxDocumentBytes, new HTTPException(413, {
+  return readLimitedBytes(message, MAX_SOURCE_DOCUMENT_BYTES, new HTTPException(413, {
     message: "资料超过 8 MiB，请选择规格页或粘贴所需段落。",
   }));
 }

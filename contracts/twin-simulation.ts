@@ -46,6 +46,13 @@ export function emptyWorkspace(): TwinWorkspace {
   return { schemaVersion: 1, packages: [], instances: [], connections: [] };
 }
 
+/** 导入路由只认工程结构的身份，缺项与类型错误由 parseWorkspace 给出诊断。 */
+export function hasWorkspaceShape(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const coreKeys = ["packages", "instances", "connections"].filter((key) => Object.hasOwn(value, key)).length;
+  return coreKeys >= 2 || (coreKeys === 1 && Object.hasOwn(value, "schemaVersion"));
+}
+
 function checkInput(port: SignalPort | undefined, id: string, value: SignalValue) {
   if (port?.direction !== "input") throw new Error(`找不到输入端口 ${id}`);
   if (typeof value !== port.type || (typeof value === "number" && !Number.isFinite(value))) {

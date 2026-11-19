@@ -1,6 +1,6 @@
 # Milo v1.5 三轴铣床
 
-1. 打开 [Milo v1.5 工作台](https://lusipad.com/omg/?view=milo)，载入官方 BOM。也可以下载原版 `sourcing_guide.md`，在工作台或 **导入中心 → BOM 与手册** 中选择文件。GitHub 原文件暂时无法访问时，可以使用站内已核对的物料表。[官方采购指南](https://millenniummachines.github.io/docs/milo_1.5/bom/sourcing_guide/) · [固定版本原文件](https://raw.githubusercontent.com/MillenniumMachines/millenniummachines.github.io/2aaa0c55e6bc176e42592bdb27051e428413f516/docs/milo_1.5/bom/sourcing_guide.md)
+1. 打开 [Milo v1.5 工作台](https://lusipad.com/omg/?view=milo)，载入官方 BOM。也可以在导入中心粘贴官方采购指南链接，或在任一导入文件入口选择原版 `sourcing_guide.md`，核对后点 **导入 Milo BOM**。GitHub 原文件暂时无法访问时，可以使用站内已核对的物料表。[官方采购指南](https://millenniummachines.github.io/docs/milo_1.5/bom/sourcing_guide/) · [固定版本原文件](https://raw.githubusercontent.com/MillenniumMachines/millenniummachines.github.io/2aaa0c55e6bc176e42592bdb27051e428413f516/docs/milo_1.5/bom/sourcing_guide.md)
 2. 分别装配 X、Y、Z 三根轴。每次装配都核对当前库存。比如把 NEMA 23 的数量从 3 改为 2，前两根轴会用完两台电机，第三根会显示缺料。可以卸下一根轴把电机改配给另一轴，也可以补齐数量后重新导入。完整清单保留七组共 81 条记录，包括接线、紧固件和可选配置的原始数量。[部件分配和来源](../public/machines/milo-v1-5/SOURCE.md)
 3. 三根轴就绪后，运行示例或自己的 G 代码。回放默认打开**三维视图**。在画布上拖动可绕工件旋转，滚轮缩放，右键拖动平移。触屏用单指旋转，双指缩放和平移。可边播放边观察，也可暂停在某一层再转到侧面查看槽底。
 4. 通过 **工程文件 → 导出工程 JSON** 保存清单、已装轴和程序草稿。在另一台电脑导入工程文件后可以重新运行。工程中另外安装了物理模型时，使用同一菜单导出的完整 ZIP。

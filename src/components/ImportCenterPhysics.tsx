@@ -1,21 +1,22 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { Box, Check, Download, FileUp, FolderOpen, Play } from "lucide-react";
-import { parseImportCatalog, type ModelBundle, type ModelFile, type ModelRef } from "@contracts/import-catalog";
+import { Box, Check, Download, Play } from "lucide-react";
+import { parseImportCatalog, type ModelBundle, type ModelRef } from "@contracts/import-catalog";
 import type { ImportedRunSettings } from "@contracts/imported-physics";
 import { PICK_PLACE_EXAMPLE, ROBOT_EXAMPLES, type RobotExample } from "@contracts/robot-examples";
 import { makeStaticMeshBundle } from "@contracts/mesh-model";
 import { makeUr5eWorkcellTrial } from "@contracts/ur5e-workcell";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
-import { describeModel, exportModelBundle, getModelBundle, ProjectArchiveFileError, putModelBundle, readModelFiles } from "@/lib/model-files";
+import { describeModel, exportModelBundle, getModelBundle, putModelBundle, readModelFiles, type ModelSelection } from "@/lib/model-files";
 import { downloadFile } from "@/lib/download";
 import { fetchRobotExample } from "@/lib/robot-example-files";
 import { isUr5eWorkcell, loadWorkcellParts } from "@/lib/pick-place-assembly";
+import { useCancelOnNewImport } from "@/hooks/useWorkbenchImport";
+import type { IncomingWorkbenchModel } from "@/lib/workbench-import";
 import { Button } from "@/components/ui/button";
 import RobotExamples from "./RobotExamples";
 import PickPlaceAssembly from "./PickPlaceAssembly";
 
 const ImportedPhysicsWorkbench = lazy(() => import("./ImportedPhysicsWorkbench"));
-type Selection = { files: ModelFile[]; entries: string[] };
 type Candidate = { ref: ModelRef; bundle: ModelBundle; version: number; stored: boolean; example?: RobotExample; workcell?: "assembled" | "imported" };
 type Props = {
   workspace: TwinWorkspace;
@@ -23,7 +24,7 @@ type Props = {
   requested: ModelRef | null;
   robotId: string | null;
   onLocalChoice: () => void;
-  onOpenProject: (file: File) => Promise<void>;
+  incoming?: IncomingWorkbenchModel;
 };
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : "模型操作失败，请重新选择文件。";
 
@@ -33,12 +34,14 @@ function importedWorkcell(ref: ModelRef, bundle: ModelBundle) {
 
 function withModel(current: TwinWorkspace, ref: ModelRef): TwinWorkspace {
   const catalog = current.catalog ?? { models: [], materials: [] };
-  if (catalog.models.some((model) => model.id === ref.id)) return current;
-  return { ...current, catalog: parseImportCatalog({ ...catalog, models: [...catalog.models, ref] }, current.packages) };
+  const existing = catalog.models.find((model) => model.id === ref.id);
+  if (existing && (!ref.run || existing.run === ref.run)) return current;
+  const models = existing ? catalog.models.map((model) => model === existing ? { ...model, run: ref.run } : model) : [...catalog.models, ref];
+  return { ...current, catalog: parseImportCatalog({ ...catalog, models }, current.packages) };
 }
 
-export default function ImportCenterPhysics({ workspace, onChange, requested, onOpenProject, robotId, onLocalChoice }: Props) {
-  const [selection, setSelection] = useState<Selection | null>(null);
+export default function ImportCenterPhysics({ workspace, onChange, requested, incoming, robotId, onLocalChoice }: Props) {
+  const [selection, setSelection] = useState<ModelSelection | null>(null);
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [entry, setEntry] = useState("");
   const [unit, setUnit] = useState<"" | "m" | "cm" | "mm">("");
@@ -47,16 +50,17 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
-  const file = useRef<HTMLInputElement>(null), folder = useRef<HTMLInputElement>(null);
   const preview = useRef<HTMLElement>(null);
   const gallery = useRef<HTMLDivElement>(null);
   const positioned = useRef(0);
   const activeRobot = useRef<string | null>(null);
   const reading = useRef<AbortController | null>(null);
   const version = useRef(0);
+  const importGeneration = useRef(0);
+  const consumedToken = useRef<number | null>(null);
   const lastRun = useRef<{ version: number; settings: ImportedRunSettings } | null>(null);
-  const latest = useRef({ workspace, onChange, onOpenProject });
-  useEffect(() => { latest.current = { workspace, onChange, onOpenProject }; }, [workspace, onChange, onOpenProject]);
+  const latest = useRef({ workspace, onChange });
+  useEffect(() => { latest.current = { workspace, onChange }; }, [workspace, onChange]);
   const models = workspace.catalog?.models ?? [];
   const installed = models.find((model) => model.id === candidate?.ref.id);
   const robot = ROBOT_EXAMPLES.find((example) => example.id === robotId);
@@ -70,6 +74,17 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
     setCandidate(null); setReady(false); setBusy(label); setError(""); setNotice("");
     return ++version.current;
   }, []);
+
+  const discardPreview = useCallback(() => {
+    activeRobot.current = null;
+    start(""); setSelection(null); setEntry(""); setUnit("");
+  }, [start]);
+
+  useCancelOnNewImport(() => {
+    importGeneration.current++;
+    if (incoming) consumedToken.current = incoming.token;
+    discardPreview();
+  });
 
   function localChoice() {
     activeRobot.current = null;
@@ -109,8 +124,24 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
     setCandidate({ ref: { ...ref, name }, bundle, version: request, stored: false, example, workcell });
   }, []);
 
-  const selectFiles = useCallback(async (input: File[] | "sample" | RobotExample) => {
-    const example = input !== "sample" && !Array.isArray(input) ? input : undefined;
+  const acceptSelection = useCallback(async (source: ModelSelection, request: number) => {
+    setSelection(source); setUnit("");
+    if (!source.entries.length) {
+      const meshes = source.files.filter((item) => /\.(stl|obj)$/i.test(item.path));
+      setEntry(meshes.length === 1 ? meshes[0].path : "");
+      return;
+    }
+    let primary = source.entries.length === 1 ? source.entries[0] : undefined;
+    if (!primary) {
+      const roots = source.entries.filter((path) => !path.includes("/"));
+      if (roots.length === 1 && isUr5eWorkcell({ entry: roots[0], files: source.files })) primary = roots[0];
+    }
+    setEntry(primary ?? "");
+    if (primary) await prepare({ entry: primary, files: source.files }, request);
+  }, [prepare]);
+
+  const selectExample = useCallback(async (input: "sample" | RobotExample) => {
+    const example = input === "sample" ? undefined : input;
     const localRef = example && latest.current.workspace.catalog?.models.find((model) => model.id === example.modelId);
     const request = start(localRef ? "正在校验本机模型文件…" : example ? `正在下载并校验 ${example.name}…` : "正在读取模型文件…");
     const controller = new AbortController();
@@ -132,52 +163,32 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
         const response = await fetch(`${import.meta.env.BASE_URL}examples/spring-carriage.xml`, { signal: controller.signal });
         if (!response.ok) throw new Error("未能读取弹簧滑台示例文件，请重试。");
         files = [new File([await response.blob()], "spring-carriage.xml", { type: "application/xml" })];
-      } else if (Array.isArray(input)) files = input;
-      else files = [await fetchRobotExample(input, controller.signal)];
+      } else files = [await fetchRobotExample(input, controller.signal)];
       if (version.current !== request) return;
-      let source: Selection;
-      try { source = await readModelFiles(files); }
-      catch (cause) {
-        if (example || !(cause instanceof ProjectArchiveFileError) || files.length !== 1) throw cause;
-        if (version.current === request) await latest.current.onOpenProject(files[0]);
-        return;
-      }
+      const source = await readModelFiles(files);
       if (version.current !== request) return;
       if (example) {
         if (!source.entries.includes(example.entry)) throw new Error(`模型包中缺少目录指定的入口 ${example.entry}。`);
         setEntry(example.entry); await prepare({ entry: example.entry, files: source.files }, request, example);
         return;
       }
-      setSelection(source);
-      if (!source.entries.length) {
-        const meshes = source.files.filter((item) => /\.(stl|obj)$/i.test(item.path));
-        if (!meshes.length) throw new Error("没有找到 MJCF、URDF 或 STL、OBJ 网格。");
-        if (meshes.length === 1) setEntry(meshes[0].path);
-      } else {
-        let primary = source.entries.length === 1 ? source.entries[0] : undefined;
-        if (!primary) {
-          const roots = source.entries.filter((path) => !path.includes("/"));
-          if (roots.length === 1 && isUr5eWorkcell({ entry: roots[0], files: source.files })) primary = roots[0];
-        }
-        if (primary) {
-          setEntry(primary); await prepare({ entry: primary, files: source.files }, request);
-        }
-      }
+      await acceptSelection(source, request);
     } catch (cause) { if (!controller.signal.aborted && version.current === request) setError(errorText(cause)); }
     finally { if (version.current === request) { setBusy(""); reading.current = null; } }
-  }, [start, prepare]);
+  }, [start, prepare, acceptSelection]);
 
   useEffect(() => {
     let current = true;
+    const generation = importGeneration.current;
     // 延迟到本轮挂载稳定，避免 StrictMode 的探测挂载也下载一份 ZIP。
     queueMicrotask(() => {
-      if (!current) return;
+      if (!current || generation !== importGeneration.current) return;
       if (robotId === null) {
         if (activeRobot.current !== null) { activeRobot.current = null; start(""); setSelection(null); setEntry(""); }
         return;
       }
       activeRobot.current = robotId;
-      if (robot) void selectFiles(robot);
+      if (robot) void selectExample(robot);
       else {
         start(""); setSelection(null); setEntry("");
         if (!recipe) setError("目录中没有这个机器人，请从下方选择。");
@@ -185,7 +196,23 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
       focusPreview();
     });
     return () => { current = false; if (robotId !== null && activeRobot.current === robotId) reading.current?.abort(); };
-  }, [robotId, robot, recipe, attempt, start, selectFiles]);
+  }, [robotId, robot, recipe, attempt, start, selectExample]);
+
+  useEffect(() => {
+    if (!incoming || robotId !== null || requested) return;
+    let current = true;
+    const generation = importGeneration.current;
+    queueMicrotask(async () => {
+      if (!current || generation !== importGeneration.current || consumedToken.current === incoming.token) return;
+      consumedToken.current = incoming.token;
+      activeRobot.current = null;
+      const request = start("正在准备本地模型…");
+      try { await acceptSelection(incoming.selection, request); }
+      catch (cause) { if (version.current === request) setError(errorText(cause)); }
+      finally { if (version.current === request) setBusy(""); }
+    });
+    return () => { current = false; };
+  }, [incoming, robotId, requested, start, acceptSelection]);
 
   async function assembleWorkcell(arm?: ModelRef, gripper?: ModelRef, part?: ModelRef) {
     const request = start("正在读取组件并组装取放工位…");
@@ -204,13 +231,12 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
     }
   }
 
-  function chooseLocal(input: File[] | "sample") {
-    localChoice();
-    void selectFiles(input);
+  function clearPreview() {
+    discardPreview(); onLocalChoice();
   }
 
   function closeExample() {
-    localChoice(); start(""); setSelection(null); setEntry("");
+    clearPreview();
     requestAnimationFrame(() => gallery.current?.scrollIntoView({ block: "start" }));
   }
 
@@ -247,19 +273,21 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
     lastRun.current = { version: candidate.version, settings };
     setCandidate((value) => value?.version === candidate.version ? { ...value, ref: { ...value.ref, run: settings } } : value);
     const current = latest.current.workspace, catalog = current.catalog;
-    if (!catalog?.models.some((model) => model.id === candidate.ref.id)) return;
-    const models = catalog.models.map((model) => model.id === candidate.ref.id ? { ...model, run: settings } : model);
-    latest.current.onChange({ ...current, catalog: parseImportCatalog({ ...catalog, models }, current.packages) });
+    if (candidate.stored && catalog?.models.some((model) => model.id === candidate.ref.id)) {
+      latest.current.onChange(withModel(current, { ...candidate.ref, run: settings }));
+    }
   }
 
   async function install() {
     if (!ready || !candidate || busy) return;
     const request = candidate.version;
+    const controller = new AbortController();
+    reading.current = controller;
     setBusy("正在保存模型资源…"); setError(""); setNotice("");
     try {
       const previous = latest.current.workspace;
       const pending = withModel(previous, candidate.ref);
-      await putModelBundle(candidate.ref, candidate.bundle);
+      await putModelBundle(candidate.ref, candidate.bundle, controller.signal);
       if (version.current !== request) return;
       const current = latest.current.workspace;
       const recent = lastRun.current;
@@ -267,9 +295,10 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
       const next = previous === current && ref === candidate.ref ? pending : withModel(current, ref);
       if (next !== current) latest.current.onChange(next);
       setCandidate((value) => value?.version === request ? { ...value, stored: true } : value);
+      if (incoming && incoming.selection === selection) incoming.onInstalled?.();
       setNotice(`已将“${candidate.ref.name}”安装到模型库。`);
     } catch (cause) { if (version.current === request) setError(errorText(cause)); }
-    finally { if (version.current === request) setBusy(""); }
+    finally { if (version.current === request) { setBusy(""); reading.current = null; } }
   }
 
   async function download(ref: ModelRef) {
@@ -287,18 +316,11 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
   return <div className="min-w-0 space-y-4">
     <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
       <section className="surface min-w-0 space-y-3 p-4 sm:p-5">
-        <h3 className="text-base font-semibold">导入物理模型</h3>
-        <p className="text-sm leading-6 text-muted-foreground">支持 MJCF、URDF，以及 STL、OBJ 网格。引用网格、纹理或其他 XML 时，请选择保留原目录结构的 ZIP 或文件夹。</p>
-        <input ref={file} type="file" multiple accept=".xml,.mjcf,.urdf,.zip,.mjz,.stl,.obj,.msh,.mtl,.png,.jpg,.jpeg,.bmp,.bin,.ply" aria-label="选择物理模型文件" className="hidden" onChange={(event) => {
-          const chosen = Array.from(event.target.files ?? []); event.target.value = ""; if (chosen.length) chooseLocal(chosen);
-        }} />
-        <input ref={folder} type="file" multiple {...{ webkitdirectory: "" }} aria-label="选择模型目录" className="hidden" onChange={(event) => {
-          const chosen = Array.from(event.target.files ?? []); event.target.value = ""; if (chosen.length) chooseLocal(chosen);
-        }} />
+        <h3 className="text-base font-semibold">{selection ? "模型设置" : "试跑物理模型"}</h3>
+        {!selection && <p className="text-sm leading-6 text-muted-foreground">用带预紧弹簧的滑台试跑，或从下方的开源机器人中选择模型。</p>}
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => file.current?.click()}><FileUp />选择模型文件或 ZIP</Button>
-          <Button variant="outline" onClick={() => folder.current?.click()}><FolderOpen />选择模型目录</Button>
-          <Button variant="ghost" onClick={() => chooseLocal("sample")}>试用弹簧滑台文件</Button>
+          <Button size="sm" variant="outline" onClick={() => { localChoice(); void selectExample("sample"); }}><Play />试用弹簧滑台文件</Button>
+          {selection && !candidate && robotId === null && <Button size="sm" variant="ghost" onClick={clearPreview}>取消本次导入</Button>}
         </div>
         {selection && selection.entries.length > 1 && <label className="block"><span className="field-label">模型入口文件</span>
           <select aria-label="模型入口文件" className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={entry} onChange={(event) => void selectEntry(event.target.value)}>
@@ -345,6 +367,9 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {robotId !== null && <Button size="sm" variant="ghost" onClick={closeExample}>返回机器人目录</Button>}
+          {robotId === null && <Button size="sm" variant="ghost" onClick={clearPreview}>
+            {candidate.stored ? "关闭预览" : "取消本次导入"}
+          </Button>}
           {candidate.workcell && <Button size="sm" variant="outline" disabled={!ready || Boolean(busy)} onClick={() => void download(candidate.ref)}><Download />下载工位 ZIP</Button>}
           {installed && candidate.stored ? <span className="inline-flex items-center gap-1 text-xs text-primary"><Check className="size-4" />已安装</span> :
             <Button disabled={!ready || Boolean(busy)} onClick={() => void install()}>安装物理模型</Button>}
@@ -359,13 +384,13 @@ export default function ImportCenterPhysics({ workspace, onChange, requested, on
         {notice && <p role="status" className="text-sm text-primary">{notice}</p>}
         {error && <p role="alert" className="whitespace-pre-line break-words text-sm text-destructive">{error}</p>}
         {(!candidate || !showCandidate) && <div className="flex flex-wrap gap-2">
-          {error && robot && <Button size="sm" variant="outline" onClick={() => setAttempt((value) => value + 1)}>重试下载</Button>}
+          {robot && !busy && <Button size="sm" variant="outline" onClick={() => setAttempt((value) => value + 1)}>{error ? "重试下载" : "重新打开示例"}</Button>}
           <Button size="sm" variant="ghost" onClick={closeExample}>返回机器人目录</Button>
         </div>}
       </>}
     </section>}
     <div ref={gallery} className="scroll-mt-4">
-      <RobotExamples selectedId={robotId} onReselect={() => { if (robot && error && !candidate) setAttempt((value) => value + 1); focusPreview(); }} />
+      <RobotExamples selectedId={robotId} onReselect={() => { if (robot && !busy && !candidate) setAttempt((value) => value + 1); focusPreview(); }} />
     </div>
   </div>;
 }

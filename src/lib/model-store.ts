@@ -12,19 +12,33 @@ async function openModels(): Promise<IDBDatabase> {
   });
 }
 
-export async function writeModels(records: StoredModel[]): Promise<void> {
+export async function writeModels(records: StoredModel[], signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   if (!records.length) return;
   const db = await openModels();
   try {
+    signal?.throwIfAborted();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction("models", "readwrite");
-      tx.oncomplete = () => resolve();
-      tx.onabort = () => reject(tx.error ?? new Error("保存模型失败，请检查浏览器可用空间。"));
+      const cancel = () => {
+        try { tx.abort(); } catch { /* 已提交的事务由 oncomplete 返回其真实结果。 */ }
+      };
+      const cleanup = () => signal?.removeEventListener("abort", cancel);
+      signal?.addEventListener("abort", cancel, { once: true });
+      tx.oncomplete = () => { cleanup(); resolve(); };
+      tx.onabort = () => {
+        cleanup();
+        reject(signal?.aborted ? signal.reason : tx.error ?? new Error("保存模型失败，请检查浏览器可用空间。"));
+      };
       try {
         const store = tx.objectStore("models");
-        for (const { ref, bundle } of records) store.put(bundle, ref.id);
+        for (const { ref, bundle } of records) {
+          signal?.throwIfAborted();
+          store.put(bundle, ref.id);
+        }
       } catch (error) {
-        tx.abort();
+        cancel();
+        cleanup();
         reject(error);
       }
     });

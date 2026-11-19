@@ -52,7 +52,7 @@ function tableSeparator(text: string): string {
   return tabs ? "\t" : ",";
 }
 
-function tableRecords(text: string, separator: string, firstLine: number) {
+function tableRecords(text: string, separator: string, firstLine: number, headerOnly = false) {
   const records: { line: number; cells: string[] }[] = [];
   let line = firstLine, start = line, cells: string[] = [], field = "", quoted = false, closed = false;
   for (let index = 0; index <= text.length; index++) {
@@ -67,6 +67,7 @@ function tableRecords(text: string, separator: string, firstLine: number) {
       field = ""; closed = false;
     } else if (char === undefined || char === "\n") {
       if (cells.length || field.trim() || closed) records.push({ line: start, cells: [...cells, field] });
+      if (headerOnly && records.length) return records;
       if (records.length > 2001) throw new Error("一次最多导入 2000 个物料行。");
       cells = []; field = ""; closed = false; start = ++line;
     } else if (char === '"') {
@@ -81,12 +82,90 @@ function tableRecords(text: string, separator: string, firstLine: number) {
   return records;
 }
 
-export function parseMaterialTable(text: string, defaultSource?: string): MaterialRow[] {
+function tableInput(text: string) {
   const normalized = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   const leading = normalized.match(/^(?:[ \t]*\n)+/)?.[0] ?? "";
-  const body = normalized.slice(leading.length);
+  return { body: normalized.slice(leading.length), firstLine: 1 + (leading.match(/\n/g)?.length ?? 0) };
+}
+
+/** 只读表头，数量、引号等行级诊断交给完整的物料解析器。 */
+export function hasMaterialTableHeader(text: string): boolean {
+  const { body, firstLine } = tableInput(text);
+  try {
+    const header = tableRecords(body, tableSeparator(body), firstLine, true)[0];
+    const keys = header?.cells.map((value) => headerKeys.get(normalizeHeader(value))) ?? [];
+    return keys.includes("name") && keys.includes("quantity");
+  } catch { return false; }
+}
+
+export function parseMaterialTable(text: string, defaultSource?: string): MaterialRow[] {
+  const { body, firstLine } = tableInput(text);
   if (!body.trim()) throw new Error("物料表为空，请提供名称和数量。");
-  const [header, ...records] = tableRecords(body, tableSeparator(body), 1 + (leading.match(/\n/g)?.length ?? 0));
+  const [header, ...records] = tableRecords(body, tableSeparator(body), firstLine);
+  return materialRows(header, records, defaultSource, false);
+}
+
+type TableRecord = { line: number; cells: string[] };
+const mdDivider = (cells: string[]) => cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+function markdownCells(text: string): string[] {
+  const line = text.trim(), cells: string[] = [];
+  let field = "", lastPipe = -1;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "\\" && (line[i + 1] === "|" || line[i + 1] === "\\")) field += line[++i];
+    else if (ch === "|") { cells.push(field.trim()); field = ""; lastPipe = i; }
+    else field += ch;
+  }
+  if (lastPipe < 0) return [];
+  cells.push(field.trim());
+  if (line.startsWith("|")) cells.shift();
+  if (lastPipe === line.length - 1) cells.pop();
+  return cells;
+}
+
+function markdownLabel(cell: string) {
+  const wrapped = /^(\*\*|__|`)(.+)\1$/.exec(cell);
+  return wrapped ? wrapped[2].trim() : cell;
+}
+
+/** 单表或标题加单表。正文、示例代码块及无表格的 Markdown 交回手册入口。 */
+export function parseMarkdownMaterialTable(text: string, defaultSource?: string, expectTable = false): MaterialRow[] | undefined {
+  if (!text.includes("|")) return;
+  const lines = text.replace(/^\uFEFF/, "").split(/\r\n?|\n/);
+  const blocks: { start: number; end: number }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || /^#{1,6}\s+/.test(line)) {
+      if (!expectTable && /^#{1,6}\s+.*(?:手册|教程|说明书|\bmanual\b)/i.test(line)) return;
+      continue;
+    }
+    if (!line.includes("|") || /^(?:`{3,}|~{3,})/.test(line)) return;
+    const last = blocks.at(-1);
+    if (last?.end === i - 1) last.end = i;
+    else blocks.push({ start: i, end: i });
+  }
+  if (!blocks.length) return;
+  const materialLike = blocks.some(({ start }) => {
+    const keys = markdownCells(lines[start]).map((s) => headerKeys.get(normalizeHeader(markdownLabel(s))));
+    return keys.includes("name") && keys.includes("quantity");
+  });
+  if (!materialLike && !expectTable) return;
+  if (blocks.length > 1) throw new Error("检测到多个 Markdown 表块，请分别导入每张物料表。");
+  const { start, end } = blocks[0];
+  const header = { line: start + 1, cells: markdownCells(lines[start]).map(markdownLabel) };
+  const divider = markdownCells(lines[start + 1] ?? "");
+  if (divider.length !== header.cells.length || !mdDivider(divider)) throw new Error(`第 ${start + 2} 行的 Markdown 表头分隔行格式有误。`);
+  if (end - start - 1 > 2000) throw new Error("一次最多导入 2000 个物料行。");
+  const records: TableRecord[] = [];
+  for (let i = start + 2; i <= end; i++) {
+    const cells = markdownCells(lines[i]).map(markdownLabel);
+    if (mdDivider(cells)) throw new Error("检测到多张 Markdown 物料表，请分别导入。");
+    records.push({ line: i + 1, cells });
+  }
+  return materialRows(header, records, defaultSource, true);
+}
+
+function materialRows(header: TableRecord, records: TableRecord[], defaultSource: string | undefined, markdown: boolean): MaterialRow[] {
   const names = header.cells.map(value => value.trim());
   const keys = names.map(name => headerKeys.get(normalizeHeader(name)));
   if (!keys.includes("name") || !keys.includes("quantity")) throw new Error(`第 ${header.line} 行表头必须包含名称和数量列。`);
@@ -100,11 +179,18 @@ export function parseMaterialTable(text: string, defaultSource?: string): Materi
   if (!records.length) throw new Error("物料表只有表头，请添加至少一行物料。");
   const occurrences = new Map<string, number>();
   return records.map(({ line, cells }) => {
-    if (cells.length !== names.length) throw new Error(`第 ${line} 行有 ${cells.length} 列，表头有 ${names.length} 列。含分隔符的字段请用双引号包住。`);
+    if (cells.length !== names.length) throw new Error(`第 ${line} 行有 ${cells.length} 列，表头有 ${names.length} 列。${markdown ? "格内的竖线请写作 \\|。" : "含分隔符的字段请用双引号包住。"}`);
     const fields: Fields = { name: "", quantity: 0 };
     const extra: string[] = [];
+    let nameLink: string | undefined;
     cells.forEach((cell, index) => {
-      const value = cell.trim(), key = keys[index];
+      const key = keys[index];
+      let value = cell.trim();
+      if (markdown && (key === "source" || key === "name")) {
+        const link = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/i.exec(value);
+        if (link && key === "source") value = link[2];
+        else if (link) { value = link[1]; nameLink = link[2]; }
+      }
       if (key === "name") fields.name = value;
       else if (key === "quantity") {
         const quantity = Number(value);
@@ -116,7 +202,7 @@ export function parseMaterialTable(text: string, defaultSource?: string): Materi
       else if (value) extra.push(`${names[index]}：${cell}`);
     });
     if (!fields.name) throw new Error(`第 ${line} 行缺少物料名称。`);
-    if (!fields.source && defaultSource?.trim()) fields.source = defaultSource.trim();
+    if (!fields.source && (nameLink || defaultSource?.trim())) fields.source = nameLink || defaultSource?.trim();
     if (extra.length) fields.notes = [fields.notes, ...extra].filter(Boolean).join("\n");
     let row: MaterialRow;
     try { row = identify(fields, "bom"); } catch (cause) { throw new Error(`第 ${line} 行${(cause as Error).message}`); }

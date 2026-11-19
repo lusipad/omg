@@ -1,25 +1,43 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Bot, Check, Download, ExternalLink, FileUp, Layers3, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DEFAULT_SO101_MOTION, SO101_JOINTS, SO101_MODEL_ID, SO101_REVISION, SO101_UPSTREAM, parseSo101Motion } from "@contracts/so101";
-import { isSo101ServoPart, parseSo101Bom, so101BomNotes } from "@contracts/so101-bom";
+import { SO101_JOINTS, SO101_UPSTREAM, parseSo101Motion } from "@contracts/so101";
+import { isSo101ServoPart, so101BomNotes } from "@contracts/so101-bom";
+import { applySo101BomImport } from "@contracts/import-apply";
+import { decodeImportUtf8, parseImportText } from "@contracts/workbench-import";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
+import type { WorkbenchImportOptions } from "@/lib/workbench-import";
+import { so101BomSource } from "@/lib/bom-sources";
+import { useCancelOnNewImport } from "@/hooks/useWorkbenchImport";
 
 const MotionBench = lazy(() => import("./So101MotionBench"));
 const modelBase = `${import.meta.env.BASE_URL}models/so101/`;
-const bomUrl = `${modelBase}follower-bom.md`;
-const upstreamBom = `https://github.com/TheRobotStudio/SO-ARM100/blob/${SO101_REVISION}/README.md#parts-for-one-follower-arm`;
+const bomUrl = import.meta.env.BASE_URL + so101BomSource.localPath;
 
-export default function So101Workbench({ workspace, onChange }: { workspace: TwinWorkspace; onChange: (next: TwinWorkspace) => void }) {
+export default function So101Workbench({ workspace, onChange, onImportFile }: {
+  workspace: TwinWorkspace;
+  onChange: (next: TwinWorkspace) => void;
+  onImportFile: (file: File, hint?: WorkbenchImportOptions["hint"]) => void;
+}) {
   const assembly = workspace.so101;
   const [reading, setReading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const request = useRef<AbortController | null>(null);
+  const latest = useRef({ workspace, onChange });
+  useLayoutEffect(() => { latest.current = { workspace, onChange }; }, [workspace, onChange]);
   useEffect(() => () => request.current?.abort(), []);
+  const cancelReading = useCallback(() => {
+    const active = request.current;
+    if (!active) return;
+    request.current = null;
+    active.abort();
+    setReading(false);
+  }, []);
+  useCancelOnNewImport(cancelReading);
 
-  async function importBom(file?: File) {
+  async function loadExample() {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -27,36 +45,34 @@ export default function So101Workbench({ workspace, onChange }: { workspace: Twi
     setNotice("");
     setError("");
     try {
-      let content: string;
-      if (file) {
-        if (file.size > 2 * 1024 * 1024) throw new Error("请选择 2 MiB 以内的 SO-101 官方 Markdown 清单。");
-        content = await file.text();
-      } else {
-        const response = await fetch(bomUrl, { signal: controller.signal });
-        if (!response.ok) throw new Error("本地示例清单读取失败，请重试或导入官方 README。");
-        content = await response.text();
-      }
+      const response = await fetch(bomUrl, { signal: controller.signal });
+      if (!response.ok) throw new Error("本地示例清单读取失败，请重试或导入官方 README。");
+      const content = decodeImportUtf8(await response.arrayBuffer());
       if (controller.signal.aborted) return;
-      const bom = parseSo101Bom(content);
-      const waypoints = assembly?.waypoints ?? parseSo101Motion(DEFAULT_SO101_MOTION);
-      onChange({ ...workspace, so101: { modelId: SO101_MODEL_ID, bom, waypoints } });
+      const result = parseImportText(content, "follower-bom.md", { hint: "bom" });
+      if (result.kind !== "so101-bom") throw new Error("本地示例未识别为 SO-101 Follower 清单。");
+      const current = latest.current;
+      current.onChange(applySo101BomImport(current.workspace, result.bom));
       setNotice("已按清单绑定 6 个舵机和官方从臂模型。");
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "清单导入失败。");
     } finally {
-      if (!controller.signal.aborted) setReading(false);
+      if (request.current === controller) { request.current = null; setReading(false); }
     }
   }
 
   const controls = <div className="flex flex-wrap gap-2">
-    <Button size="sm" variant={assembly ? "outline" : "default"} disabled={reading} onClick={() => void importBom()}>
+    <Button size="sm" variant={assembly ? "outline" : "default"} disabled={reading} onClick={() => void loadExample()}>
       {reading ? <Loader2 className="animate-spin" /> : <Layers3 />}{assembly ? "重新核对官方 BOM" : "载入官方 BOM 示例"}
     </Button>
-    <Button size="sm" variant="outline" disabled={reading} onClick={() => fileInput.current?.click()}><FileUp />导入 BOM 文件</Button>
+    <Button size="sm" variant="outline" onClick={() => fileInput.current?.click()}><FileUp />导入 BOM 文件</Button>
     <input ref={fileInput} type="file" className="hidden" accept=".md,.markdown,.txt,text/markdown,text/plain" aria-label="导入 SO-101 BOM 文件" onChange={(event) => {
       const file = event.currentTarget.files?.[0];
       event.currentTarget.value = "";
-      if (file) void importBom(file);
+      if (file) {
+        cancelReading(); setError(""); setNotice("");
+        onImportFile(file, "bom");
+      }
     }} />
   </div>;
 
@@ -90,7 +106,7 @@ export default function So101Workbench({ workspace, onChange }: { workspace: Twi
         </details>}
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
           <a href={bomUrl} download="SO-101-Follower-BOM.md" className="inline-flex items-center gap-1 hover:text-primary"><Download className="size-3.5" />下载示例 BOM</a>
-          <a href={upstreamBom} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-primary">原始采购表<ExternalLink className="size-3.5" /></a>
+          <a href={so101BomSource.documentUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-primary">原始采购表<ExternalLink className="size-3.5" /></a>
           <a href={SO101_UPSTREAM} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-primary">模型来源<ExternalLink className="size-3.5" /></a>
         </div>
       </div>

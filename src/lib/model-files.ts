@@ -1,7 +1,12 @@
 import { zipSync } from "three/examples/jsm/libs/fflate.module.js";
 import { MODEL_LIMITS, MAX_PROJECT_JSON_BYTES, type ModelBundle, type ModelFile, type ModelRef } from "@contracts/import-catalog";
-import { parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
+import { hasWorkspaceShape, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
 import { readStoredModel, writeModels, type StoredModel } from "./model-store";
+
+export type { StoredModel } from "./model-store";
+export type ModelSelection = { files: ModelFile[]; entries: string[] };
+export type WorkbenchBundle = { kind: "model"; selection: ModelSelection }
+  | { kind: "project"; workspace: TwinWorkspace; models: StoredModel[] };
 
 const { maxFiles, maxBundleBytes, maxFileBytes, maxProjectBytes } = MODEL_LIMITS;
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -64,7 +69,7 @@ function validateFiles(files: ModelFile[]) {
 
 // Read ZIP directory metadata before allocating decompression buffers.
 interface ZipEntry { path: string; directory: boolean; offset: number; compressed: number; size: number; crc: number; method: number }
-function zipDirectory(data: Uint8Array, limit: number, countLimit: number): ZipEntry[] {
+async function zipDirectory(data: Uint8Array, limit: number, countLimit: number, signal?: AbortSignal): Promise<ZipEntry[]> {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const u16 = (i: number) => view.getUint16(i, true), u32 = (i: number) => view.getUint32(i, true);
   const invalid = () => new Error("ZIP 目录损坏或使用了不支持的压缩格式。");
@@ -74,8 +79,9 @@ function zipDirectory(data: Uint8Array, limit: number, countLimit: number): ZipE
   const count = u16(end + 10), start = u32(end + 16);
   if (u16(end + 8) !== count || count > countLimit * 2 || start + u32(end + 12) !== end) throw invalid();
   const entries: ZipEntry[] = [];
-  let pos = start, total = 0, fileCount = 0;
+  let pos = start, total = 0, fileCount = 0, lastYield = performance.now();
   for (let i = 0; i < count; i++) {
+    if (signal && performance.now() - lastYield > 12) { await nextTurn(); signal.throwIfAborted(); lastYield = performance.now(); }
     if (pos + 46 > end || u32(pos) !== 0x02014b50) throw invalid();
     const flags = u16(pos + 8), method = u16(pos + 10), compressed = u32(pos + 20), size = u32(pos + 24);
     const length = u16(pos + 28), local = u32(pos + 42), next = pos + 46 + length + u16(pos + 30) + u16(pos + 32);
@@ -102,57 +108,104 @@ const crcTable = Uint32Array.from({ length: 256 }, (_, i) => {
   return n;
 });
 
-async function unzipMember(bytes: Uint8Array<ArrayBuffer>, e: ZipEntry): Promise<ModelFile> {
-  const chunk = bytes.subarray(e.offset, e.offset + e.compressed);
-  let data: Uint8Array = chunk;
-  if (e.method === 8) {
-    const output = new Uint8Array(e.size);
-    const reader = new Blob([chunk]).stream().pipeThrough(new DecompressionStream("deflate-raw")).getReader();
-    let n = 0;
-    try {
-      for (;;) {
-        const part = await reader.read();
-        if (part.done) break;
-        if (n + part.value.length > output.length) { await reader.cancel(); throw new Error("ZIP 资源超出声明长度：" + e.path); }
-        output.set(part.value, n);
-        n += part.value.length;
-      }
-    } finally { reader.releaseLock(); }
-    if (n !== e.size) throw new Error("ZIP 资源长度不匹配：" + e.path);
-    data = output;
+async function readSizedStream(stream: ReadableStream<Uint8Array>, size: number, label: string, signal?: AbortSignal) {
+  const reader = stream.getReader(), output = new Uint8Array(size);
+  const cancel = () => { void reader.cancel(signal?.reason).catch(() => {}); };
+  signal?.addEventListener("abort", cancel, { once: true });
+  let n = 0, lastYield = performance.now();
+  try {
+    signal?.throwIfAborted();
+    for (;;) {
+      const part = await reader.read();
+      signal?.throwIfAborted();
+      if (part.done) break;
+      if (n + part.value.length > size) throw new Error("资源超出声明长度：" + label);
+      output.set(part.value, n);
+      n += part.value.length;
+      if (signal && performance.now() - lastYield > 12) { await nextTurn(); signal.throwIfAborted(); lastYield = performance.now(); }
+    }
+    if (n !== size) throw new Error("资源长度不匹配：" + label);
+    return output;
+  } catch (error) {
+    await reader.cancel(error).catch(() => {});
+    throw error;
+  } finally {
+    signal?.removeEventListener("abort", cancel);
+    reader.releaseLock();
   }
+}
+
+async function fileBytes(file: File, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  return signal ? readSizedStream(file.stream(), file.size, file.name, signal) : new Uint8Array(await file.arrayBuffer());
+}
+
+async function unzipMember(bytes: Uint8Array<ArrayBuffer>, e: ZipEntry, signal?: AbortSignal): Promise<ModelFile> {
+  signal?.throwIfAborted();
+  const chunk = bytes.subarray(e.offset, e.offset + e.compressed);
+  const data = e.method === 8
+    ? await readSizedStream(new Blob([chunk]).stream().pipeThrough(new DecompressionStream("deflate-raw")), e.size, e.path, signal)
+    : chunk;
   let crc = 0xffffffff, lastYield = performance.now();
   for (let offset = 0; offset < data.length; offset += 262144) {
     const stop = Math.min(data.length, offset + 262144);
     for (let i = offset; i < stop; i++) crc = (crc >>> 8) ^ crcTable[(crc ^ data[i]) & 255];
-    if (performance.now() - lastYield > 12) { await nextTurn(); lastYield = performance.now(); }
+    if (performance.now() - lastYield > 12) { await nextTurn(); signal?.throwIfAborted(); lastYield = performance.now(); }
   }
   if ((~crc >>> 0) !== e.crc) throw new Error("ZIP 资源校验失败：" + e.path);
   return { path: e.path, data: e.method === 0 ? data.slice() : data };
 }
 
-function projectSignature(data: Uint8Array): boolean {
-  try {
-    const value: unknown = JSON.parse(utf8.decode(data));
-    return !!value && typeof value === "object" && ["schemaVersion", "packages", "instances", "connections"].every((key) => Object.hasOwn(value, key));
-  } catch { return false; }
+interface SourceFile { path: string; size: number; read(signal?: AbortSignal): Promise<ModelFile> }
+
+async function indexZip(file: File, signal?: AbortSignal): Promise<SourceFile[]> {
+  if (file.size > maxProjectBytes + 2 * 1024 * 1024) throw new Error("ZIP 文件超出工程大小上限。");
+  const bytes = await fileBytes(file, signal);
+  signal?.throwIfAborted();
+  const entries = await zipDirectory(bytes, maxProjectBytes, maxFiles * 8, signal);
+  return entries.filter((e) => !e.directory)
+    .map((e) => ({ path: e.path, size: e.size, read: (activeSignal) => unzipMember(bytes, e, activeSignal) }));
 }
 
-async function unpackZip(file: File, project: boolean): Promise<ModelFile[]> {
-  if (file.size > maxProjectBytes + 2 * 1024 * 1024) throw new Error("ZIP 文件超出工程大小上限。");
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const entries = zipDirectory(bytes, maxProjectBytes, maxFiles * 8).filter((e) => !e.directory);
+function isSingleZip(input: File[]) {
+  return input.length === 1 && !input[0].webkitRelativePath && /\.(zip|mjz)$/i.test(input[0].name);
+}
+
+function indexLocal(input: File[]): SourceFile[] {
+  if (!input.length || input.length > maxFiles * 8 || input.some((f) => f.size > maxFileBytes) ||
+      input.reduce((sum, f) => sum + f.size, 0) > maxProjectBytes) throw new Error("请选择大小和数量在上限内的文件。");
+  const names = input.map((f) => relativePath(f.webkitRelativePath || f.name));
+  const base = names[0].split("/")[0] + "/";
+  const selectedFolder = input.every((f, i) => f.webkitRelativePath && names[i].startsWith(base));
+  const entries = input.map((f, i) => {
+    const path = selectedFolder ? names[i].slice(base.length) : names[i];
+    return { path, size: f.size, read: async (signal?: AbortSignal) => ({ path, data: await fileBytes(f, signal) }) };
+  });
+  checkPathCollisions(entries);
+  return entries;
+}
+
+async function readManifest(entries: SourceFile[], strict = false, signal?: AbortSignal) {
   const meta = entries.find((e) => e.path === "workspace.json");
-  let manifest: ModelFile | undefined;
-  if (!project && meta && meta.size <= MAX_PROJECT_JSON_BYTES) {
-    manifest = await unzipMember(bytes, meta);
-    if (projectSignature(manifest.data)) throw new ProjectArchiveFileError();
+  if (!meta || meta.size > MAX_PROJECT_JSON_BYTES) {
+    if (strict) throw new Error("缺少有效的 workspace.json 工程清单。");
+    return;
   }
-  if (!project && (entries.length > maxFiles || entries.reduce((n, e) => n + e.size, 0) > maxBundleBytes)) throw new Error("模型包超出资源数量或大小上限。");
+  const file = await meta.read(signal);
+  signal?.throwIfAborted();
+  let value: unknown;
+  try { value = JSON.parse(utf8.decode(file.data)); }
+  catch (error) { if (strict) throw error; }
+  return { file, value, isProject: hasWorkspaceShape(value) };
+}
+
+async function readIndexedFiles(entries: SourceFile[], cached?: ModelFile, signal?: AbortSignal): Promise<ModelFile[]> {
   const result: ModelFile[] = [];
   let lastYield = performance.now();
   for (const e of entries) {
-    result.push(e === meta && manifest ? manifest : await unzipMember(bytes, e));
+    signal?.throwIfAborted();
+    result.push(e.path === cached?.path ? cached : await e.read(signal));
+    signal?.throwIfAborted();
     if (performance.now() - lastYield > 12) { await nextTurn(); lastYield = performance.now(); }
   }
   return result;
@@ -250,20 +303,10 @@ export function resolveModelResource(files: readonly ModelFile[], baseFile: stri
 
 function isModelRoot(name: string | undefined) { return name === "mujoco" || name === "robot"; }
 
-export async function readModelFiles(input: File[]): Promise<{ files: ModelFile[]; entries: string[] }> {
-  let files: ModelFile[];
-  if (input.length === 1 && !input[0].webkitRelativePath && /\.(zip|mjz)$/i.test(input[0].name)) {
-    files = await unpackZip(input[0], false);
-  } else {
-    if (!input.length || input.length > maxFiles || input.some((f) => f.size > maxFileBytes) ||
-        input.reduce((sum, f) => sum + f.size, 0) > maxBundleBytes) throw new Error("请选择大小和数量在上限内的模型文件。");
-    const names = input.map((f) => relativePath(f.webkitRelativePath || f.name));
-    const base = names[0].split("/")[0] + "/";
-    const selectedFolder = input.every((f, i) => f.webkitRelativePath && names[i].startsWith(base));
-    const paths = names.map((p) => selectedFolder ? p.slice(base.length) : p);
-    checkPathCollisions(paths.map((path) => ({ path })));
-    files = await Promise.all(input.map(async (f, i) => ({ path: paths[i], data: new Uint8Array(await f.arrayBuffer()) })));
-  }
+async function selectModelFiles(index: SourceFile[], cached?: ModelFile, signal?: AbortSignal): Promise<ModelSelection> {
+  if (index.length > maxFiles || index.reduce((n, e) => n + e.size, 0) > maxBundleBytes) throw new Error("模型包超出资源数量或大小上限。");
+  const files = await readIndexedFiles(index, cached, signal);
+  signal?.throwIfAborted();
   validateFiles(files);
   const entries = [];
   let xmlError: unknown;
@@ -274,6 +317,7 @@ export async function readModelFiles(input: File[]): Promise<{ files: ModelFile[
       if (root && isModelRoot(root.name)) entries.push(file.path);
     } catch (error) { xmlError = error; }
     await nextTurn();
+    signal?.throwIfAborted();
   }
   if (!entries.length && !files.some((f) => /\.(?:stl|obj)$/i.test(f.path))) {
     throw xmlError ?? new Error("缺少 MJCF、URDF 或 STL/OBJ 网格。");
@@ -281,7 +325,14 @@ export async function readModelFiles(input: File[]): Promise<{ files: ModelFile[
   return { files, entries: entries.sort() };
 }
 
-async function inspectModel(bundle: ModelBundle, assetPaths?: Set<string>) {
+export async function readModelFiles(input: File[]): Promise<ModelSelection> {
+  if (!isSingleZip(input)) return selectModelFiles(indexLocal(input));
+  const index = await indexZip(input[0]), meta = await readManifest(index);
+  if (meta?.isProject) throw new ProjectArchiveFileError();
+  return selectModelFiles(index, meta?.file);
+}
+
+async function inspectModel(bundle: ModelBundle, assetPaths?: Set<string>, signal?: AbortSignal) {
   const files = bundle.files, byPath = new Map(files.map((f) => [f.path, f]));
   const first = byPath.get(bundle.entry);
   if (!first || !modelExtension.test(bundle.entry)) throw new Error("找不到指定的模型入口：" + bundle.entry);
@@ -317,7 +368,7 @@ async function inspectModel(bundle: ModelBundle, assetPaths?: Set<string>) {
             if (attrs[key]) assets.push({ tag: name, ref: attrs[key], owner: path });
           }
         }
-        if (performance.now() - lastYield > 12) { await nextTurn(); lastYield = performance.now(); }
+        if (performance.now() - lastYield > 12) { await nextTurn(); signal?.throwIfAborted(); lastYield = performance.now(); }
       }
     }
     for (const asset of assets) {
@@ -356,31 +407,44 @@ export async function sha256Hex(data: Uint8Array) {
   return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function describeModel(bundle: ModelBundle): Promise<ModelRef> {
+async function modelRefFromFiles(bundle: ModelBundle, signal?: AbortSignal): Promise<ModelRef> {
+  signal?.throwIfAborted();
   validateFiles(bundle.files);
   if (bundle.entry.length > 1024) throw new Error("模型入口名称过长。");
-  const { name } = await inspectModel(bundle);
+  const { name } = await inspectModel(bundle, undefined, signal);
   const manifest = [];
   const files = [...bundle.files].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-  for (const f of files) manifest.push([f.path, await sha256Hex(f.data)]);
-  return { id: await sha256Hex(encode.encode(JSON.stringify([bundle.entry, manifest]))), name, entry: bundle.entry };
+  for (const f of files) {
+    signal?.throwIfAborted();
+    manifest.push([f.path, await sha256Hex(f.data)]);
+  }
+  signal?.throwIfAborted();
+  const id = await sha256Hex(encode.encode(JSON.stringify([bundle.entry, manifest])));
+  signal?.throwIfAborted();
+  return { id, name, entry: bundle.entry };
 }
 
-async function verifyModel(ref: ModelRef, bundle: ModelBundle) {
-  const derived = await describeModel(bundle);
+export function describeModel(bundle: ModelBundle): Promise<ModelRef> {
+  return modelRefFromFiles(bundle);
+}
+
+async function verifyModel(ref: ModelRef, bundle: ModelBundle, signal?: AbortSignal) {
+  const derived = await modelRefFromFiles(bundle, signal);
   if (ref.id !== derived.id || ref.entry !== derived.entry) throw new Error("模型入口或内容哈希与工程清单不符：" + ref.name);
 }
 
-export async function putProjectModels(models: StoredModel[]): Promise<void> {
-  for (const { ref, bundle } of models) await verifyModel(ref, bundle);
-  await writeModels(models);
+export async function putProjectModels(models: StoredModel[], signal?: AbortSignal): Promise<void> {
+  for (const { ref, bundle } of models) await verifyModel(ref, bundle, signal);
+  signal?.throwIfAborted();
+  await writeModels(models, signal);
 }
-export async function putModelBundle(ref: ModelRef, bundle: ModelBundle): Promise<void> {
-  await putProjectModels([{ ref, bundle }]);
+export async function putModelBundle(ref: ModelRef, bundle: ModelBundle, signal?: AbortSignal): Promise<void> {
+  await putProjectModels([{ ref, bundle }], signal);
 }
-export async function getModelBundle(id: string): Promise<ModelBundle> {
+export async function getModelBundle(id: string, signal?: AbortSignal): Promise<ModelBundle> {
+  signal?.throwIfAborted();
   const bundle = await readStoredModel(id);
-  await verifyModel({ id, name: id, entry: bundle.entry }, bundle);
+  await verifyModel({ id, name: id, entry: bundle.entry }, bundle, signal);
   return bundle;
 }
 
@@ -413,15 +477,12 @@ export async function exportProjectArchive(ws: TwinWorkspace): Promise<Blob> {
   return archiveBlob(files);
 }
 
-export async function readProjectArchive(file: File): Promise<{ workspace: TwinWorkspace; models: StoredModel[] }> {
-  const files = await unpackZip(file, true);
-  const manifest = files.find((f) => f.path === "workspace.json");
-  if (!manifest || manifest.data.length > MAX_PROJECT_JSON_BYTES) throw new Error("缺少有效的 workspace.json 工程清单。");
-  const workspace = parseWorkspace(JSON.parse(utf8.decode(manifest.data)));
+async function restoreProject(files: ModelFile[], workspace: TwinWorkspace, signal?: AbortSignal): Promise<{ workspace: TwinWorkspace; models: StoredModel[] }> {
+  signal?.throwIfAborted();
   const refs = workspace.catalog?.models ?? [];
   const groups = new Map(refs.map((ref) => [ref.id, [] as ModelFile[]]));
   for (const f of files) {
-    if (f === manifest) continue;
+    if (f.path === "workspace.json") continue;
     const match = /^models\/([0-9a-f]{64})\/(.+)$/.exec(f.path);
     const group = match && groups.get(match[1]);
     if (!match || !group) throw new Error("工程包含清单之外的资源：" + f.path);
@@ -430,8 +491,27 @@ export async function readProjectArchive(file: File): Promise<{ workspace: TwinW
   const models: StoredModel[] = [];
   for (const ref of refs) {
     const bundle = { entry: ref.entry, files: groups.get(ref.id)! };
-    await verifyModel(ref, bundle);
+    await verifyModel(ref, bundle, signal);
     models.push({ ref, bundle });
   }
+  signal?.throwIfAborted();
   return { workspace, models };
+}
+
+export async function readProjectArchive(file: File): Promise<{ workspace: TwinWorkspace; models: StoredModel[] }> {
+  const index = await indexZip(file), meta = (await readManifest(index, true))!;
+  const workspace = parseWorkspace(meta.value);
+  return restoreProject(await readIndexedFiles(index, meta.file), workspace);
+}
+
+export async function readWorkbenchBundle(input: File[], signal?: AbortSignal): Promise<WorkbenchBundle> {
+  signal?.throwIfAborted();
+  const index = isSingleZip(input) ? await indexZip(input[0], signal) : indexLocal(input);
+  const meta = await readManifest(index, false, signal);
+  signal?.throwIfAborted();
+  if (meta?.isProject) {
+    const workspace = parseWorkspace(meta.value);
+    return { kind: "project", ...await restoreProject(await readIndexedFiles(index, meta.file, signal), workspace, signal) };
+  }
+  return { kind: "model", selection: await selectModelFiles(index, meta?.file, signal) };
 }

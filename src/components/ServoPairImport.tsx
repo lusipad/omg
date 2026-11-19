@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, Check, Download, FileCheck2, Link2, Loader2, PackageCheck, Sparkles } from "lucide-react";
 import { isCompatibleServoPair } from "@contracts/servo-axis";
 import { servoExampleDrive, servoExampleLinks, servoExampleMotor } from "@contracts/servo-example";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { IS_PAGES } from "@/const";
 import { downloadJson } from "@/lib/download";
 import { trpc } from "@/providers/trpc";
+import { useCancelOnNewImport } from "@/hooks/useWorkbenchImport";
 import { DeviceSourceEvidence, ServoRatings } from "./TwinPackagePreview";
 
 const emptyFields = { driveUrl: "", motorUrl: "", catalogUrl: "", driveModel: "", motorModel: "" };
@@ -48,7 +49,7 @@ export default function ServoPairImport({ onInstall }: { onInstall: (drive: Devi
   const [localAvailable, setLocalAvailable] = useState<boolean | null>(import.meta.env.DEV && !IS_PAGES ? null : false);
   const pending = useRef<AbortController | null>(null);
   const account = trpc.twinAi.status.useQuery(undefined, { enabled: !IS_PAGES, retry: false, staleTime: 60_000 });
-  const generateRemote = trpc.twinAi.generateServoPair.useMutation();
+  const modelClient = trpc.useUtils().client;
   const remote = Boolean(account.data?.available && account.data.authenticated);
   const available = remote || localAvailable === true;
   const checking = !available && (account.isLoading || localAvailable === null);
@@ -65,10 +66,17 @@ export default function ServoPairImport({ onInstall }: { onInstall: (drive: Devi
     return () => { controller.abort(); pending.current?.abort(); };
   }, []);
 
-  function reset() {
-    pending.current?.abort();
+  const cancelGeneration = useCallback(() => {
+    const active = pending.current;
+    if (!active) return;
     pending.current = null;
+    active.abort();
     setBusy(false);
+  }, []);
+  useCancelOnNewImport(cancelGeneration);
+
+  function reset() {
+    cancelGeneration();
     setDraft(null);
     setError("");
     setNotice("");
@@ -94,7 +102,7 @@ export default function ServoPairImport({ onInstall }: { onInstall: (drive: Devi
       if (!available) throw new Error("请启用本机 AI，或登录已配置模型的工作区。");
       let result: unknown;
       if (remote) {
-        result = await generateRemote.mutateAsync(input);
+        result = await modelClient.twinAi.generateServoPair.mutate(input, { signal: controller.signal });
       } else {
         const response = await fetch("/api/local-servo/generate", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), signal: controller.signal,

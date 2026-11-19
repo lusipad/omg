@@ -1,6 +1,6 @@
 # 构元 · 通用模块工程平台
 
-[打开在线导入中心](https://lusipad.github.io/omg/)。这个 GitHub Pages 地址会跳转到 `lusipad.com/omg/`。在首页可以导入自己的物理模型、几何网格、设备包、物料清单和手册。[导入格式与操作步骤](docs/通用模型与资料导入.md)
+[打开在线导入中心](https://lusipad.github.io/omg/)。选择文件、模型文件夹，或粘贴原文和资料链接即可开始。工作台按内容区分设备包与工程、模型包与工程 ZIP，并识别通用 BOM、SO-101 和 Milo 采购表、手册与 G 代码。先核对预览，再安装、保存或替换工程。在设备库和专用工作台选择文件也会进入同一流程。[导入格式与操作步骤](docs/通用模型与资料导入.md)
 
 在首页的 **开源机器人** 中可以直接试跑[双足机器鸭 Open Duck Mini v2](https://lusipad.com/omg/?view=import&robot=open-duck-mini-v2)、[三轮机械臂 LeKiwi](https://lusipad.com/omg/?view=import&robot=lekiwi)和[四足机器人 Barkour v0](https://lusipad.com/omg/?view=import&robot=barkour-v0)。打开卡片会加载对应模型包，点击 **运行仿真** 可观察关节和指定部位的反馈。每个模型都能单独下载、重新导入。
 

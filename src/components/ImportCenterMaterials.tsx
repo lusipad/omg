@@ -1,10 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useRef, useState } from "react";
+import { Link } from "react-router";
 import { FileText, Link2, Play, Upload } from "lucide-react";
 import { parseImportCatalog, type MaterialRow, type ModelRef } from "@contracts/import-catalog";
-import { createDocumentMaterial, matchMaterials, parseMaterialTable } from "@contracts/material-import";
-import { parseMiloBom, type MiloBom } from "@contracts/milo-bom";
-import { initialMiloWorkspace, withMiloBom } from "@contracts/milo-workspace";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import { installPackage, type TwinWorkspace } from "@contracts/twin-simulation";
 import { Button } from "@/components/ui/button";
@@ -12,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { IS_PAGES } from "@/const";
-import { fetchSourceText } from "@/lib/twin-source-text";
+import type { WorkbenchImportOptions } from "@/lib/workbench-import";
 import MaterialCalibration from "./MaterialCalibration";
 
 type Props = {
@@ -21,6 +18,8 @@ type Props = {
   onOpenDevice: (device: DevicePackage) => void;
   onOpenPhysics: (model: ModelRef) => void;
   onUseSource: (row: MaterialRow) => void;
+  onImportFiles: (files: File[], options?: WorkbenchImportOptions) => void;
+  onImportText: (text: string, name: string, options?: WorkbenchImportOptions) => void;
 };
 const pageSize = 16;
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : "资料操作失败，请重试。";
@@ -32,23 +31,16 @@ function sourceLink(value: string) {
   } catch { return null; }
 }
 
-export default function ImportCenterMaterials({ workspace, onChange, onOpenDevice, onOpenPhysics, onUseSource }: Props) {
-  const navigate = useNavigate();
+export default function ImportCenterMaterials({ workspace, onChange, onOpenDevice, onOpenPhysics, onUseSource, onImportFiles, onImportText }: Props) {
   const [kind, setKind] = useState<"bom" | "manual">("bom");
   const [name, setName] = useState("");
   const [source, setSource] = useState("");
   const [content, setContent] = useState("");
-  const [draft, setDraft] = useState<MaterialRow[]>([]);
   const [selected, setSelected] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [reading, setReading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const version = useRef(0);
-  const pending = useRef<AbortController | null>(null);
-  useEffect(() => () => { version.current++; pending.current?.abort(); }, []);
   const catalog = workspace.catalog ?? { models: [], materials: [] };
   const row = catalog.materials.find((item) => item.id === selected);
   const url = row?.source && sourceLink(row.source);
@@ -58,69 +50,14 @@ export default function ImportCenterMaterials({ workspace, onChange, onOpenDevic
   const lastPage = Math.max(0, Math.ceil(filtered.length / pageSize) - 1);
   const currentPage = Math.min(page, lastPage);
 
-  function invalidate() {
-    version.current++; pending.current?.abort(); pending.current = null;
-    setReading(false); setDraft([]); setError(""); setNotice("");
-  }
-
-  function openMiloBom(text: string, origin: string) {
-    let bom: MiloBom;
-    try { bom = parseMiloBom(text); }
-    catch (error) {
-      if (/^#{1,6}\s+Individual Parts\b/im.test(text) && /\bMilo[ -]*v?1\.5\b/i.test(text)) throw error;
-      return false;
-    }
-    onChange({ ...workspace, milo: withMiloBom(workspace.milo ?? initialMiloWorkspace, bom, origin) });
-    navigate("?view=milo");
-    return true;
-  }
-
-  async function readFile(file: File) {
-    invalidate();
-    const request = version.current;
-    const controller = new AbortController();
-    pending.current = controller;
-    setReading(true);
-    try {
-      const ext = file.name.split(".").at(-1)?.toLowerCase();
-      const pdf = ext === "pdf" || file.type === "application/pdf";
-      if (pdf && IS_PAGES) throw new Error("请复制 PDF 中的相关章节，粘贴到资料正文后预览。");
-      const maxMiB = pdf ? 8 : 2;
-      if (file.size > maxMiB * 1024 * 1024) throw new Error(`资料文件超过 ${maxMiB} MiB，请选择相关清单或手册章节。`);
-      if (!pdf && (!ext || !["csv", "tsv", "txt", "md", "markdown"].includes(ext))) throw new Error("请选择物料清单或手册文件。");
-      const text = pdf ? await fetchSourceText("pdf", file, "application/pdf", controller.signal) : await file.text();
-      if (version.current !== request) return;
-      if (kind === "bom" && (ext === "md" || ext === "markdown") && openMiloBom(text, file.name)) return;
-      setKind(ext === "csv" || ext === "tsv" ? "bom" : "manual");
-      setName(file.name.replace(/\.[^./]+$/, ""));
-      if (content && content !== text) setSource("");
-      setContent(text); setNotice(`已读取 ${file.name}，可补充来源并预览。`);
-    } catch (cause) { if (version.current === request) setError(errorText(cause)); }
-    finally { if (version.current === request) { setReading(false); pending.current = null; } }
+  function options(): WorkbenchImportOptions {
+    return { hint: kind, source: source.trim() || undefined, title: kind === "manual" ? name.trim() || undefined : undefined };
   }
 
   function preview() {
-    invalidate();
-    try {
-      if (kind === "bom" && content.trimStart().startsWith("#") && openMiloBom(content, source.trim() || "粘贴的 Milo BOM")) return;
-      const imported = kind === "bom" ? parseMaterialTable(content, source.trim() || undefined)
-        : [createDocumentMaterial(name, content, source.trim() || undefined)];
-      setDraft(matchMaterials(imported, workspace));
-    } catch (cause) { setError(errorText(cause)); }
-  }
-
-  function saveDraft() {
-    try {
-      const merged = new Map(catalog.materials.map((item) => [item.id, item]));
-      const before = merged.size;
-      for (const item of matchMaterials(draft, workspace)) {
-        const old = merged.get(item.id);
-        if (!old || (!old.binding && item.binding)) merged.set(item.id, item);
-      }
-      onChange({ ...workspace, catalog: parseImportCatalog({ ...catalog, materials: [...merged.values()] }, workspace.packages) });
-      setDraft([]); setError(""); setPage(0); setQuery("");
-      setNotice(`已核对 ${draft.length} 条资料，新增 ${merged.size - before} 条。`);
-    } catch (cause) { setError(errorText(cause)); }
+    setError("");
+    const label = kind === "bom" ? "粘贴的采购清单" : "粘贴的手册";
+    onImportText(content, label, options());
   }
 
   function bind(item: MaterialRow, binding: MaterialRow["binding"], base = workspace) {
@@ -148,46 +85,40 @@ export default function ImportCenterMaterials({ workspace, onChange, onOpenDevic
   }
 
   return <div className="min-w-0 space-y-4">
-    <section className="surface min-w-0 space-y-3 p-4 sm:p-5">
+    <details className="surface min-w-0 p-4 sm:p-5">
+      <summary className="cursor-pointer text-sm font-medium">手工录入或指定资料用途</summary>
+      <div className="mt-3 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-base font-semibold">导入物料或手册</h3>
+        <h3 className="text-sm font-medium">资料用途</h3>
         <div className="flex flex-wrap gap-1">
           {(["bom", "manual"] as const).map((mode) => <Button size="sm" key={mode} variant={kind === mode ? "secondary" : "ghost"} aria-pressed={kind === mode}
-            onClick={() => { if (kind !== mode) { invalidate(); setKind(mode); } }}>{mode === "bom" ? "物料清单" : "设备手册"}</Button>)}
+            onClick={() => { setKind(mode); setError(""); }}>{mode === "bom" ? "物料清单" : "设备手册"}</Button>)}
         </div>
       </div>
-      <p className="text-sm leading-6 text-muted-foreground">{kind === "bom" ? "CSV、TSV 需有名称和数量列，可附单位、制造商、型号及来源。选择 Milo v1.5 官方 Markdown 清单可直接进入装轴。" : IS_PAGES
+      <p className="text-sm leading-6 text-muted-foreground">{kind === "bom" ? "CSV、TSV 需有名称和数量列，可附单位、制造商、型号及来源。SO-101 和 Milo 的官方 Markdown 清单可在预览中核对装配用途。" : IS_PAGES
         ? "可导入 TXT、Markdown，或粘贴 PDF 的相关章节。原文随资料记录保存。"
         : "可导入 PDF、TXT、Markdown，或粘贴规格原文。核对提取的章节后保存。"}</p>
       <input ref={fileInput} className="hidden" aria-label="选择 BOM 或手册文件" type="file" accept={IS_PAGES ? ".csv,.tsv,.txt,.md,.markdown" : ".csv,.tsv,.txt,.md,.markdown,.pdf"} onChange={(event) => {
-        const file = event.target.files?.[0]; event.target.value = ""; if (file) void readFile(file);
+        const file = event.target.files?.[0]; event.target.value = "";
+        if (file) { setError(""); onImportFiles([file], options()); }
       }} />
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}><Upload />选择资料文件</Button>
         {kind === "bom" && <Link to="?view=milo" className="text-sm text-primary underline-offset-4 hover:underline">从官网导入 Milo v1.5 BOM</Link>}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {kind === "manual" && <label><span className="field-label">手册名称</span><Input value={name} onChange={(event) => { invalidate(); setName(event.target.value); }} /></label>}
+        {kind === "manual" && <label><span className="field-label">手册名称</span><Input value={name} onChange={(event) => setName(event.target.value)} /></label>}
         <label className={kind === "bom" ? "sm:col-span-2" : ""}><span className="field-label">资料来源</span>
-          <Input value={source} placeholder="网址、文件名、修订或章节（可选）" onChange={(event) => { invalidate(); setSource(event.target.value); }} />
+          <Input value={source} placeholder="网址、文件名、修订或章节（可选）" onChange={(event) => setSource(event.target.value)} />
         </label>
       </div>
       <label className="block" htmlFor="import-material-body"><span className="field-label">资料正文</span></label>
       <Textarea id="import-material-body" className="h-28 resize-y" value={content} placeholder={kind === "bom" ? "名称,数量,单位,制造商,型号" : "粘贴手册或选型表文字"}
-        onChange={(event) => { invalidate(); setContent(event.target.value); }} />
-      <Button disabled={reading || !content.trim()} onClick={preview}>预览资料</Button>
-      {reading && <p role="status" className="text-xs text-muted-foreground">正在读取资料正文…</p>}
-      {draft.length > 0 && <div className="surface-inset space-y-3 p-3" aria-label="资料预览">
-        <h4 className="text-sm font-semibold">已识别 {draft.length} 条资料</h4>
-        <ul className="space-y-1 text-xs">{draft.slice(0, 6).map((item) => <li key={item.id} className="break-words">
-          {item.name} · {item.quantity} {item.unit} · {item.manufacturer && `${item.manufacturer} · `}{item.binding ? "已有可用模型" : "待建模"}
-        </li>)}</ul>
-        {draft.length > 6 && <p className="text-xs text-muted-foreground">另有 {draft.length - 6} 条，保存后可在资料库查阅。</p>}
-        <Button size="sm" onClick={saveDraft}>保存物料资料</Button>
-      </div>}
+        onChange={(event) => setContent(event.target.value)} />
+      <Button disabled={!content.trim()} onClick={preview}>预览资料</Button>
       {error && !row && <p role="alert" className="break-words text-sm text-destructive">{error}</p>}
-      {notice && <p role="status" className="text-sm text-primary">{notice}</p>}
-    </section>
+      </div>
+    </details>
     <section className="surface min-w-0 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-base font-semibold">物料与手册 <span className="mono text-sm text-muted-foreground">{catalog.materials.length}</span></h3>

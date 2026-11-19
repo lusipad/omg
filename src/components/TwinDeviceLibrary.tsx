@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { ArrowRight, BookOpen, Copy, FileJson, FileUp, Layers3, Link2, Loader2, PackageOpen, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { IS_PAGES } from "@/const";
+import { useCancelOnNewImport } from "@/hooks/useWorkbenchImport";
 import { fetchSourceText } from "@/lib/twin-source-text";
+import type { DeviceDraftPatch, WorkbenchImportOptions } from "@/lib/workbench-import";
 import { trpc } from "@/providers/trpc";
-import TwinPackagePreview from "./TwinPackagePreview";
+import type { MaterialRow } from "@contracts/import-catalog";
 import { packageKey, parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
-import { deviceExtractionPrompt, generateDevicePackage, inovanceSource, suggestSourceMetadata, type DeviceSourceInput } from "@contracts/twin-extract";
+import { deviceExtractionPrompt, deviceSourceFromMaterial, generateDevicePackage, inovanceSource, suggestSourceMetadata, type DeviceSourceInput } from "@contracts/twin-extract";
 
 const emptySource: DeviceSourceInput = { manufacturer: "", model: "", revision: "", title: "", url: "", locator: "", text: "" };
 const sourceFields = [
@@ -35,50 +37,46 @@ function isSampleUrl(value: string) {
   }
 }
 
-function parseJson(text: string) {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, "$1"));
-  } catch {
-    throw new Error("设备包 JSON 格式有误，请检查括号、引号和完整性。");
-  }
-  if (raw && typeof raw === "object" && "missing" in raw && Array.isArray(raw.missing)) {
-    const missing = raw.missing.filter((item) => typeof item === "string" && item.trim()).slice(0, 12);
-    if (missing.length) throw new Error(`请补充资料中的${missing.join("、")}。`);
-  }
-  return parseDevicePackage(raw);
-}
-
-export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, initialSource }: {
+export default function TwinDeviceLibrary({ packages, onAssemble, initialSource, incomingSource, onImportFile, onImportText, onPreviewDevice, active = true }: {
   packages: DevicePackage[];
-  onInstall: (pkg: DevicePackage) => void;
   onAssemble: (pkg: DevicePackage) => void;
   initialSource?: Partial<DeviceSourceInput>;
+  incomingSource?: DeviceDraftPatch;
+  active?: boolean;
+  onImportFile: (file: File, hint?: WorkbenchImportOptions["hint"]) => void;
+  onImportText: (text: string, name: string, options?: WorkbenchImportOptions) => void;
+  onPreviewDevice: (device: DevicePackage, installed?: boolean) => void;
 }) {
   const [mode, setMode] = useState<"source" | "package">("source");
   const [source, setSource] = useState<DeviceSourceInput>(() => ({ ...emptySource, ...initialSource }));
+  const latestSource = useRef(source);
+  useLayoutEffect(() => { latestSource.current = source; }, [source]);
   const [json, setJson] = useState("");
-  const [preview, setPreview] = useState<{ device: DevicePackage; installed: boolean } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState<"url" | "file" | "ai" | null>(null);
+  const [busy, setBusy] = useState<"url" | "ai" | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [manualPrompt, setManualPrompt] = useState("");
   const task = useRef<AbortController | null>(null);
-  const textSourceUrl = useRef("");
+  const textOrigin = useRef<{ url: string; text: string } | null>(null);
+  const lastPatch = useRef<number | null>(null);
   const autofilled = useRef(new Set<SourceKey>());
   const sourceFile = useRef<HTMLInputElement>(null);
   const packageFile = useRef<HTMLInputElement>(null);
-  const aiStatus = trpc.twinAi.status.useQuery(undefined, { enabled: !IS_PAGES && aiOpen, retry: false, staleTime: 60_000 });
-  const ai = trpc.twinAi.generate.useMutation();
+  const aiStatus = trpc.twinAi.status.useQuery(undefined, { enabled: active && !IS_PAGES && aiOpen, retry: false, staleTime: 60_000 });
+  const aiClient = trpc.useUtils().client;
 
-  useEffect(() => () => task.current?.abort(), []);
+  const cancelRead = useCallback(() => task.current?.abort(), []);
+  useCancelOnNewImport(cancelRead);
+  useLayoutEffect(() => {
+    if (!active) cancelRead();
+    return cancelRead;
+  }, [active, cancelRead]);
 
   function invalidate() {
-    task.current?.abort();
+    cancelRead();
     task.current = null;
     setBusy(null);
-    setPreview(null);
     setManualPrompt("");
     setError("");
     setNotice("");
@@ -99,24 +97,33 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
     }
   }
 
+  function withUrl(current: DeviceSourceInput, url: string) {
+    const next = { ...current, url };
+    autofilled.current.delete("url");
+    const origin = textOrigin.current;
+    if (origin && url !== origin.url) {
+      clearAutofilled(next);
+      if (current.text === origin.text) next.text = "";
+      textOrigin.current = null;
+    }
+    return next;
+  }
+
   function updateSource(key: keyof DeviceSourceInput, value: string) {
     invalidate();
-    const next = { ...source, [key]: value };
-    if (key !== "text") autofilled.current.delete(key);
-    if (key === "url" && textSourceUrl.current && value !== textSourceUrl.current) {
-      textSourceUrl.current = "";
-      clearAutofilled(next);
-      next.text = "";
+    if (key === "url") setSource(withUrl(source, value));
+    else {
+      if (key !== "text") autofilled.current.delete(key);
+      setSource({ ...source, [key]: value });
     }
-    setSource(next);
   }
 
   function suggestFromText(text: string) {
     const next = { ...source, text };
     if (autofilled.current.has("model") && !text.toLowerCase().includes(source.model.toLowerCase())) {
-      if (next.url === textSourceUrl.current) next.url = "";
+      if (next.url === textOrigin.current?.url) next.url = "";
       clearAutofilled(next);
-      textSourceUrl.current = "";
+      textOrigin.current = null;
     }
     fillBlanks(next, suggestSourceMetadata(text));
     setSource(next);
@@ -142,60 +149,54 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
     }
   }
 
-  async function readSource(file?: File) {
-    const isPdf = file && (file.type === "application/pdf" || /\.pdf$/i.test(file.name));
-    if (IS_PAGES && (!file || isPdf)) {
-      invalidate();
-      setError("请打开 UTF-8 编码的 TXT 文件，或粘贴规格表文字。");
+  function applyManualToCurrentDraft(row: MaterialRow, filename: string) {
+    const hints = deviceSourceFromMaterial(row, filename);
+    const next = { ...latestSource.current, text: hints.text };
+    if (next.url === textOrigin.current?.url) next.url = "";
+    clearAutofilled(next);
+    // 用户在预览里明确改过的标题和链接优先于原草稿，其他元数据只补空字段。
+    if (row.name !== filename.replace(/\.[^./\\]+$/, "").trim()) next.title = hints.title;
+    if (hints.url && hints.url === row.source?.trim()) next.url = hints.url;
+    fillBlanks(next, hints);
+    textOrigin.current = next.url && next.url === hints.url ? { url: next.url, text: next.text } : null;
+    setSource(next); setMode("source"); setError(""); setNotice(`已带入“${row.name}”的手册正文。`);
+  }
+
+  const applyIncoming = useEffectEvent((patch: DeviceDraftPatch) => {
+    invalidate();
+    if (patch.kind === "manual") {
+      applyManualToCurrentDraft(patch.row, patch.filename);
       return;
     }
-    const controller = start(file ? "file" : "url");
-    const previousReadUrl = textSourceUrl.current;
-    textSourceUrl.current = "";
-    setSource((previous) => ({ ...previous, text: "" }));
-    try {
-      let result: string;
-      if (!file) {
-        if (!source.url.trim()) throw new Error("请先填写汇川官方资料链接。");
-        result = await fetchSourceText("url", JSON.stringify({ url: source.url }), "application/json", controller.signal);
-      } else if (isPdf) {
-        if (file.size > 8 * 1024 * 1024) throw new Error("PDF 超过 8 MiB，请粘贴规格表原文。");
-        result = await fetchSourceText("pdf", file, "application/pdf", controller.signal);
-      } else {
-        if (!/\.txt$/i.test(file.name) && file.type !== "text/plain") throw new Error(IS_PAGES ? "请选择 UTF-8 编码的 TXT 资料。" : "请选择 PDF 或 UTF-8 编码的 TXT 资料。");
-        if (file.size > 1024 * 1024) throw new Error("TXT 超过 1 MiB，请仅粘贴相关规格表原文。");
-        result = await file.text();
+    const next = withUrl(latestSource.current, patch.url);
+    for (const field of ["title", "locator"] as const) {
+      if (patch[field] !== undefined) {
+        next[field] = patch[field];
+        autofilled.current.delete(field);
       }
+    }
+    setSource(next); setMode("source");
+  });
+  useLayoutEffect(() => {
+    if (incomingSource && lastPatch.current !== incomingSource.id) {
+      lastPatch.current = incomingSource.id;
+      applyIncoming(incomingSource);
+    }
+  }, [incomingSource]);
+
+  async function readOfficialSource() {
+    if (IS_PAGES) return;
+    const controller = start("url");
+    try {
+      if (!source.url.trim()) throw new Error("请先填写汇川官方资料链接。");
+      const result = await fetchSourceText("url", JSON.stringify({ url: source.url }), "application/json", controller.signal);
       if (controller.signal.aborted) return;
       if (!result.trim()) throw new Error("资料中没有可提取的文字，请粘贴所需规格表。");
       const next = { ...source, text: result };
-      const knownGuide = file
-        ? /\bGL10-1600END\b/i.test(result) && /19011103A03/i.test(result) && /inovance|汇川/i.test(result)
-        : isSampleUrl(source.url);
-      if (file) {
-        if (!knownGuide && next.url === previousReadUrl) next.url = "";
-        clearAutofilled(next);
-      }
-      fillBlanks(next, knownGuide ? inovanceSource : suggestSourceMetadata(result));
-      textSourceUrl.current = !file || knownGuide ? next.url : "";
+      fillBlanks(next, isSampleUrl(source.url) ? inovanceSource : suggestSourceMetadata(result));
+      textOrigin.current = { url: next.url, text: next.text };
       setSource(next);
-      setNotice(file ? `已读取 ${file.name}，请核对资料位置和规格原文。` : "已读取官网正文，请核对型号和规格表。");
-    } catch (cause) {
-      if (!controller.signal.aborted) setError(message(cause));
-    } finally {
-      finish(controller);
-    }
-  }
-
-  async function readPackage(file: File) {
-    const controller = start("file");
-    setJson("");
-    try {
-      if (file.size > 1024 * 1024) throw new Error("设备包超过 1 MiB，请检查选择的 JSON 文件。");
-      const content = await file.text();
-      if (controller.signal.aborted) return;
-      setJson(content);
-      setPreview({ device: parseJson(content), installed: false });
+      setNotice("已读取官网正文，请核对型号和规格表。");
     } catch (cause) {
       if (!controller.signal.aborted) setError(message(cause));
     } finally {
@@ -205,9 +206,12 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
 
   function generate() {
     invalidate();
+    if (mode === "package") {
+      onImportText(json, "粘贴的设备包 JSON", { hint: "json" });
+      return;
+    }
     try {
-      const device = mode === "source" ? generateDevicePackage(source, !source.url.trim()) : parseJson(json);
-      setPreview({ device, installed: false });
+      onPreviewDevice(generateDevicePackage(source, !source.url.trim()));
     } catch (cause) {
       setError(message(cause));
     }
@@ -216,8 +220,8 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
   async function generateWithAi() {
     const controller = start("ai");
     try {
-      const result = await ai.mutateAsync(source);
-      if (!controller.signal.aborted) setPreview({ device: parseDevicePackage(result.device), installed: false });
+      const result = await aiClient.twinAi.generate.mutate(source, { signal: controller.signal });
+      if (!controller.signal.aborted) onPreviewDevice(parseDevicePackage(result.device));
     } catch (cause) {
       if (!controller.signal.aborted) setError(message(cause));
     } finally {
@@ -247,22 +251,10 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
     }
   }
 
-  function install(device: DevicePackage) {
-    setError("");
-    try {
-      onInstall(device);
-      setPreview({ device, installed: true });
-      setNotice(`已安装 ${device.model}。`);
-    } catch (cause) {
-      setError(message(cause));
-    }
-  }
-
   function assemble(device: DevicePackage) {
     setError("");
     try {
       onAssemble(device);
-      setPreview(null);
     } catch (cause) {
       setError(message(cause));
     }
@@ -285,7 +277,7 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
               <Button variant="outline" size="sm" onClick={() => {
                 invalidate();
                 setSource({ ...inovanceSource });
-                textSourceUrl.current = inovanceSource.url;
+                textOrigin.current = { url: inovanceSource.url, text: inovanceSource.text };
                 autofilled.current = new Set(metadataKeys);
                 setNotice("已填入汇川 GL10-1600END 的示例规格摘录。");
               }}><BookOpen />填入汇川示例</Button>
@@ -294,21 +286,21 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
               <label className="field-label" htmlFor="twin-source-url">制造商资料链接</label>
               <div className="flex flex-wrap gap-2 sm:flex-nowrap">
                 <Input id="twin-source-url" type="url" className="min-w-0 flex-1 basis-52" placeholder="https://…" value={source.url} onChange={(event) => updateSource("url", event.target.value)} />
-                {!IS_PAGES && <Button variant="outline" disabled={!source.url.trim() || busy !== null} onClick={() => void readSource()}>
+                {!IS_PAGES && <Button variant="outline" disabled={!source.url.trim() || busy !== null} onClick={() => void readOfficialSource()}>
                   {busy === "url" ? <Loader2 className="animate-spin" /> : <Link2 />}读取汇川官网
                 </Button>}
               </div>
-              <p className="mt-1.5 text-xs leading-5 text-muted-foreground">本地资料可留空链接，用标题、页码和原文记录出处。{IS_PAGES && "粘贴规格或选择 TXT 即可本地解析。"}</p>
+              <p className="mt-1.5 text-xs leading-5 text-muted-foreground">本地资料可留空链接，用标题、页码和原文记录出处。{IS_PAGES && "粘贴规格或选择 TXT、Markdown 即可本地解析。"}</p>
             </div>
             <div>
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                 <label className="text-xs font-medium" htmlFor="twin-source-text">规格原文</label>
-                <input ref={sourceFile} type="file" className="hidden" accept={IS_PAGES ? ".txt,text/plain" : ".pdf,.txt,application/pdf,text/plain"} aria-label="厂商资料文件" onChange={(event) => {
+                <input ref={sourceFile} type="file" className="hidden" accept={IS_PAGES ? ".txt,.md,.markdown,text/plain,text/markdown" : ".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown"} aria-label="厂商资料文件" onChange={(event) => {
                   const file = event.target.files?.[0];
                   event.target.value = "";
-                  if (file) void readSource(file);
+                  if (file) { invalidate(); onImportFile(file, "manual"); }
                 }} />
-                <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => sourceFile.current?.click()}><FileUp />{IS_PAGES ? "打开 TXT 文件" : "上传 PDF / TXT"}</Button>
+                <Button size="sm" variant="ghost" onClick={() => sourceFile.current?.click()}><FileUp />{IS_PAGES ? "打开 TXT / MD" : "上传 PDF / TXT / MD"}</Button>
               </div>
               <Textarea id="twin-source-text" className="h-36 resize-y text-xs leading-5" value={source.text} placeholder="粘贴任意厂商的中文或英文规格表，保留单位与大于、小于符号。" onChange={(event) => {
                 if ((event.nativeEvent as InputEvent).inputType === "insertFromPaste") {
@@ -347,7 +339,7 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
             <input ref={packageFile} type="file" accept=".json,application/json" className="hidden" aria-label="设备包 JSON 文件" onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
-              if (file) void readPackage(file);
+              if (file) { invalidate(); onImportFile(file); }
             }} />
             <Button variant="outline" disabled={busy !== null} onClick={() => packageFile.current?.click()}><FileUp />选择设备包文件</Button>
             <div><label className="field-label" htmlFor="twin-package-json">设备包 JSON</label>
@@ -356,8 +348,8 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
             <Button disabled={!json.trim() || busy !== null} onClick={generate}>预览设备包<ArrowRight /></Button>
           </>}
           {busy !== null && <p role="status" className="text-xs text-muted-foreground">{busy === "ai" ? "正在从模型服务读取草案…" : "正在读取资料…"}</p>}
-          {error && !preview && <p role="alert" className="break-words rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
-          {notice && !preview && <p role="status" className="break-words text-xs leading-5 text-primary">{notice}</p>}
+          {error && <p role="alert" className="break-words rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
+          {notice && <p role="status" className="break-words text-xs leading-5 text-primary">{notice}</p>}
         </div>
       </section>
       <section className="surface min-w-0" aria-labelledby="twin-installed-heading">
@@ -379,7 +371,7 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
                       : `${pkg.ports.length} 个端口`}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => { invalidate(); setPreview({ device: pkg, installed: true }); }}>{pkg.servo ? "来源与参数" : "来源与规则"}</Button>
+                    <Button size="sm" variant="outline" onClick={() => { invalidate(); onPreviewDevice(pkg, true); }}>{pkg.servo ? "来源与参数" : "来源与规则"}</Button>
                     <Button size="sm" variant="secondary" onClick={() => assemble(pkg)}><Plus />{pkg.servo ? "用于伺服仿真" : "装配实例"}</Button>
                   </div>
                 </div>
@@ -387,9 +379,6 @@ export default function TwinDeviceLibrary({ packages, onInstall, onAssemble, ini
             </li>
           ))}</ul>}
       </section>
-      {preview && <TwinPackagePreview device={preview.device} installed={preview.installed} error={error}
-        onClose={() => { setPreview(null); setError(""); }}
-        onInstall={() => install(preview.device)} onAssemble={() => assemble(preview.device)} />}
     </div>
   );
 }
