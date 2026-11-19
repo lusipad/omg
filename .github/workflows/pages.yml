@@ -29,11 +29,8 @@ jobs:
         with:
           path: ${{ runner.temp }}/omc-downloads
           key: openmodelica-noble-amd64-${{ hashFiles('scripts/modelica/bootstrap-linux.sh') }}
-      - name: 安装模型编译前置工具
-        run: |
-          sudo apt-get -o Acquire::Retries=3 update
-          sudo apt-get install -y --no-install-recommends build-essential clang-18 lld-18 cmake curl ca-certificates unzip libexpat1-dev
-          bash scripts/modelica/bootstrap-linux.sh "$RUNNER_TEMP/omc" "$RUNNER_TEMP/omc-downloads"
+      - name: 在镜像自带的构建工具上安装 OpenModelica
+        run: bash scripts/modelica/bootstrap-linux.sh "$RUNNER_TEMP/omc" "$RUNNER_TEMP/omc-downloads"
       - name: 编译模型并对照原生和浏览器运行结果
         env:
           CLANG: clang-18
