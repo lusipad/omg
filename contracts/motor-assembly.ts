@@ -1,7 +1,7 @@
 import library from "../public/modelica/motor-library.json";
 import { getDeviceParts } from "./device-composition";
 import { compositionPath, deriveDeviceComposition } from "./device-composition-edit";
-import { parseFactoryLayout, type FactoryLayout } from "./factory";
+import { parseFactoryLayout, type FactoryLayout, type FactoryResource } from "./factory";
 import { applyFactoryStructureRevision } from "./factory-structure";
 import { packageKey, parseDevicePackage, type DevicePackage, type ModelReference, type MotorAxisPort } from "./twin-device";
 import { installPackage, type TwinWorkspace } from "./twin-simulation";
@@ -132,6 +132,10 @@ export function factoryMotorMount(workspace: TwinWorkspace, layout: FactoryLayou
   if (!root) throw new Error(`“${resource.name}”引用的设备修订尚未安装。`);
   const port = root.axisPorts?.find(p => p.id === axisId);
   if (!port) throw new Error(`“${root.model} @ ${root.revision}”未声明调试轴 ${axisId}。`);
+  return inspectMotorAxisPort(workspace, resource, root, port);
+}
+
+export function inspectMotorAxisPort(workspace: TwinWorkspace, resource: FactoryResource, root: DevicePackage, port: MotorAxisPort) {
   requireRef(port.modelRef, library.assembly.id, port.name);
   const occurrenceAtAxis = occurrence(workspace, resource.packageKey, port.path), axis = occurrenceAtAxis.part;
   const slot = getDeviceParts(axis).find(p => p.id === port.motorSlot), installedPath = [...port.path, port.motorSlot];

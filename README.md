@@ -18,6 +18,8 @@
 
 在 **电机与轴** 中从设备库选择定子、转子及一对轴承，可以先保存一台独立伺服电机，再将它装到 CNC 的 X 轴。输入目标位移后，Modelica 结合绕组电流、转子惯量、轴承阻尼、丝杠和移动负载计算位置与速度。曲线可切换观察工作台或电机轴，也可导出 CSV 及可独立运行的原生模型。[从零件装 CNC-A 的电机](https://lusipad.com/omg/?view=workbench&example=cnc-factory&motorAxis=cnc-a) · [装配与复算教程](docs/零件装配伺服电机.md)
 
+把同一电机修订装到 CNC-A 的 X、Y、Z 轴，可用 G2/G3 分层铣圆槽，回放三轴位置、速度和刀尖指令与反馈的叠图。[试跑 CNC-A 三轴圆槽](https://lusipad.com/omg/?view=workbench&example=cnc-factory&contour=cnc-a) · [操作与实算结果](docs/CNC三轴圆槽.md)
+
 例如，可以在 Milo 上分三层铣出 Ø30 × 3 mm 的平底槽，或用 UR5e、2F-85 夹爪及独立方块组装取放工位。试用中可调整程序或工况。[Milo 圆槽](https://lusipad.com/omg/?view=workbench&example=milo-v1-5) · [UR5e 取放工位](https://lusipad.com/omg/?view=workbench&example=ur5e-pick-place) · [下载圆槽 G 代码](public/machines/milo-v1-5/circular-pocket.nc)
 
 公开站点在浏览器内运行模型。轻量工程可导出 JSON，包含用户物理模型的工程可导出带原始资源的 ZIP。客户项目、数据库、官网资料提取、PDF 转换和在线 AI 生成使用下文的完整服务部署。`npm run build:pages` 生成 `dist/pages`，推送到 `main` 后 GitHub Actions 会构建并发布这个目录。[导入格式与操作步骤](docs/通用模型与资料导入.md)

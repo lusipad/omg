@@ -6,6 +6,10 @@ export type { MiloArc } from "./milo-arc";
  */
 export type MiloVec3 = [number, number, number];
 export type MiloMoveMode = "G0" | "G1" | "G2" | "G3";
+export interface CncMotionProfile {
+  minMm: MiloVec3; maxMm: MiloVec3; workOriginMachineMm: MiloVec3; initialWorkMm: MiloVec3;
+  maxFeedMmMin: MiloVec3; accelerationMmS2: MiloVec3;
+}
 export const MILO_MACHINE = {
   minMm: [0, 0, -120], maxMm: [335, 208, 0],
   maxFeedMmMin: [1500, 1500, 1000], accelerationMmS2: [200, 200, 100], stepsPerMm: [800, 800, 1600],
@@ -44,12 +48,18 @@ export interface MiloSegment {
   feedMmMin: number | null; accelerationMmS2: number; peakSpeedMmS: number;
   rampS: number; cruiseS: number;
 }
-export interface MiloMotionSample {
+export interface CncCommandSample {
   timeS: number; line: number | null; mode: MiloMoveMode | null;
-  positionMm: MiloVec3; machineMm: MiloVec3; velocityMmS: MiloVec3; stepCounts: MiloVec3; pathSpeedMmS: number;
+  positionMm: MiloVec3; velocityMmS: MiloVec3; pathSpeedMmS: number;
 }
-export interface MiloMotionPlan {
-  segments: MiloSegment[]; samples: MiloMotionSample[]; durationS: number; totalLengthMm: number;
+export interface MiloMotionSample extends CncCommandSample {
+  machineMm: MiloVec3; stepCounts: MiloVec3;
+}
+export interface CncMotionPath {
+  segments: MiloSegment[]; durationS: number; totalLengthMm: number;
+}
+export interface MiloMotionPlan extends CncMotionPath {
+  samples: MiloMotionSample[];
 }
 
 const axes = ["X", "Y", "Z"] as const;
@@ -88,7 +98,7 @@ function readWords(text: string, line: number): Word[] {
   return words;
 }
 
-function segment(from: MiloVec3, to: MiloVec3, mode: MiloMoveMode, feedMmMin: number | null, startS: number, line: number, column: number, arc?: MiloArc): MiloSegment {
+function segment(profile: CncMotionProfile, from: MiloVec3, to: MiloVec3, mode: MiloMoveMode, feedMmMin: number | null, startS: number, line: number, column: number, arc?: MiloArc): MiloSegment {
   const delta = vector((i) => to[i] - from[i]);
   const xyArc = arc ? arc.radiusMm * Math.abs(arc.sweepRad) : 0;
   const lengthMm = arc ? Math.hypot(xyArc, delta[2]) : Math.hypot(...delta);
@@ -98,10 +108,10 @@ function segment(from: MiloVec3, to: MiloVec3, mode: MiloMoveMode, feedMmMin: nu
     const bounds = arcCardinals(arc, from);
     for (const p of bounds) {
       for (const [i, value] of [p.x, p.y].entries()) {
-        const machine = value + MILO_MACHINE.workOriginMachineMm[i];
+        const machine = value + profile.workOriginMachineMm[i];
         // 极值与端点同处机床行程坐标系。远处圆心的量级不能放宽机床软限位。
-        const eps = 32 * Number.EPSILON * Math.max(1, Math.abs(MILO_MACHINE.minMm[i]), Math.abs(MILO_MACHINE.maxMm[i]), Math.abs(machine));
-        if (machine < MILO_MACHINE.minMm[i] - eps || machine > MILO_MACHINE.maxMm[i] + eps) {
+        const eps = 32 * Number.EPSILON * Math.max(1, Math.abs(profile.minMm[i]), Math.abs(profile.maxMm[i]), Math.abs(machine));
+        if (!Number.isFinite(machine) || machine < profile.minMm[i] - eps || machine > profile.maxMm[i] + eps) {
           throw new MiloProgramError(line, column, `圆弧途中的 ${axes[i]} 超出行程，机床坐标达到 ${Number(machine.toPrecision(9))} mm。`);
         }
       }
@@ -116,14 +126,14 @@ function segment(from: MiloVec3, to: MiloVec3, mode: MiloMoveMode, feedMmMin: nu
   for (let i = 0; i < 3; i++) {
     const component = maxTangent[i];
     if (!component) continue;
-    speedLimit = Math.min(speedLimit, MILO_MACHINE.maxFeedMmMin[i] / 60 / component);
-    accelerationMmS2 = Math.min(accelerationMmS2, MILO_MACHINE.accelerationMmS2[i] / component);
+    speedLimit = Math.min(speedLimit, profile.maxFeedMmMin[i] / 60 / component);
+    accelerationMmS2 = Math.min(accelerationMmS2, profile.accelerationMmS2[i] / component);
   }
   if (arc) {
     // 螺旋平面投影比例 k，法向加速度为 k²v²/r，XY 切向分量为 k·a_t。
     // 高进给时为相互垂直的两项各留至多 A/√2，保证合成后的轴加速度限值。
     const k = xyArc / lengthMm, curvature = k * k / arc.radiusMm;
-    const xyMax = Math.min(MILO_MACHINE.accelerationMmS2[0], MILO_MACHINE.accelerationMmS2[1]);
+    const xyMax = Math.min(profile.accelerationMmS2[0], profile.accelerationMmS2[1]);
     speedLimit = Math.min(speedLimit, Math.sqrt((xyMax / Math.SQRT2) / curvature));
     const normal = curvature * speedLimit * speedLimit;
     accelerationMmS2 = Math.min(accelerationMmS2, Math.sqrt((xyMax - normal) * (xyMax + normal)) / k);
@@ -141,7 +151,7 @@ function segment(from: MiloVec3, to: MiloVec3, mode: MiloMoveMode, feedMmMin: nu
     feedMmMin: mode === "G0" ? null : feedMmMin, accelerationMmS2, peakSpeedMmS, rampS, cruiseS };
 }
 
-export function planMiloProgram(program: string): MiloMotionPlan {
+export function planCncPath(program: string, profile: CncMotionProfile, maximumS = Infinity): CncMotionPath {
   if (typeof program !== "string") throw new MiloProgramError(1, 1, "请输入 G 代码程序。");
   if (program.length > MILO_MAX_PROGRAM_CHARS) {
     const allowed = program.slice(0, MILO_MAX_PROGRAM_CHARS).split(/\r\n|[\r\n]/);
@@ -149,9 +159,9 @@ export function planMiloProgram(program: string): MiloMotionPlan {
   }
   const lines = program.split(/\r\n|[\r\n]/);
   if (lines.length > 2000) throw new MiloProgramError(2001, 1, "程序超过 2,000 行。");
-  const plan: MiloMotionPlan = { segments: [], samples: [], durationS: 0, totalLengthMm: 0 };
+  const plan: CncMotionPath = { segments: [], durationS: 0, totalLengthMm: 0 };
   let mode: MiloMoveMode | null = null, absolute = true, feedMmMin: number | null = null;
-  let position: MiloVec3 = [...MILO_MACHINE.initialWorkMm], hasCode = false;
+  let position: MiloVec3 = [...profile.initialWorkMm], hasCode = false;
   for (const [index, text] of lines.entries()) {
     const line = index + 1, words = readWords(text, line);
     const fields = new Map<string, Word>(), groups = new Set<string>();
@@ -199,11 +209,11 @@ export function planMiloProgram(program: string): MiloMotionPlan {
       const word = fields.get(axes[i]);
       if (!word) return position[i];
       const value = absolute ? word.value : position[i] + word.value;
-      const min = MILO_MACHINE.minMm[i] - MILO_MACHINE.workOriginMachineMm[i];
-      const max = MILO_MACHINE.maxMm[i] - MILO_MACHINE.workOriginMachineMm[i];
+      const min = profile.minMm[i] - profile.workOriginMachineMm[i];
+      const max = profile.maxMm[i] - profile.workOriginMachineMm[i];
       const tolerance = 4 * Number.EPSILON * Math.max(Math.abs(value), Math.abs(min), Math.abs(max), 1);
       if (!Number.isFinite(value) || value < min - tolerance || value > max + tolerance) throw new MiloProgramError(line, word.column,
-        `${axes[i]} 超出行程。该轴允许的工件坐标为 ${min} 至 ${max} mm，机床坐标为 ${MILO_MACHINE.minMm[i]} 至 ${MILO_MACHINE.maxMm[i]} mm。`);
+        `${axes[i]} 超出行程。该轴允许的工件坐标为 ${min} 至 ${max} mm，机床坐标为 ${profile.minMm[i]} 至 ${profile.maxMm[i]} mm。`);
       if (!absolute && word.value !== 0 && value === position[i]) throw new MiloProgramError(line, word.column, `${axes[i]} 增量低于当前坐标可表示的精度。`);
       return Math.min(max, Math.max(min, value));
     });
@@ -213,13 +223,19 @@ export function planMiloProgram(program: string): MiloMotionPlan {
       catch (error) { throw new MiloProgramError(line, arcWord?.column ?? firstAxis.column, error instanceof Error ? error.message : "圆弧参数无效。"); }
     } else if (to.every((v, i) => v === position[i])) continue;
     if (plan.segments.length >= 1000) throw new MiloProgramError(line, firstAxis.column, "程序超过 1,000 个位移段。");
-    const next = segment(position, to, mode, feedMmMin, plan.durationS, line, firstAxis.column, arc);
+    const next = segment(profile, position, to, mode, feedMmMin, plan.durationS, line, firstAxis.column, arc);
+    if (next.endS > maximumS) throw new MiloProgramError(line, firstAxis.column, `程序累计时长超过 ${maximumS} s 的联动仿真范围。`);
     plan.segments.push(next);
     plan.durationS = next.endS;
     plan.totalLengthMm += next.lengthMm;
     position = to;
   }
   if (!hasCode) throw new MiloProgramError(1, 1, "程序中没有可识别的指令或地址字。");
+  return plan;
+}
+
+export function planMiloProgram(program: string): MiloMotionPlan {
+  const plan: MiloMotionPlan = { ...planCncPath(program, MILO_MACHINE), samples: [] };
   const times = new Set<number>([0]);
   const arcCount = plan.segments.filter((s) => s.arc).length;
   const perCircle = Math.max(4, Math.min(48, Math.floor(4000 / Math.max(1, arcCount))));
@@ -233,7 +249,7 @@ export function planMiloProgram(program: string): MiloMotionPlan {
       const fractions = [0.25, 0.5, 0.75, ...arcCardinals(s.arc).map((p) => p.fraction)];
       const divisions = Math.max(2, Math.ceil(perCircle * Math.abs(s.arc.sweepRad) / fullTurn));
       for (let i = 1; i < divisions; i++) fractions.push(i / divisions);
-      for (const fraction of fractions) if (fraction > 0 && fraction < 1) times.add(timeForFraction(s, fraction));
+      for (const fraction of fractions) if (fraction > 0 && fraction < 1) times.add(miloTimeAtFraction(s, fraction));
     }
   }
   plan.samples = [...times].sort((a, b) => a - b).map((t) => sampleMiloMotion(plan, t));
@@ -259,7 +275,7 @@ function pathState(s: MiloSegment, t: number) {
   return { fraction: Math.min(1, Math.max(0, travelled / s.lengthMm)), speed };
 }
 
-function timeForFraction(s: MiloSegment, fraction: number) {
+export function miloTimeAtFraction(s: MiloSegment, fraction: number) {
   const distance = fraction * s.lengthMm, remaining = s.lengthMm - distance;
   const rampDistance = s.peakSpeedMmS * s.rampS / 2;
   if (distance <= rampDistance) return s.startS + Math.sqrt(2 * distance / s.accelerationMmS2);
@@ -281,7 +297,7 @@ export function miloPointOnSegment(s: MiloSegment, fraction: number): MiloVec3 {
 }
 
 /** 每段精确起停。折点归入刚结束的程序块，超出回放区间的时刻固定在首末状态。 */
-export function sampleMiloMotion(plan: MiloMotionPlan, timeS: number): MiloMotionSample {
+export function sampleCncPath(plan: CncMotionPath, initialWorkMm: MiloVec3, timeS: number): CncCommandSample {
   if (!Number.isFinite(timeS)) throw new Error("采样时间必须为有限秒数。");
   const t = Math.max(0, Math.min(plan.durationS, timeS));
   let lo = 0, hi = plan.segments.length - 1;
@@ -291,10 +307,15 @@ export function sampleMiloMotion(plan: MiloMotionPlan, timeS: number): MiloMotio
   }
   const s = plan.segments[lo];
   const { fraction, speed: pathSpeedMmS } = s ? pathState(s, t) : { fraction: 0, speed: 0 };
-  const positionMm: MiloVec3 = s ? miloPointOnSegment(s, fraction) : [...MILO_MACHINE.initialWorkMm];
+  const positionMm: MiloVec3 = s ? miloPointOnSegment(s, fraction) : [...initialWorkMm];
   const tangent = s?.arc ? arcTangent(s.arc, s.endMm[2] - s.startMm[2], s.lengthMm, fraction) : s?.direction;
   const velocityMmS: MiloVec3 = tangent && pathSpeedMmS ? vector((i) => tangent[i] * pathSpeedMmS) : [0, 0, 0];
-  const machineMm = vector((i) => MILO_MACHINE.workOriginMachineMm[i] + positionMm[i]);
+  return { timeS: t, line: s?.line ?? null, mode: s?.mode ?? null, positionMm, velocityMmS, pathSpeedMmS };
+}
+
+export function sampleMiloMotion(plan: MiloMotionPlan, timeS: number): MiloMotionSample {
+  const sample = sampleCncPath(plan, MILO_MACHINE.initialWorkMm, timeS);
+  const machineMm = vector((i) => MILO_MACHINE.workOriginMachineMm[i] + sample.positionMm[i]);
   const stepCounts = vector((i) => Math.sign(machineMm[i]) * Math.round(Math.abs(machineMm[i]) * MILO_MACHINE.stepsPerMm[i]) || 0);
-  return { timeS: t, line: s?.line ?? null, mode: s?.mode ?? null, positionMm, machineMm, velocityMmS, stepCounts, pathSpeedMmS };
+  return { ...sample, machineMm, stepCounts };
 }

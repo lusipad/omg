@@ -40,6 +40,22 @@ const axisPortSchema = z.strictObject({
   currentGainOhm: positiveRating, source: text(2048),
 });
 export type MotorAxisPort = z.infer<typeof axisPortSchema>;
+const finiteMm = z.number().finite();
+const vector = z.tuple([finiteMm, finiteMm, finiteMm]);
+const positiveVector = z.tuple([positiveRating, positiveRating, positiveRating]);
+const contourSchema = z.strictObject({
+  modelRef: modelRefSchema, axes: z.strictObject({ x: signalIdSchema, y: signalIdSchema, z: signalIdSchema }),
+  minMm: vector, maxMm: vector, maxFeedMmMin: positiveVector, accelerationMmS2: positiveVector,
+  workOriginMachineMm: vector, initialWorkMm: vector, source: text(2048), zBalance: z.literal("counterbalanced"),
+}).superRefine((profile, ctx) => {
+  if (new Set(Object.values(profile.axes)).size !== 3) ctx.addIssue({ code: "custom", path: ["axes"], message: "X、Y、Z 必须分别引用不同的轴端口。" });
+  profile.minMm.forEach((low, i) => {
+    const high = profile.maxMm[i], start = profile.workOriginMachineMm[i] + profile.initialWorkMm[i];
+    if (low >= high || !Number.isFinite(start) || start < low || start > high)
+      ctx.addIssue({ code: "custom", path: ["initialWorkMm", i], message: "请核对机床行程边界和工件零点，刀尖起点须位于行程内。" });
+  });
+});
+export type ContourProfile = z.infer<typeof contourSchema>;
 const feedSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("lead-screw"), leadMmPerRev: positiveRating, modelRef: modelRefSchema }),
   z.strictObject({ kind: z.literal("moving-table"), massKg: positiveRating, modelRef: modelRefSchema }),
@@ -68,6 +84,7 @@ const packageSchema = z.strictObject({
   composition: deviceCompositionSchema.optional(),
   motorPhysics: motorPhysicsSchema.optional(),
   axisPorts: z.array(axisPortSchema).refine(ports => new Set(ports.map(p => p.id)).size === ports.length, "同一设备的调试轴标识不能重复。").optional(),
+  contour: contourSchema.optional(),
 });
 
 export type SignalPort = z.infer<typeof portSchema>;
@@ -94,6 +111,9 @@ export function readTwinData<T>(schema: z.ZodType<T>, value: unknown, label: str
 export function parseDevicePackage(value: unknown): DevicePackage {
   const model = value && typeof value === "object" && "mechanics" in value && "model" in value && typeof value.model === "string" ? value.model.trim().slice(0, 160) : "";
   const pkg = readTwinData(packageSchema, value, model ? `设备包“${model}”` : "设备包");
+  if (pkg.contour && Object.values(pkg.contour.axes).some(id => !pkg.axisPorts?.some(port => port.id === id))) {
+    throw new Error(`设备包“${pkg.model}”的三轴轮廓定义引用了未声明的轴端口。`);
+  }
   if (pkg.composition && pkg.mechanics?.kind === "assembly") {
     throw new Error(`设备包“${pkg.model}”已用机械装配节点声明组成，请通过安装点装配维护该层结构。`);
   }

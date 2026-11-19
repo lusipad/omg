@@ -22,6 +22,7 @@ import PackageStructure, { type ApplyDeviceRevision } from "./PackageStructure";
 
 type Props = {
   candidate: WorkbenchImportCandidate;
+  gcodeTarget?: string;
   workspace: TwinWorkspace;
   confirmed: boolean;
   busy: boolean;
@@ -259,7 +260,7 @@ function MaterialRows({ rows }: { rows: MaterialRow[] }) {
   </>;
 }
 
-export default function WorkbenchImportPreview({ candidate, workspace, busy, confirmed, error, onConfirm, onUseManual, onClose, onAssemble, onApplyDeviceRevision }: Props) {
+export default function WorkbenchImportPreview({ candidate, workspace, gcodeTarget, busy, confirmed, error, onConfirm, onUseManual, onClose, onAssemble, onApplyDeviceRevision }: Props) {
   const [edit, setEdit] = useState<{ owner: WorkbenchImportCandidate; title: string; source: string; text: string } | null>(null);
   const draft = edit?.owner === candidate ? edit : {
     owner: candidate, title: candidate.title ?? candidate.name.replace(/\.[^./\\]+$/, ""), source: candidate.source ?? "",
@@ -338,8 +339,8 @@ export default function WorkbenchImportPreview({ candidate, workspace, busy, con
         </div> : !checked.issue && <MaterialRows rows={checked.rows} />}
       </>}
       {candidate.kind === "gcode" && <>
-        <p className="text-sm leading-6">将 {lineCount(candidate.program)} 行 G 代码载入 Milo v1.5 程序草稿。{workspace.milo?.program && workspace.milo.program !== candidate.program
-          ? `此次导入会替换已保存的 ${lineCount(workspace.milo.program)} 行程序。` : ""}实际运行由你在三轴装配完成后启动。</p>
+          <p className="text-sm leading-6">将 {lineCount(candidate.program)} 行 G 代码载入 {gcodeTarget ?? "Milo v1.5"} 程序草稿。{!gcodeTarget && workspace.milo?.program && workspace.milo.program !== candidate.program
+            ? `此次导入会替换已保存的 ${lineCount(workspace.milo.program)} 行程序。` : ""}可在三轴装配完成后运行。</p>
         <pre aria-label="待导入的 G 代码" className="mono max-h-64 overflow-auto rounded-md border p-3 text-xs leading-5">{candidate.program}</pre>
       </>}
       {candidate.kind === "source-link" && <>

@@ -8,6 +8,7 @@ public/workcells/ur5e-pick-place/workpiece.xml text eol=lf
 # Keep the documented SHA-256 of the downloadable Milo BOM reproducible.
 public/machines/milo-v1-5/bom-facts.md text eol=lf
 public/machines/milo-v1-5/*.nc text eol=lf
+public/assemblies/cnc-factory/*.nc text eol=lf
 # The Modelica source and generated artifacts are identified by byte digests.
 public/modelica/**/*.json text eol=lf
 public/modelica/*.json text eol=lf

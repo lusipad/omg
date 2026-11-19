@@ -22,7 +22,9 @@ interface Sweep {
   contact: (x: number, y: number) => number | undefined;
 }
 
-function lineSweep(s: MiloSegment, end: MiloVec3, until: number): Sweep {
+type CutSegment = Pick<MiloSegment, "startMm" | "endMm" | "arc">;
+
+function lineSweep(s: CutSegment, end: MiloVec3, until: number): Sweep {
   const [x0, y0, z0] = s.startMm, [x1, y1, z1] = s.endMm;
   const dx = x1 - x0, dy = y1 - y0, length = Math.hypot(dx, dy);
   const nx = length ? dx / length : 0, ny = length ? dy / length : 0;
@@ -42,7 +44,7 @@ function lineSweep(s: MiloSegment, end: MiloVec3, until: number): Sweep {
   };
 }
 
-function arcSweep(s: MiloSegment, end: MiloVec3, until: number): Sweep {
+function arcSweep(s: CutSegment, end: MiloVec3, until: number): Sweep {
   const arc = s.arc!;
   const { radiusMm: r, startAngleRad: start, sweepRad } = arc;
   const sign = Math.sign(sweepRad), angle = Math.abs(sweepRad), span = angle * until;
@@ -82,9 +84,9 @@ function arcSweep(s: MiloSegment, end: MiloVec3, until: number): Sweep {
   };
 }
 
-function cut(heights: Float32Array, s: MiloSegment, until: number) {
-  if (s.mode === "G0" || until <= 0) return;
-  const end = miloPointOnSegment(s, until), z0 = s.startMm[2], dz = s.endMm[2] - z0;
+function cut(heights: Float32Array, s: CutSegment, until: number, end: MiloVec3) {
+  if (until <= 0) return;
+  const z0 = s.startMm[2], dz = s.endMm[2] - z0;
   const lowest = Math.fround(Math.max(-thicknessMm, Math.min(z0, end[2])));
   if (lowest >= 0) return;
   const sweep = s.arc ? arcSweep(s, end, until) : lineSweep(s, end, until);
@@ -105,20 +107,21 @@ function cut(heights: Float32Array, s: MiloSegment, until: number) {
   }
 }
 
-/** 已完成段存入底图；当前段从底图绘制，任意正反向 seek 使用同一几何定义。 */
-export function createMiloStockPlayback(plan: MiloMotionPlan) {
+/** 已完成段存入底图，当前段从底图绘制，任意正反向 seek 使用同一几何定义。 */
+function stockPlayback(count: number, durationS: number, endTime: (index: number) => number,
+  sweep: (heights: Float32Array, index: number, timeS?: number) => void) {
   const committed = new Float32Array(rows * columns), heights = new Float32Array(committed.length);
-  const stride = Math.max(1, Math.ceil(plan.segments.length / 16)), checkpoints = new Map<number, Float32Array>();
+  const stride = Math.max(1, Math.ceil(count / 16)), checkpoints = new Map<number, Float32Array>();
   let prefix = 0, revision = 0, lastFrame: MiloStockState | undefined;
 
   function seek(timeS: number): MiloStockState {
     if (!Number.isFinite(timeS)) throw new Error("去料回放时间必须为有限秒数。");
-    const t = Math.max(0, Math.min(plan.durationS, timeS));
+    const t = Math.max(0, Math.min(durationS, timeS));
     if (lastFrame?.timeS === t) return lastFrame;
-    let lo = 0, hi = plan.segments.length;
+    let lo = 0, hi = count;
     while (lo < hi) {
       const mid = Math.floor((lo + hi) / 2);
-      if (plan.segments[mid].endS <= t) lo = mid + 1;
+      if (endTime(mid) <= t) lo = mid + 1;
       else hi = mid;
     }
     const completed = lo, boundary = Math.floor(completed / stride) * stride;
@@ -128,16 +131,39 @@ export function createMiloStockPlayback(plan: MiloMotionPlan) {
       prefix = saved ? boundary : 0;
     }
     while (prefix < completed) {
-      cut(committed, plan.segments[prefix++], 1);
+      sweep(committed, prefix++);
       if (prefix % stride === 0 && !checkpoints.has(prefix)) checkpoints.set(prefix, committed.slice());
     }
     heights.set(committed);
-    const active = plan.segments[completed];
-    if (active) cut(heights, active, miloSegmentFractionAtTime(active, t));
+    if (completed < count) sweep(heights, completed, t);
     let removedHeight = 0, maxDepthMm = 0;
     for (const z of heights) { removedHeight -= z; maxDepthMm = Math.max(maxDepthMm, -z); }
     lastFrame = { timeS: t, heights, columns, rows, cellSizeMm, removedVolumeMm3: removedHeight * cellSizeMm ** 2, maxDepthMm, revision: ++revision };
     return lastFrame;
   }
   return { seek };
+}
+
+export function createMiloStockPlayback(plan: MiloMotionPlan) {
+  return stockPlayback(plan.segments.length, plan.durationS, i => plan.segments[i].endS, (heights, i, t) => {
+    const segment = plan.segments[i];
+    if (segment.mode === "G0") return;
+    const fraction = t === undefined ? 1 : miloSegmentFractionAtTime(segment, t);
+    cut(heights, segment, fraction, miloPointOnSegment(segment, fraction));
+  });
+}
+
+/** 反馈轨迹直接给出刀尖工件坐标。任一段接触毛坯即扫掠，包括快移和末端保持。 */
+export function createFeedbackStockPlayback(samples: readonly { timeS: number; actualMm: MiloVec3 }[]) {
+  const count = Math.max(0, samples.length - 1);
+  return stockPlayback(count, samples.at(-1)?.timeS ?? 0, i => samples[i + 1].timeS, (heights, i, t) => {
+    const a = samples[i], b = samples[i + 1];
+    const fraction = t === undefined ? 1 : Math.max(0, Math.min(1, (t - a.timeS) / (b.timeS - a.timeS)));
+    const end: MiloVec3 = fraction === 1 ? b.actualMm : [
+      a.actualMm[0] + (b.actualMm[0] - a.actualMm[0]) * fraction,
+      a.actualMm[1] + (b.actualMm[1] - a.actualMm[1]) * fraction,
+      a.actualMm[2] + (b.actualMm[2] - a.actualMm[2]) * fraction,
+    ];
+    cut(heights, { startMm: a.actualMm, endMm: b.actualMm }, fraction, end);
+  });
 }

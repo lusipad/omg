@@ -46,6 +46,8 @@ function ExampleCard({ item }: { item: StudioExample }) {
         <Button asChild variant="outline" size="sm">
           <Link to={studioHref({ view: "workbench", exampleId: item.id })} aria-label={`打开示例 ${item.name}`}>打开示例<ArrowRight /></Link>
         </Button>
+        {item.contourResource && <Link to={studioHref({ view: "workbench", exampleId: item.id, contour: item.contourResource })}
+          className="text-xs text-primary hover:underline">试铣圆槽</Link>}
         {item.download && <a href={assetUrl(item.download)} download={filename === "model.zip" ? `${item.id}.zip` : filename}
           aria-label={`下载 ${item.name} ${format || "文件"}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
           <Download className="size-3.5" />{format || "下载"}{size && ` · ${size}`}
@@ -57,7 +59,7 @@ function ExampleCard({ item }: { item: StudioExample }) {
 
 export default function StudioExamples() {
   const [filter, setFilter] = useState<Filter>("all");
-  const visible = filter === "all" ? STUDIO_EXAMPLES : STUDIO_EXAMPLES.filter((item) => group[item.kind] === filter);
+  const visible = filter === "all" ? STUDIO_EXAMPLES : STUDIO_EXAMPLES.filter((item) => group[item.kind] === filter || (filter === "machining" && item.contourResource));
   return <section aria-labelledby="studio-examples-heading" className="min-w-0 space-y-4">
     <header className="flex flex-wrap items-baseline justify-between gap-2">
       <h1 id="studio-examples-heading" className="display-title text-2xl font-semibold tracking-tight">示例库</h1>

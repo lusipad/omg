@@ -4,6 +4,7 @@ import { resolveFactoryParameters, type FactoryParameterSource } from "./factory
 import { isMeasuredMaterialUnit } from "./material-import";
 import { packageKey, readTwinData, signalIdSchema, type DevicePackage } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
+import { MILO_MAX_PROGRAM_CHARS } from "./milo-motion";
 
 export { FACTORY_MODELS, getFactoryModel, type FactoryModel, type FactoryRole } from "./factory-model";
 export { resolveFactoryParameters, type FactoryParameterSource } from "./factory-part-parameters";
@@ -15,6 +16,7 @@ const resourceSchema = z.strictObject({
   id: signalIdSchema, name: nameSchema, packageKey: z.string().trim().max(4096),
   positionM: z.tuple([finite, finite]), materialId: z.string().trim().min(1).max(128).optional(),
   parameters: factoryParametersSchema.optional(), axisTargetsMm: factoryParametersSchema.optional(),
+  contourRun: z.strictObject({ program: z.string().max(MILO_MAX_PROGRAM_CHARS, "G 代码超过 65,536 个字符。") }).optional(),
 });
 const resourceRefs = z.array(signalIdSchema).max(FACTORY_LIMITS.resources)
   .refine(ids => new Set(ids).size === ids.length, "候选设备标识重复");

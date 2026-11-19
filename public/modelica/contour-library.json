@@ -1,0 +1,34 @@
+{
+  "package": "GouyuanContour",
+  "version": "1.0.0",
+  "source": "GouyuanContour.mo",
+  "uses": { "GouyuanMotor": "1.0.0", "Gouyuan": "1.0.0", "Modelica": "4.0.0" },
+  "assembly": {
+    "id": "GouyuanContour.TrackingAxis",
+    "inputs": { "referenceMm": "mm" },
+    "states": ["motor.rotor.inertia.phi", "motor.rotor.inertia.w", "motor.stator.currentA"],
+    "parameters": {
+      "leadMmPerRev": { "unit": "mm/rev" },
+      "tableMassKg": { "unit": "kg" },
+      "phaseResistanceOhm": { "unit": "Ohm" },
+      "qInductanceH": { "unit": "H" },
+      "windingTurns": { "unit": "1" },
+      "windingFactor": { "unit": "1" },
+      "windingCurrentLimitA": { "unit": "A" },
+      "polePairs": { "unit": "1" },
+      "rotorFluxWb": { "unit": "Wb" },
+      "rotorInertiaKgM2": { "unit": "kg.m2" },
+      "bearingViscousNmS": { "unit": "N.m.s/rad" },
+      "bearingCount": { "unit": "1" },
+      "driveVoltageLimitV": { "unit": "V" },
+      "driveCurrentLimitA": { "unit": "A" },
+      "driveSpeedLimitRpm": { "unit": "rpm" },
+      "driveReferenceInertiaKgM2": { "unit": "kg.m2" },
+      "currentGainOhm": { "unit": "Ohm" }
+    },
+    "outputs": {
+      "positionMm": "mm", "velocityMmS": "mm/s", "angleDeg": "deg",
+      "speedRpm": "rpm", "currentA": "A", "motorTorqueNm": "N.m"
+    }
+  }
+}

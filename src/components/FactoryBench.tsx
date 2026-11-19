@@ -1,5 +1,5 @@
 import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Activity, Boxes, ChevronDown, Download, Factory, GitBranch, Play, Save, Workflow } from "lucide-react";
+import { Activity, Boxes, ChevronDown, CircleDot, Download, Factory, GitBranch, Play, Save, Workflow } from "lucide-react";
 import { nanoid } from "nanoid";
 import { FACTORY_LIMITS, inspectFactoryLayout, parseFactoryLayout, type FactoryLayout, type FactoryResource } from "@contracts/factory";
 import { deviceCompositionClosure } from "@contracts/device-composition";
@@ -8,6 +8,8 @@ import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import type { MotorAxisLocation } from "@contracts/studio-navigation";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { runFactory, type FactoryRunResult } from "@/lib/factory-runtime";
+import { contourTemplate } from "@/lib/cnc-contour-example";
+import circularPocket from "../../public/assemblies/cnc-factory/circular-pocket.nc?raw";
 import { downloadFile, downloadJson } from "@/lib/download";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -16,14 +18,16 @@ import FactoryPlayback from "./FactoryPlayback";
 
 const DeviceCompositionView = lazy(() => import("./DeviceCompositionView"));
 const MotorAxisBench = lazy(() => import("./MotorAxisBench"));
+const CncContourBench = lazy(() => import("./CncContourBench"));
 type Props = {
   workspace: TwinWorkspace; layout?: FactoryLayout; initialPackageKey?: string; initialStructureId?: string; trial?: boolean;
   initialMotorResourceId?: string; initialMotorAxisId?: string; initialMotorKey?: string;
   onMotorFocus?: (focus?: MotorAxisLocation) => void;
+  initialContourId?: string; contourNote?: string; onContourFocus?: (id?: string) => void;
   onUpdateLibrary: (value: TwinWorkspace) => void;
   onSave: (value: FactoryLayout, revised?: TwinWorkspace) => void; onTrialReady?: (ready: boolean) => void; onImport?: () => void;
 };
-type Tab = "playback" | "devices" | "lines" | "structure" | "motor";
+type Tab = "playback" | "devices" | "lines" | "structure" | "motor" | "contour";
 type RunSpec = { layout: FactoryLayout; signature: string; basis: string };
 type Request = RunSpec & { action: "run" | "export"; workspace: TwinWorkspace; save?: Props["onSave"] };
 type Completed = RunSpec & { result: FactoryRunResult };
@@ -31,7 +35,7 @@ const errorText = (cause: unknown) => cause instanceof Error ? cause.message : "
 const tabs = [
   { id: "playback", name: "工厂回放", icon: Factory }, { id: "devices", name: "设备布局", icon: Boxes },
   { id: "lines", name: "产线工序", icon: Workflow }, { id: "structure", name: "设备结构", icon: GitBranch },
-  { id: "motor", name: "电机与轴", icon: Activity },
+  { id: "motor", name: "电机与轴", icon: Activity }, { id: "contour", name: "三轴加工", icon: CircleDot },
 ] as const;
 
 function resourceFor(resources: FactoryResource[], pkg: DevicePackage, workspace: TwinWorkspace): FactoryResource {
@@ -55,25 +59,27 @@ function inputs(workspace: TwinWorkspace, layout: FactoryLayout) {
     workspace.catalog?.materials.filter(row => ids.has(row.id)).map(row => [row.id, row.quantity, row.unit, row.binding])]);
 }
 
-function fresh(workspace: TwinWorkspace, saved?: FactoryLayout, initialPackageKey?: string, initialStructureId?: string, initialMotorResourceId?: string) {
+function fresh(workspace: TwinWorkspace, saved?: FactoryLayout, initialPackageKey?: string, initialStructureId?: string, initialMotorResourceId?: string, initialContourId?: string) {
   const draft: FactoryLayout = saved ?? { schemaVersion: 1, kind: "factory-layout", id: "factory-" + nanoid(), name: "新工厂", resources: [], lines: [] };
   const initial = !saved && initialPackageKey ? workspace.packages.find(p => p.factory && packageKey(p) === initialPackageKey) : undefined;
   if (initial) draft.resources.push(resourceFor(draft.resources, initial, workspace));
   const seen = saved ? JSON.stringify(saved) : "";
-  const pending: Request | null = saved && !inspectFactoryLayout(workspace, saved).length
+  const contour = initialContourId && saved?.resources.some(resource => resource.id === initialContourId);
+  const pending: Request | null = !contour && saved && !inspectFactoryLayout(workspace, saved).length
     ? { layout: saved, workspace, signature: seen, basis: inputs(workspace, saved), action: "run" } : null;
   const structure = initialStructureId && saved?.resources.some(resource => resource.id === initialStructureId);
   const motor = initialMotorResourceId && saved?.resources.some(resource => resource.id === initialMotorResourceId);
-  return { draft, seen, initialPackageKey, submitted: "", tab: (motor ? "motor" : structure ? "structure" : pending ? "playback" : "devices") as Tab, selected: draft.resources[0]?.id ?? "",
+  return { draft, seen, initialPackageKey, submitted: "", tab: (contour ? "contour" : motor ? "motor" : structure ? "structure" : pending ? "playback" : "devices") as Tab, selected: draft.resources[0]?.id ?? "",
     request: pending, completed: null as Completed | null, error: "", notice: "" };
 }
 
-export default function FactoryBench({ workspace, layout, initialPackageKey, initialStructureId, initialMotorResourceId, initialMotorAxisId, initialMotorKey, trial = false, onSave, onUpdateLibrary, onTrialReady, onMotorFocus, onImport }: Props) {
-  const [session, setSession] = useState(() => fresh(workspace, layout, initialPackageKey, initialStructureId, initialMotorResourceId));
+export default function FactoryBench({ workspace, layout, initialPackageKey, initialStructureId, initialMotorResourceId, initialMotorAxisId, initialMotorKey, initialContourId, contourNote, trial = false, onSave, onUpdateLibrary, onTrialReady, onMotorFocus, onContourFocus, onImport }: Props) {
+  const [session, setSession] = useState(() => fresh(workspace, layout, initialPackageKey, initialStructureId, initialMotorResourceId, initialContourId));
   const [structureRoot, setStructureRoot] = useState(initialStructureId);
   const [editingStructure, setEditingStructure] = useState(false);
   const [motorTarget, setMotorTarget] = useState<{ resourceId?: string; axisId?: string }>({ resourceId: initialMotorResourceId, axisId: initialMotorAxisId });
   const [motorBusy, setMotorBusy] = useState(false);
+  const [contourRoot, setContourRoot] = useState(initialContourId);
   const replacementSelect = useRef<HTMLSelectElement>(null), focusReplacement = useRef(false);
   const incoming = useMemo(() => layout ? JSON.stringify(layout) : "", [layout]);
   if (incoming !== session.seen || initialPackageKey !== session.initialPackageKey) {
@@ -81,6 +87,15 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
     else setSession(fresh(workspace, layout, initialPackageKey));
   }
   const { draft, tab } = session;
+  const machining = tab === "motor" || tab === "contour";
+  const contourResources = useMemo(() => {
+    const installed = new Map(workspace.packages.map(p => [packageKey(p), p]));
+    const templates = [...workspace.packages.filter(p => p.contour), contourTemplate];
+    return draft.resources.filter(r => {
+      const root = installed.get(r.packageKey);
+      return root && (root.contour || templates.some(t => t.manufacturer === root.manufacturer && t.model === root.model));
+    }).map(r => r.id);
+  }, [draft.resources, workspace.packages]);
   const motorResources = useMemo(() => {
     const installed = new Map(workspace.packages.map(p => [packageKey(p), p]));
     return draft.resources.filter(r => installed.get(r.packageKey)?.axisPorts?.length).map(r => r.id);
@@ -106,7 +121,7 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
   if (session.seen === incoming && pending && !job) setSession({ ...session, request: null, completed: null, notice: "工程资料已变动，请重新运行。" });
   const prior = session.completed;
   const completed = prior && !checked.issues.length && prior.signature === checked.signature && prior.basis === checked.basis ? prior : null;
-  const ready = !!checked.value && !checked.issues.length && checked.signature === incoming && !job && !session.error && !editingStructure && !(tab === "motor" && motorBusy);
+  const ready = !!checked.value && !checked.issues.length && checked.signature === incoming && !job && !session.error && !editingStructure && !(machining && motorBusy);
   useLayoutEffect(() => { if (trial) onTrialReady?.(ready); }, [trial, onTrialReady, ready]);
 
   useLayoutEffect(() => {
@@ -141,7 +156,8 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
   }
   function chooseTab(next: Tab, id?: string) {
     if (next === "structure") setStructureRoot(id);
-    if (next === "playback" && tab === "motor" && !completed && checked.value && !checked.issues.length) {
+    if (next === "contour" && id) setContourRoot(id);
+    if (next === "playback" && machining && !completed && checked.value && !checked.issues.length) {
       setSession(s => ({ ...s, tab: next, request: { action: "run", layout: checked.value!, signature: checked.signature, basis: checked.basis, workspace } }));
       return;
     }
@@ -151,7 +167,7 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
     setMotorTarget({ resourceId, axisId });
     chooseTab("motor", resourceId);
   }
-  function saveMotorChange(revised: TwinWorkspace, value: FactoryLayout) {
+  function saveMachineChange(revised: TwinWorkspace, value: FactoryLayout) {
     if (value === draft) {
       onUpdateLibrary(revised);
       return;
@@ -159,7 +175,7 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
     const parsed = parseFactoryLayout(value), signature = JSON.stringify(parsed);
     onSave(parsed, revised);
     setSession(s => ({ ...s, draft: parsed, submitted: signature, request: null,
-      completed: s.completed?.signature === signature ? s.completed : null, error: "", notice: "", tab: "motor" }));
+      completed: s.completed?.signature === signature ? s.completed : null, error: "", notice: "" }));
   }
   function applyStructure(id: string, revisions: TwinWorkspace, rootKey: string) {
     const original = draft.resources.find(r => r.id === id);
@@ -187,11 +203,11 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
     {!trial && tab === "playback" && <h2 className="display-title break-words text-xl font-semibold">{draft.name || "工厂"}</h2>}
     <div className="grid min-w-0 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
       <div className="flex max-w-full flex-wrap items-center gap-1" role="group" aria-label="工厂工作区视图">
-        {tabs.filter(item => item.id !== "motor" || motorResources.length || tab === "motor").map(item => <Button key={item.id} type="button" size="sm" variant={tab === item.id ? "secondary" : "ghost"} aria-pressed={tab === item.id}
-          disabled={editingStructure || (item.id === "playback" && !completed && !job && tab !== "playback" && !(tab === "motor" && canRun))}
+        {tabs.filter(item => (item.id !== "motor" || motorResources.length || tab === "motor") && (item.id !== "contour" || contourResources.length || tab === "contour")).map(item => <Button key={item.id} type="button" size="sm" variant={tab === item.id ? "secondary" : "ghost"} aria-pressed={tab === item.id}
+          disabled={editingStructure || (item.id === "playback" && !completed && !job && tab !== "playback" && !(machining && canRun))}
           onClick={() => chooseTab(item.id)}><item.icon className="hidden sm:block" />{item.name}</Button>)}
       </div>
-      {tab !== "motor" && <div className="flex flex-wrap items-center gap-1.5">
+      {!machining && <div className="flex flex-wrap items-center gap-1.5">
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button size="sm" variant="ghost" disabled={editingStructure}><Download className="hidden sm:block" />导出<ChevronDown className="size-3" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -213,7 +229,13 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
     </Suspense>}
     {tab === "motor" && <Suspense fallback={<p role="status" className="p-4 text-sm">正在打开电机组装与轴试跑…</p>}>
       <MotorAxisBench workspace={workspace} layout={draft} trial={trial} initialResourceId={motorTarget.resourceId} initialAxisId={motorTarget.axisId} initialMotorKey={initialMotorKey}
-        onChange={saveMotorChange} onBusyChange={setMotorBusy} onFocusChange={onMotorFocus} onImport={trial ? undefined : onImport} />
+        onChange={saveMachineChange} onBusyChange={setMotorBusy} onFocusChange={onMotorFocus} onImport={trial ? undefined : onImport}
+        contourResources={contourResources} onOpenContour={id => chooseTab("contour", id)} />
+    </Suspense>}
+    {tab === "contour" && <Suspense fallback={<p role="status" className="p-4 text-sm">正在打开三轴加工…</p>}>
+      {contourNote && <p className="text-xs text-muted-foreground">{contourNote}</p>}
+      <CncContourBench workspace={workspace} layout={draft} initialResourceId={contourRoot} trial={trial} defaultProgram={circularPocket}
+        template={contourTemplate} onChange={saveMachineChange} onBusyChange={setMotorBusy} onFocusChange={onContourFocus} onOpenMotor={openMotor} />
     </Suspense>}
     {(tab === "devices" || tab === "lines") && <FactoryEditor draft={draft} workspace={workspace} selectedId={session.selected} tab={tab} onChange={edit} replacementRef={replacementSelect}
       onOpenStructure={id => chooseTab("structure", id)}
@@ -221,12 +243,13 @@ export default function FactoryBench({ workspace, layout, initialPackageKey, ini
         if (draft.resources.length >= FACTORY_LIMITS.resources) return;
         const next = resourceFor(draft.resources, pkg, workspace); edit({ ...draft, resources: [...draft.resources, next] }); chooseTab("devices", next.id);
       }} />}
-    {tab !== "motor" && checked.issues.length > 0 && <details className="surface min-w-0 p-3 text-sm" open>
+    {!machining && checked.issues.length > 0 && <details className="surface min-w-0 p-3 text-sm" open>
       <summary className="cursor-pointer font-medium">运行前待补全 {checked.issues.length} 项</summary>
       <ul className="mt-2 list-disc space-y-1 break-words pl-5 text-xs leading-5 text-amber-300">{checked.issues.map((msg, i) => <li key={i}>{msg}</li>)}</ul>
     </details>}
     {completed && <div hidden={tab !== "playback"}><FactoryPlayback layout={completed.layout} result={completed.result} active={tab === "playback"}
       motorResourceIds={motorResources} onOpenMotor={openMotor}
+      contourResourceIds={contourResources} onOpenContour={id => chooseTab("contour", id)}
       onOpenStructure={id => chooseTab("structure", id)}
       onEditResource={id => { focusReplacement.current = true; chooseTab("devices", id); }} /></div>}
     {tab === "playback" && !completed && !job && !session.error && canRun && <p className="surface p-4 text-sm text-muted-foreground">运行当前布局后可回放工件与设备。</p>}

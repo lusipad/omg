@@ -5,6 +5,8 @@ import { upsertLinearAssembly } from "@contracts/linear-assembly";
 import { upsertFactoryLayout } from "@contracts/factory";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { loadStudioExample, prepareStudioExampleJoin, type LoadedStudioExample, type StudioBenchKind } from "@/lib/studio-example-workspace";
+import { prepareContourTrial } from "@/lib/cnc-contour-example";
+import circularPocket from "../../public/assemblies/cnc-factory/circular-pocket.nc?raw";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -14,15 +16,18 @@ const Linear = lazy(() => import("./LinearAssemblyBench"));
 const Factory = lazy(() => import("./FactoryBench"));
 const Follower = lazy(() => import("./So101MotionBench"));
 const Mill = lazy(() => import("./MiloWorkbench"));
-type ProjectProps = { workspace: TwinWorkspace; initialStructureId?: string; initialMotorResourceId?: string; initialMotorAxisId?: string;
-  onApply: (next: TwinWorkspace, target: StudioTarget, focus?: MotorAxisLocation) => void };
+type ProjectProps = { workspace: TwinWorkspace; initialStructureId?: string; initialMotorResourceId?: string; initialMotorAxisId?: string; initialContourId?: string;
+  onApply: (next: TwinWorkspace, target: StudioTarget, focus?: MotorAxisLocation, contour?: string) => void };
 type Confirmation = { project: TwinWorkspace; sample: TwinWorkspace; next: TwinWorkspace; description: string };
 const errorMessage = (cause: unknown) => cause instanceof Error ? cause.message : "示例操作失败，请重试。";
 
-function ExampleSession({ kind, download, workspace, initialStructureId, initialMotorResourceId, initialMotorAxisId, onApply }: ProjectProps & { kind: StudioBenchKind; download?: string }) {
+function ExampleSession({ kind, download, workspace, initialStructureId, initialMotorResourceId, initialMotorAxisId, initialContourId, onApply }: ProjectProps & { kind: StudioBenchKind; download?: string }) {
+  const initialProject = useRef(workspace);
+  const contourFocus = useRef<string | undefined>(undefined);
+  const trackContour = useCallback((id?: string) => { contourFocus.current = id; }, []);
   const motorFocus = useRef<MotorAxisLocation | undefined>(undefined);
   const trackMotor = useCallback((focus?: MotorAxisLocation) => { motorFocus.current = focus; }, []);
-  const [loaded, setLoaded] = useState<LoadedStudioExample | null>(null);
+  const [loaded, setLoaded] = useState<(LoadedStudioExample & { note?: string }) | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [assemblyReady, setAssemblyReady] = useState(false);
@@ -31,22 +36,24 @@ function ExampleSession({ kind, download, workspace, initialStructureId, initial
   useEffect(() => {
     const controller = new AbortController();
     loadStudioExample(kind, controller.signal, download).then(example => {
-      if (!controller.signal.aborted) setLoaded(example);
+      if (controller.signal.aborted) return;
+      setLoaded(kind === "factory" && initialContourId
+        ? { ...example, ...prepareContourTrial(initialProject.current, example.workspace, initialContourId, circularPocket) } : example);
     }).catch(cause => {
       if (!controller.signal.aborted) setError(errorMessage(cause));
     });
     return () => controller.abort();
-  }, [kind, download, attempt]);
+  }, [kind, download, initialContourId, attempt]);
 
   function edit(next: TwinWorkspace) {
-    setLoaded(previous => previous && { ...previous, workspace: next });
+    setLoaded(previous => previous && { ...previous, workspace: next, note: undefined });
     setError(""); setConfirmation(null);
   }
   function apply(next: TwinWorkspace, sample: TwinWorkspace) {
     if (kind === "factory") {
       const layout = sample.factories?.[0];
       if (!layout) throw new Error("请先载入工厂布局。");
-      onApply(next, `factory:${layout.id}`, motorFocus.current);
+      onApply(next, `factory:${layout.id}`, motorFocus.current, contourFocus.current);
       return;
     }
     if (kind !== "linear-assembly") { onApply(next, kind); return; }
@@ -95,6 +102,7 @@ function ExampleSession({ kind, download, workspace, initialStructureId, initial
       {kind === "linear-assembly" && <Linear trial workspace={sample} assembly={sample.assemblies?.[0]} onTrialReady={setAssemblyReady}
         onSave={assembly => edit(upsertLinearAssembly(sample, assembly))} />}
       {kind === "factory" && <Factory trial workspace={sample} layout={sample.factories?.[0]} initialStructureId={initialStructureId} initialMotorResourceId={initialMotorResourceId} initialMotorAxisId={initialMotorAxisId} onMotorFocus={trackMotor}
+        initialContourId={initialContourId} contourNote={loaded.note} onContourFocus={trackContour}
         onUpdateLibrary={edit} onTrialReady={setAssemblyReady}
         onSave={(layout, revised) => edit(upsertFactoryLayout(revised ?? sample, layout))} />}
       {kind === "so101" && follower && <Follower waypoints={follower.waypoints}
@@ -115,5 +123,5 @@ function ExampleSession({ kind, download, workspace, initialStructureId, initial
 
 export default function StudioExampleBench({ example, ...project }: ProjectProps & { example: StudioExample }) {
   if (example.kind === "physics") return null;
-  return <ExampleSession key={JSON.stringify([example.id, project.initialStructureId, project.initialMotorResourceId, project.initialMotorAxisId])} kind={example.kind} download={example.download} {...project} />;
+  return <ExampleSession key={JSON.stringify([example.id, project.initialStructureId, project.initialMotorResourceId, project.initialMotorAxisId, project.initialContourId])} kind={example.kind} download={example.download} {...project} />;
 }

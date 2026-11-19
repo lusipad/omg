@@ -3,7 +3,8 @@
 The OpenModelica back end performs flattening, index reduction, alias elimination and
 the symbolic solution of the small linear system. We keep its generated assignment
 bodies, changing only their runtime storage/diagnostic ABI for freestanding wasm.
-All compiled models must be autonomous, continuous and fully scalarized.
+The compiled equations must be continuous and fully scalarized. The tracking
+model accepts one audited time-varying position input.
 """
 import argparse
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ class WebModel:
     dependencies: tuple = ()
     state_count: int = 2
     step_us: int = 50
+    reference: str | None = None
 
 
 MODELS = {
@@ -62,6 +64,10 @@ MODELS = {
                       ("positionMm", "velocityMmS", "angleDeg", "speedRpm", "currentA", "motorTorqueNm"),
                       "motor-axis.wasm", "motor-axis.json", ("Gouyuan.mo",), state_count=3, step_us=25),
 }
+MODELS["contour"] = WebModel("GouyuanContour.TrackingAxis", "contour-library.json", "ContourWeb",
+                             MODELS["motor"].flags, MODELS["motor"].parameters[1:], MODELS["motor"].outputs,
+                             "contour-axis.wasm", "contour-axis.json", ("Gouyuan.mo", "GouyuanMotor.mo"),
+                             state_count=3, step_us=25, reference="referenceMm")
 
 
 def digest(data):
@@ -87,12 +93,27 @@ def emit_kernel(directory, model, assembly):
     description = ET.parse(directory / (prefix + "_init.xml")).getroot()
     if info["info"]["name"] != model.name or description.get("modelName") != model.name:
         raise ValueError("Unexpected compiled model.")
-    unsupported = ("numberOfEventIndicators", "numberOfTimeEvents", "numberOfInputVariables",
-                   "numberOfExternalObjects", "numberOfFunctions")
+    unsupported = ("numberOfEventIndicators", "numberOfTimeEvents", "numberOfExternalObjects", "numberOfFunctions")
     if any(description.get(key) != "0" for key in unsupported):
-        raise ValueError("The web integrator requires autonomous, continuous scalar equations.")
+        raise ValueError("The web integrator requires continuous scalar equations without events or external objects.")
+    if description.get("numberOfInputVariables") != str(int(bool(model.reference))):
+        raise ValueError("Unexpected number of external inputs.")
     variables = info["variables"]
     scalars = {v.get("name"): v for v in description.findall(".//ScalarVariable")}
+    input_slot = None
+    if model.reference:
+        name = model.reference
+        if (assembly.get("inputs") != {name: "mm"} or scalars[name].get("causality") != "input"
+                or scalars[name][0].get("unit") != "mm" or variables[name]["type"] != "Real"):
+            raise ValueError("Expected a single millimetre reference input.")
+        # OMC's JSON index for a top-level input addresses inputVars. Its actual
+        # realVars slot is set by the native input function and can differ.
+        binding = (r"realVars\[data->simulationInfo->realVarsIndex\[(\d+)\]\] /\* " + re.escape(name)
+                   + r" variable \*/\) = data->simulationInfo->inputVars\[0\];")
+        matches = re.findall(binding, (directory / (prefix + ".c")).read_text())
+        if len(matches) != 1:
+            raise ValueError("Cannot identify the native storage of " + name)
+        input_slot = int(matches[0])
     output_units = assembly["outputs"]
     if set(output_units) != set(model.outputs):
         raise ValueError("Registry and WASM output ports differ for " + model.name)
@@ -141,6 +162,8 @@ def emit_kernel(directory, model, assembly):
 
     schedule = {"parameter": [], "regular": []}
     visited = set(states) | set(model.parameters)
+    if model.reference:
+        visited.add(model.reference)
     constants = {}
 
     def require(name, active):
@@ -194,15 +217,18 @@ def emit_kernel(directory, model, assembly):
             checks.append(eq["eqIndex"])
         schedule["check_initial"] = checks
 
+    def storage_index(name):
+        return input_slot if name == model.reference else variables[name]["index"]
+
     def slot(name):
         variable = variables[name]
         if variable["type"] != "Real" and variable["type"] != "Real()":
             raise ValueError("The web adapter supports only Real variables: " + name)
         array = "p" if variable["kind"] == "parameter" else "v"
-        return f"{array}[{variable['index']}]"
+        return f"{array}[{storage_index(name)}]"
 
     def size(names):
-        return 1 + max(variables[n]["index"] for n in names)
+        return 1 + max(storage_index(n) for n in names)
 
     pieces = [f"static double v[{size([n for n in visited if variables[n]['kind'] != 'parameter'])}];",
               f"static double p[{size([n for n in visited if variables[n]['kind'] == 'parameter'])}];"]
@@ -239,6 +265,8 @@ def emit_kernel(directory, model, assembly):
         if not math.isfinite(value):
             raise ValueError("Non-finite initial state: " + name)
         pieces.append(f"  {slot(name)} = {value!r};")
+    if model.reference:
+        pieces.append(f"  {slot(model.reference)} = 0.0;")
     pieces.append("  parameter();")
     if "check_initial" in schedule:
         pieces.append("  check_initial();")
@@ -248,6 +276,8 @@ def emit_kernel(directory, model, assembly):
     pieces += [f"#define STATE_COUNT {len(states)}",
                "static const int state_index[] = {" + ",".join(str(variables[n]["index"]) for n in states) + "};",
                "static const int derivative_index[] = {" + ",".join(str(variables[n]["index"]) for n in derivatives) + "};"]
+    if model.reference:
+        pieces.append(f"#define REFERENCE_MM {slot(model.reference)}")
     return "\n".join(pieces) + "\n", states
 
 
@@ -278,11 +308,13 @@ def build(model, omc, clang, linker, check):
         equations, states = emit_kernel(work, model, library["assembly"])
         (work / "model-equations.h").write_text(equations)
         wrapper = Path(__file__).with_name("wasm-integrator.c")
+        entry = Path(__file__).with_name("wasm-reference-integrator.c") if model.reference else wrapper
         options = ["-O2", "--target=wasm32-unknown-unknown", "-ffreestanding", "-nostdlib",
                    "-fno-math-errno", "-ffp-contract=off", "-fno-ident", f"-fuse-ld={linker}",
                    "-Wl,--no-entry", "-Wl,--strip-all", "-Wl,--initial-memory=131072", "-Wl,--max-memory=131072"]
-        options += ["-Wl,--export=" + n for n in ["reset", "step", *model.outputs]]
-        subprocess.run([clang, *options, "-I", str(work), str(wrapper), "-o", model.wasm], cwd=work, check=True)
+        step_name = "stepReference" if model.reference else "step"
+        options += ["-Wl,--export=" + n for n in ["reset", step_name, *model.outputs]]
+        subprocess.run([clang, *options, "-I", str(work), str(entry), "-o", model.wasm], cwd=work, check=True)
         wasm = (work / model.wasm).read_bytes()
     manifest = {"model": library["assembly"]["id"], "version": library["version"], "msl": version,
                 "parameters": model.parameters, "integrator": {"method": "RK4", "stepUs": model.step_us},
@@ -295,8 +327,12 @@ def build(model, omc, clang, linker, check):
     if "states" in library["assembly"]:
         manifest["states"] = states
         manifest["integratorSha256"] = digest(wrapper.read_bytes())
-    if model is MODELS["motor"]:
+    if model.state_count == 3:
         manifest["substepPolicySha256"] = digest((ROOT / "contracts/motor-integration.mjs").read_bytes())
+    if model.reference:
+        manifest["inputs"] = library["assembly"]["inputs"]
+        manifest["referenceIntegratorSha256"] = digest(entry.read_bytes())
+        manifest["integrator"]["inputHold"] = "linear"
     for filename, content in [(model.wasm, wasm), (model.manifest, (json.dumps(manifest, indent=2) + "\n").encode())]:
         output = MODEL_DIR / "runtime" / filename
         if check:

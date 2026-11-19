@@ -12,6 +12,7 @@ export interface StudioExample {
   category: string;
   description: string;
   kind: StudioExampleKind;
+  contourResource?: string;
   /** 站内资源路径相对于部署基址，不以 / 开头。 */
   preview: string;
   source?: string;
@@ -26,8 +27,8 @@ export interface StudioExample {
 export const modelicaServoProjectPath = "modelica/servo-axis.twin.json";
 
 export const STUDIO_EXAMPLES: readonly StudioExample[] = [
-  { id: "cnc-factory", kind: "factory", name: "数控加工工厂", category: "工厂物流",
-    description: "让两条产线共用移动机器人和数控机床，跟踪每件工件，试换设备并比较批次完工时间。",
+  { id: "cnc-factory", kind: "factory", name: "数控加工工厂", category: "工厂物流", contourResource: "cnc-a",
+    description: "回放两条产线的上下料与运输，或进入 CNC-A，用自组电机铣圆槽并比较指令和反馈。",
     preview: "assemblies/cnc-factory/preview.webp", download: "assemblies/cnc-factory/project.twin.json",
     source: "https://github.com/lusipad/omg/blob/main/docs/Modelica工厂.md" },
   { id: "wiring-demo", kind: "wiring", name: "信号接线", category: "数字量输入",
@@ -73,8 +74,8 @@ export type StudioRoute =
   | { view: "resources"; section?: StudioResourceSection; source?: string; motorPart?: string }
   | { view: "examples" }
   | ({ view: "workbench" } & (
-    | { target?: StudioTarget; part?: string; motorAxis?: string; axis?: string; motorKey?: string; exampleId?: never; unavailableTarget?: never }
-    | { exampleId: string; structure?: string; motorAxis?: string; axis?: string; target?: never; unavailableTarget?: never }
+    | { target?: StudioTarget; part?: string; motorAxis?: string; axis?: string; motorKey?: string; contour?: string; exampleId?: never; unavailableTarget?: never }
+    | { exampleId: string; structure?: string; motorAxis?: string; axis?: string; contour?: string; target?: never; unavailableTarget?: never }
     | { unavailableTarget: string; target?: never; exampleId?: never }
   ));
 
@@ -90,7 +91,9 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
     const exampleId = params.get("example"), target = params.get("target");
     const motorAxis = signalIdSchema.safeParse(params.get("motorAxis"));
     const axis = signalIdSchema.safeParse(params.get("axis"));
+    const contour = signalIdSchema.safeParse(params.get("contour"));
     if (exampleId !== null) {
+      if (getStudioExample(exampleId)?.kind === "factory" && contour.success) return { view, exampleId, contour: contour.data };
       if (getStudioExample(exampleId)?.kind === "factory" && motorAxis.success) return { view, exampleId, motorAxis: motorAxis.data, ...(axis.success && { axis: axis.data }) };
       const device = signalIdSchema.safeParse(params.get("structure"));
       return getStudioExample(exampleId)?.kind === "factory" && device.success
@@ -105,6 +108,7 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
     for (const prefix of ["assembly:", "mechanism:", "factory:"] as const) {
       if (!target.startsWith(prefix)) continue;
       const id = signalIdSchema.safeParse(target.slice(prefix.length));
+      if (id.success && prefix === "factory:" && contour.success) return { view, target: `factory:${id.data}`, contour: contour.data };
       if (id.success && prefix === "factory:" && motorAxis.success) {
         const key = params.get("motorKey");
         return { view, target: `factory:${id.data}`, motorAxis: motorAxis.data, ...(axis.success && { axis: axis.data }), ...(key && isPackageKey(key) && { motorKey: key }) };
@@ -143,7 +147,8 @@ export function studioHref(route: StudioRoute, hash = ""): string {
   if (route.view === "workbench") {
     if (route.exampleId !== undefined) {
       params.set("example", route.exampleId);
-      if (route.motorAxis) {
+      if (route.contour && getStudioExample(route.exampleId)?.kind === "factory") params.set("contour", route.contour);
+      else if (route.motorAxis) {
         params.set("motorAxis", route.motorAxis);
         if (route.axis) params.set("axis", route.axis);
       }
@@ -151,7 +156,8 @@ export function studioHref(route: StudioRoute, hash = ""): string {
     }
     else if (route.target !== undefined) {
       params.set("target", route.target);
-      if (route.target.startsWith("factory:") && route.motorAxis) {
+      if (route.target.startsWith("factory:") && route.contour) params.set("contour", route.contour);
+      else if (route.target.startsWith("factory:") && route.motorAxis) {
         params.set("motorAxis", route.motorAxis);
         if (route.axis) params.set("axis", route.axis);
         if (route.motorKey) params.set("motorKey", route.motorKey);

@@ -23,6 +23,7 @@ import StudioRunArea from "@/components/StudioRunArea";
 import { downloadBlob, downloadFile, downloadJson } from "@/lib/download";
 import { importMaterialRows, prepareProjectResources, WORKBENCH_FILE_ACCEPT, type DeviceDraftPatch, type ImportOverrides, type IncomingWorkbenchModel, type WorkbenchImportOptions } from "@/lib/workbench-import";
 import { ImportStartContext, useWorkbenchImport } from "@/hooks/useWorkbenchImport";
+import { CncProgramImportContext, type CncProgramReceiver } from "@/hooks/useCncProgramImport";
 import WorkbenchImportPreview from "@/components/WorkbenchImportPreview";
 
 const storageKey = "gouyuan.twin.workspace.v1";
@@ -91,6 +92,7 @@ export default function TwinStudio() {
     ? route.target ?? remembered ?? targets[0]?.id : undefined;
   const editingAssembly = workbenchTarget === "assembly-new" || workbenchTarget === "mechanism-new" || workbenchTarget === "factory-new" ||
     ((workbenchTarget?.startsWith("assembly:") || workbenchTarget?.startsWith("mechanism:") || workbenchTarget?.startsWith("factory:")) && targets.some(item => item.id === workbenchTarget));
+  const [cncReceiver, setCncReceiver] = useState<CncProgramReceiver | null>(null);
   const intake = useWorkbenchImport((model, onInstalled) => {
     setIncomingModel({ selection: model, token: ++modelToken.current, onInstalled });
     go({ view: "workbench", target: "incoming" });
@@ -228,7 +230,7 @@ export default function TwinStudio() {
     return !occupied || window.confirm(`用“${label}”替换当前本机工程？如需保留当前工程，请先取消并导出备份。`);
   }
 
-  function showProject(next: TwinWorkspace, message: string, motorFocus?: MotorAxisLocation) {
+  function showProject(next: TwinWorkspace, message: string, motorFocus?: MotorAxisLocation, contourFocus?: string) {
     persist(next, true);
     setSourceDraft(undefined);
     setIncomingSource(undefined);
@@ -237,8 +239,12 @@ export default function TwinStudio() {
     setSelection({ version: 0 });
     setLastTarget(undefined); setShowPairSource(false);
     if ((next.mechanisms?.length ?? 0) + (next.assemblies?.length ?? 0) + (next.factories?.length ?? 0) > 1) go({ view: "resources", section: "system" }, message);
-    else if (next.factories?.length) go({ view: "workbench", target: `factory:${next.factories[0].id}`,
-      ...(motorFocus && { motorAxis: motorFocus.resourceId, axis: motorFocus.axisId }) }, message);
+    else if (next.factories?.length) {
+      const factory = next.factories[0], runs = factory.resources.filter(r => r.contourRun);
+      const contour = contourFocus ?? (!motorFocus && runs.length === 1 ? runs[0].id : undefined);
+      go({ view: "workbench", target: `factory:${factory.id}`,
+        ...(contour ? { contour } : motorFocus && { motorAxis: motorFocus.resourceId, axis: motorFocus.axisId }) }, message);
+    }
     else if (next.mechanisms?.length) go({ view: "workbench", target: `mechanism:${next.mechanisms[0].id}` }, message);
     else if (next.assemblies?.length) go({ view: "workbench", target: `assembly:${next.assemblies[0].id}` }, message);
     else if (next.milo) go({ view: "workbench", target: "milo" }, message);
@@ -279,7 +285,7 @@ export default function TwinStudio() {
         case "project":
           await prepareProjectResources(item, signal);
           signal.throwIfAborted();
-          showProject(item.workspace, `已导入工程“${item.name}”。`, item.motorFocus);
+          showProject(item.workspace, `已导入工程“${item.name}”。`, item.motorFocus, item.contourFocus);
           break;
         case "device":
           persist(installPackage(workspace, item.device));
@@ -326,6 +332,11 @@ export default function TwinStudio() {
           go({ view: "workbench", target: "so101" }, `已导入 ${item.bom.length} 行采购物料，并绑定 SO-101 官方从臂模型。`);
           break;
         case "gcode":
+          if (cncReceiver) {
+            cncReceiver.accept(item.program);
+            setNotice(`已载入 ${cncReceiver.name} 的加工草稿“${item.name}”，可核对后运行。`);
+            break;
+          }
           persist({ ...workspace, milo: { ...(workspace.milo ?? initialMiloWorkspace), program: item.program } });
           setBomRevision(v => v + 1);
           go({ view: "workbench", target: "milo" }, `已载入 G 代码“${item.name}”。${workspace.milo?.assembled.length === 3 ? "可在编辑器中核对后运行。" : "完成三轴装配后可运行。"}`);
@@ -415,10 +426,10 @@ export default function TwinStudio() {
     go({ view: "workbench", target: "servo" }, "驱动器和电机均已安装，组轴后即可运行目标位置。");
   }
 
-  function applyExample(next: TwinWorkspace, target: StudioTarget, name: string, focus?: MotorAxisLocation) {
+  function applyExample(next: TwinWorkspace, target: StudioTarget, name: string, focus?: MotorAxisLocation, contour?: string) {
     save(next);
     if (target === "servo") setSelection(previous => ({ version: previous.version + 1 }));
-    go({ view: "workbench", target, ...(focus && { motorAxis: focus.resourceId, axis: focus.axisId }) }, `已将“${name}”加入当前工程。`);
+    go({ view: "workbench", target, ...(contour ? { contour } : focus && { motorAxis: focus.resourceId, axis: focus.axisId }) }, `已将“${name}”加入当前工程。`);
   }
 
   function saveAssembly(assembly: LinearAssembly) {
@@ -444,7 +455,7 @@ export default function TwinStudio() {
   }
 
   return (
-    <ImportStartContext.Provider value={intake.events}><div className="min-h-screen bg-background">
+    <ImportStartContext.Provider value={intake.events}><CncProgramImportContext.Provider value={setCncReceiver}><div className="min-h-screen bg-background">
       <header className="border-b bg-card/65">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 sm:px-8 lg:gap-x-8">
           <div className="flex shrink-0 items-center gap-2">
@@ -495,7 +506,7 @@ export default function TwinStudio() {
             <Button variant="outline" onClick={cancelImport}>{intake.state.phase === "reading" ? "取消读取" : "关闭"}</Button>
           </DialogContent>
         </Dialog>}
-        {intake.state.phase === "preview" && <WorkbenchImportPreview key={intake.state.candidate.name} candidate={intake.state.candidate} workspace={workspace}
+        {intake.state.phase === "preview" && <WorkbenchImportPreview key={intake.state.candidate.name} candidate={intake.state.candidate} workspace={workspace} gcodeTarget={cncReceiver?.name}
           confirmed={intake.state.confirmed} busy={intake.state.busy} error={intake.state.error} onClose={cancelImport}
           onConfirm={confirmImport} onUseManual={overrides => confirmImport(overrides, true)} onAssemble={(device, mode) => run(() => assemble(device, mode))}
           onApplyDeviceRevision={saveDeviceRevision} />}
@@ -545,6 +556,6 @@ export default function TwinStudio() {
           <StudioExamples />
         </Suspense>}
       </main>
-    </div></ImportStartContext.Provider>
+    </div></CncProgramImportContext.Provider></ImportStartContext.Provider>
   );
 }

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "manufacturer": "构元教学件",
+  "model": "标准选件伺服电机",
+  "revision": "1",
+  "source": {
+    "title": "设备库伺服电机装配",
+    "url": "",
+    "locator": "标准选件伺服电机",
+    "excerpt": "组成清单记录定子、转子与一对轴承的安装槽及精确修订。电气、惯量与阻尼参数取自各部件资料。",
+    "kind": "local"
+  },
+  "ports": [],
+  "rules": [],
+  "composition": {
+    "kind": "assembly",
+    "shape": "shaft",
+    "parts": [
+      {
+        "id": "stator",
+        "label": "定子",
+        "quantity": 1,
+        "packageKey": "[\"构元教学件\",\"S40-STD\",\"1\"]"
+      },
+      {
+        "id": "rotor",
+        "label": "转子",
+        "quantity": 1,
+        "packageKey": "[\"构元教学件\",\"R40-STD\",\"1\"]"
+      },
+      {
+        "id": "bearing",
+        "label": "支承轴承",
+        "quantity": 2,
+        "packageKey": "[\"构元教学件\",\"B08-STD\",\"1\"]"
+      }
+    ]
+  },
+  "motorPhysics": {
+    "kind": "motor",
+    "fit": "EDU-FRAME-40",
+    "modelRef": {
+      "id": "GouyuanMotor.PMServoMotor",
+      "version": "1.0.0"
+    },
+    "statorPath": [
+      "stator"
+    ],
+    "rotorPath": [
+      "rotor"
+    ],
+    "bearingPath": [
+      "bearing"
+    ]
+  }
+}

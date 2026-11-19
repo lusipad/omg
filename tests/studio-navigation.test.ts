@@ -8,6 +8,15 @@ import { getStudioExample, getWorkbenchTargets, publishedStudioFile, readStudioR
 
 const hash = "a".repeat(64);
 describe("工作台路由", () => {
+  it("三轴加工保留机床实例，同一链接中的电机整定参数不改变加工视图", () => {
+    const example = { view: "workbench", exampleId: "cnc-factory", contour: "cnc-a" } as const;
+    const factory = { view: "workbench", target: "factory:cnc-factory", contour: "cnc-a" } as const;
+    for (const destination of [example, factory]) {
+      expect(readStudioRoute(studioHref(destination) + "&motorAxis=cnc-b&axis=x")).toEqual(destination);
+    }
+    expect(readStudioRoute("?view=workbench&example=milo-v1-5&contour=cnc-a")).toEqual({ view: "workbench", exampleId: "milo-v1-5" });
+    expect(readStudioRoute("?view=workbench&target=factory:cnc-factory&contour=bad/path")).toEqual({ view: "workbench", target: "factory:cnc-factory" });
+  });
   it("示例电机台、从库带入的部件以及机床待装电机保留各自的入口", () => {
     const key = packageKey({ manufacturer: "工厂", model: "自组 A", revision: "1" });
     const routes: StudioRoute[] = [

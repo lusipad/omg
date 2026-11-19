@@ -36,7 +36,7 @@ type Props = {
   onSaveMechanism: (assembly: MechanicalAssembly) => void;
   onInstallBundle: (bundle: MechanicalBundle) => void;
   onNavigate: (route: StudioRoute, message?: string, replace?: boolean) => void;
-  onApplyExample: (next: TwinWorkspace, target: StudioTarget, name: string, focus?: MotorAxisLocation) => void;
+  onApplyExample: (next: TwinWorkspace, target: StudioTarget, name: string, focus?: MotorAxisLocation, contour?: string) => void;
   onImportFile: (file: File, hint?: WorkbenchImportOptions["hint"]) => void;
   onImportText: (text: string, name: string, options?: WorkbenchImportOptions) => void;
 };
@@ -100,9 +100,10 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
     {route && !missing && <Suspense fallback={<p role="status" className="p-4 text-sm text-muted-foreground">正在打开运行台…</p>}>
       {example && example.kind !== "physics" && <ExampleBench key={example.id} example={example} workspace={workspace}
         initialStructureId={route.exampleId !== undefined ? route.structure : undefined}
+        initialContourId={route.exampleId !== undefined ? route.contour : undefined}
         initialMotorResourceId={route.exampleId !== undefined ? route.motorAxis : undefined} initialMotorAxisId={route.exampleId !== undefined ? route.axis : undefined}
-        onApply={(next, destination, focus) => {
-        onApplyExample(next, destination, example.name, focus);
+        onApply={(next, destination, focus, contour) => {
+        onApplyExample(next, destination, example.name, focus, contour);
         if (destination === "wiring") setWiringRevision(revision => revision + 1);
       }} />}
       {(example?.kind === "physics" || model || (target === "incoming" && incoming)) && <Physics
@@ -116,7 +117,9 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
       {(target === "assembly-new" || assembly) && <LinearAssemblyBench key={openedProject}
         workspace={workspace} assembly={assembly} onSave={onSaveAssembly} initialPackageKey={route.target === "assembly-new" ? route.part : undefined} />}
       {(target === "factory-new" || factory) && <FactoryBench key={JSON.stringify([openedProject, route.target?.startsWith("factory:") ? route.motorAxis : null,
-        route.target?.startsWith("factory:") ? route.axis : null, route.target?.startsWith("factory:") ? route.motorKey : null])} workspace={workspace} layout={factory} onSave={onSaveFactory} onUpdateLibrary={onChange}
+        route.target?.startsWith("factory:") ? route.axis : null, route.target?.startsWith("factory:") ? route.motorKey : null,
+        route.target?.startsWith("factory:") ? route.contour : null])} workspace={workspace} layout={factory} onSave={onSaveFactory} onUpdateLibrary={onChange}
+        initialContourId={route.target?.startsWith("factory:") ? route.contour : undefined}
         initialMotorResourceId={route.target?.startsWith("factory:") ? route.motorAxis : undefined}
         initialMotorAxisId={route.target?.startsWith("factory:") ? route.axis : undefined}
         initialMotorKey={route.target?.startsWith("factory:") ? route.motorKey : undefined}

@@ -20,6 +20,7 @@ type Props = {
   initialMotorKey?: string; trial?: boolean; onChange: (workspace: TwinWorkspace, layout: FactoryLayout) => void;
   onBusyChange?: (blocked: boolean) => void; onImport?: () => void;
   onFocusChange?: (focus?: MotorAxisLocation) => void;
+  contourResources?: readonly string[]; onOpenContour?: (resourceId: string) => void;
 };
 type Port = NonNullable<DevicePackage["axisPorts"]>[number];
 type Request = { action: "restore" | "run" | "export"; workspace: TwinWorkspace; layout: FactoryLayout; signature: string; target: number; save?: Props["onChange"] };
@@ -212,7 +213,7 @@ function AxisSession({ workspace, layout, resource, port, initialMotorKey, onCha
   </>;
 }
 
-export default function MotorAxisBench({ workspace, layout, initialResourceId, initialAxisId, initialMotorKey, trial, onChange, onBusyChange, onFocusChange, onImport }: Props) {
+export default function MotorAxisBench({ workspace, layout, initialResourceId, initialAxisId, initialMotorKey, trial, onChange, onBusyChange, onFocusChange, onImport, contourResources, onOpenContour }: Props) {
   const packages = useMemo(() => new Map(workspace.packages.map(p => [packageKey(p), p])), [workspace.packages]);
   const eligible = layout.resources.filter(r => packages.get(r.packageKey)?.axisPorts?.length);
   const [picked, setPicked] = useState(initialResourceId ?? ""), [axisId, setAxisId] = useState(initialAxisId ?? "");
@@ -242,6 +243,8 @@ export default function MotorAxisBench({ workspace, layout, initialResourceId, i
       {root && port && <p className="min-w-0 break-all text-xs text-muted-foreground">
         {identity(root)} · {port.fit} · 安装槽 {[...port.path, port.motorSlot].join(" / ")}
       </p>}
+      {resource && contourResources?.includes(resource.id) && onOpenContour &&
+        <Button size="sm" variant="outline" onClick={() => onOpenContour(resource.id)}>用这台机床做三轴加工</Button>}
     </div>
     {resource && port ? <AxisSession key={JSON.stringify([resource.id, port.id, initialMotorKey])} workspace={workspace} layout={layout}
       resource={resource} port={port} initialMotorKey={initialMotorKey} trial={trial} onChange={onChange} onBusyChange={onBusyChange} onImport={onImport} />

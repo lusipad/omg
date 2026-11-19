@@ -60,6 +60,13 @@ export const RELEASE_MANIFEST: { release: string; name: string; checks: ReleaseC
       boundary: "教学工况采用基波 q 轴模型、理想反馈与粘性轴承阻力。实机磁路、摩擦及驱动整定需要实测。",
     },
     {
+      key: "modelica-cnc-contour",
+      title: "GouyuanContour.TrackingAxis 1.0.0 三轴加工回归",
+      status: "passed",
+      evidence: "标准圆槽、换转子和双向螺旋共核对 11,337 个浏览器与原生 Modelica 时刻。三轴反馈位置的最大差小于 0.000031 mm，速度最大差小于 0.00026 mm/s。",
+      boundary: "Z 轴重力理想平衡，按仿真刀位做几何去料，动力学忽略切削力和刀具挠度。",
+    },
+    {
       key: "modelica-factory",
       title: "GouyuanFactory 1.0.0 整厂过程回归",
       status: "passed",

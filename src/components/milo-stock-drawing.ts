@@ -76,7 +76,7 @@ export function drawIsometric(ctx: CanvasRenderingContext2D, frame: MiloStockSta
   }
 }
 
-export function drawPlan(ctx: CanvasRenderingContext2D, frame: MiloStockState, texture: HTMLCanvasElement, pixels: ImageData) {
+export function paintStockTexture(frame: MiloStockState, texture: HTMLCanvasElement, pixels: ImageData) {
   const { heights, columns, rows } = frame;
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < columns; x++) {
@@ -86,6 +86,10 @@ export function drawPlan(ctx: CanvasRenderingContext2D, frame: MiloStockState, t
     }
   }
   texture.getContext("2d")?.putImageData(pixels, 0, 0);
+}
+
+export function drawPlan(ctx: CanvasRenderingContext2D, frame: MiloStockState, texture: HTMLCanvasElement, pixels: ImageData) {
+  paintStockTexture(frame, texture, pixels);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(texture, planLeft, planTop, w * planScale, h * planScale);
 }

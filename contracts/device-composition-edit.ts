@@ -57,13 +57,29 @@ function rebindSlot(parent: DevicePackage, slot: string, key: string): DevicePac
     part.id === slot ? { ...part, packageKey: key } : part) } };
 }
 
-/** Copy the edited node and its selected ancestors. The old revisions stay available to other slots and machines. */
-export function deriveDeviceComposition(workspace: TwinWorkspace, rootKey: string, path: readonly string[], composition: DeviceComposition,
-  rootRevision: string, additions: readonly DevicePackage[] = []): { workspace: TwinWorkspace; rootKey: string } {
-  const trail = compositionPath(workspace.packages, rootKey, path), root = trail[0], target = trail[trail.length - 1];
+type CompositionEdit = { path: readonly string[]; composition: DeviceComposition };
+type EditNode = { original: DevicePackage; children: Map<string, EditNode>; composition?: DeviceComposition };
+
+/** Copy each affected occurrence once, including the common ancestors of several edited slots. */
+export function deriveDeviceCompositions(workspace: TwinWorkspace, rootKey: string, edits: readonly CompositionEdit[],
+  rootRevision: string, additions: readonly DevicePackage[] = [], rootPorts?: Pick<DevicePackage, "axisPorts" | "contour">) {
+  const [root] = compositionPath(workspace.packages, rootKey, []);
+  const tree: EditNode = { original: root, children: new Map() };
+  for (const { path, composition } of edits) {
+    const trail = compositionPath(workspace.packages, rootKey, path);
+    let node = tree;
+    for (const [i, slot] of path.entries()) {
+      if (node.composition) throw new Error("同一次修订不能同时替换祖先与后代的组成。");
+      let child = node.children.get(slot);
+      if (!child) { child = { original: trail[i + 1], children: new Map() }; node.children.set(slot, child); }
+      node = child;
+    }
+    if (node.composition || node.children.size) throw new Error("组成编辑路径重复或包含另一条编辑路径。");
+    if (node.original.mechanics?.kind === "assembly") throw new Error("此层的槽位来自机械安装点，请通过“安装点与关节”编辑这一层。");
+    node.composition = composition;
+  }
   const revision = rootRevision.trim();
   if (!revision || revision.length > 160 || revision === root.revision) throw new Error("请为根设备填写与原修订不同的新修订号，最多 160 个字符。");
-  if (target.mechanics?.kind === "assembly") throw new Error("此层的槽位来自机械安装点，请通过“安装点与关节”编辑这一层。");
   const catalog = new Map(workspace.packages.map(p => [packageKey(p), p]));
   const rootTarget = packageKey({ ...root, revision });
   const same = (a: DevicePackage, b: DevicePackage) => JSON.stringify(parseDevicePackage(a)) === JSON.stringify(b);
@@ -74,22 +90,24 @@ export function deriveDeviceComposition(workspace: TwinWorkspace, rootKey: strin
     return key;
   }
   for (const pkg of additions) stage(parseDevicePackage(pkg));
-  let childKey = "";
   const changed: DevicePackage[] = [];
-  for (let i = trail.length - 1; i >= 0; i--) {
-    const previous = trail[i];
-    const contents = i === trail.length - 1 ? { ...previous, composition } : rebindSlot(previous, path[i], childKey);
+  function derive(node: EditNode): string {
+    const previous = node.original;
+    let contents = node.composition ? { ...previous, composition: node.composition } : previous;
+    for (const [slot, child] of node.children) contents = rebindSlot(contents, slot, derive(child));
+    if (node === tree && rootPorts) contents = { ...contents, ...rootPorts };
     let counter = 1;
-    let pkg = parseDevicePackage({ ...contents, revision: i ? incrementRevision(previous.revision, counter) : revision });
+    let pkg = parseDevicePackage({ ...contents, revision: node === tree ? revision : incrementRevision(previous.revision, counter) });
     // An identical intermediate revision can be reused on retry. A manual root revision must match exactly.
-    while (i > 0) {
+    while (node !== tree) {
       const key = packageKey(pkg), existing = catalog.get(key);
       if (key !== rootTarget && (!existing || same(existing, pkg))) break;
       pkg = parseDevicePackage({ ...contents, revision: incrementRevision(previous.revision, ++counter) });
     }
-    childKey = stage(pkg);
     changed.push(pkg);
+    return stage(pkg);
   }
+  derive(tree);
   const closure = deviceCompositionClosure([...catalog.values()], [rootTarget]);
   if (closure.missing.length) throw new Error("组成中缺少以下设备修订，请先安装或重新选件。\n" + closure.missing.join("\n"));
   for (const pkg of changed) {
@@ -100,4 +118,10 @@ export function deriveDeviceComposition(workspace: TwinWorkspace, rootKey: strin
   }
   const next = closure.packages.reduce(installPackage, workspace);
   return { workspace: next, rootKey: rootTarget };
+}
+
+/** Copy the edited node and its selected ancestors. The old revisions stay available to other slots and machines. */
+export function deriveDeviceComposition(workspace: TwinWorkspace, rootKey: string, path: readonly string[], composition: DeviceComposition,
+  rootRevision: string, additions: readonly DevicePackage[] = []): { workspace: TwinWorkspace; rootKey: string } {
+  return deriveDeviceCompositions(workspace, rootKey, [{ path, composition }], rootRevision, additions);
 }

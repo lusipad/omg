@@ -15,25 +15,20 @@ const motorGroups = {
   BearingData: ["bearingViscousNmS", "bearingCount"],
 } as const;
 
-function documents(workspace: TwinWorkspace, layout: FactoryLayout, resourceId: string, axisId: string, targetMm: number) {
-  const experiment = setMotorAxisTarget(layout, resourceId, axisId, targetMm);
-  const r = resolveMotorAxis(workspace, experiment, resourceId, axisId, targetMm);
+/** One native motor type carries its installed winding, rotor and bearing data in either kind of experiment. */
+export function assembledMotorSource(parameters: MotorAxisParameters) {
   const motorReferences = new Map<string, string>();
   const declarations = Object.entries(motorGroups).map(([group, fields]) => {
     const constants = fields.map(key => {
       motorReferences.set(key, `${group}.${key}`);
       const unit = registry.assembly.parameters[key].unit;
-      return `    constant Real ${key}(unit="${unit}")=${r.parameters[key]};`;
+      return `    constant Real ${key}(unit="${unit}")=${parameters[key]};`;
     });
     return `  package ${group}\n${constants.join("\n")}\n  end ${group};`;
   });
   // windingCurrentLimitA bounds the drive command and is not an electromechanical parameter of PMServoMotor.
   const motorBindings = [...motorReferences].filter(([name]) => name !== "windingCurrentLimitA")
     .map(([name, ref]) => `${name}=${ref}`).join(",\n    ");
-  const axisBindings = manifest.parameters.map(name => {
-    const ref = motorReferences.get(name);
-    return `${name}=${ref ? "AssembledMotor." + ref : r.parameters[name as keyof MotorAxisParameters]}`;
-  }).join(",\n    ");
   const motor = `within ;
 model AssembledMotor "自组电机的定子、转子和轴承参数"
 ${declarations.join("\n")}
@@ -42,6 +37,17 @@ ${declarations.join("\n")}
   annotation(uses(GouyuanMotor(version="${registry.version}")));
 end AssembledMotor;
 `;
+  return { motor, motorReferences };
+}
+
+function documents(workspace: TwinWorkspace, layout: FactoryLayout, resourceId: string, axisId: string, targetMm: number) {
+  const experiment = setMotorAxisTarget(layout, resourceId, axisId, targetMm);
+  const r = resolveMotorAxis(workspace, experiment, resourceId, axisId, targetMm);
+  const { motor, motorReferences } = assembledMotorSource(r.parameters);
+  const axisBindings = manifest.parameters.map(name => {
+    const ref = motorReferences.get(name);
+    return `${name}=${ref ? "AssembledMotor." + ref : r.parameters[name as keyof MotorAxisParameters]}`;
+  }).join(",\n    ");
   const axis = `within ;
 model MotorAxisRun "已装电机的直线轴位置试验"
   extends ${registry.assembly.id}(

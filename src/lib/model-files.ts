@@ -7,8 +7,9 @@ import { readStoredModel, writeModels, type StoredModel } from "./model-store";
 
 export type { StoredModel } from "./model-store";
 export type ModelSelection = { files: ModelFile[]; entries: string[] };
+export type RestoredProject = { workspace: TwinWorkspace; models: StoredModel[]; motorFocus?: MotorAxisLocation; contourFocus?: string };
 export type WorkbenchBundle = { kind: "model"; selection: ModelSelection }
-  | { kind: "project"; workspace: TwinWorkspace; models: StoredModel[]; motorFocus?: MotorAxisLocation };
+  | ({ kind: "project" } & RestoredProject);
 
 const { maxFiles, maxBundleBytes, maxFileBytes, maxProjectBytes } = MODEL_LIMITS;
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -500,11 +501,51 @@ async function restoreProject(files: ModelFile[], workspace: TwinWorkspace, sign
   return { workspace, models };
 }
 
+// JSON object order is immaterial. Slot paths and the X/Y/Z list are ordered.
+function matchesSnapshot(actual: unknown, expected: unknown): boolean {
+  if (actual === expected) return true;
+  if (Array.isArray(expected)) return Array.isArray(actual) && actual.length === expected.length && expected.every((v, i) => matchesSnapshot(actual[i], v));
+  if (!actual || typeof actual !== "object" || Array.isArray(actual) || !expected || typeof expected !== "object") return false;
+  const fields = Object.entries(expected), record = actual as Record<string, unknown>;
+  return Object.keys(record).length === fields.length && fields.every(([k, v]) => Object.hasOwn(record, k) && matchesSnapshot(record[k], v));
+}
+
+async function restoreContourFocus(workspace: TwinWorkspace, descriptor: Record<string, unknown>, file?: SourceFile, signal?: AbortSignal) {
+  const layout = workspace.factories![0], id = descriptor.resourceId;
+  const resource = layout.resources.find(r => r.id === id);
+  if (layout.id !== descriptor.layoutId || !resource || resource.packageKey !== descriptor.rootKey) {
+    throw new Error("三轴加工的工厂、机床实例或整机修订与工程快照不符。");
+  }
+  const { resolveContourAxes, CONTOUR_AXES } = await import("@contracts/cnc-contour");
+  signal?.throwIfAborted();
+  const machine = resolveContourAxes(workspace, layout, resource.id);
+  if (machine.motorKey !== descriptor.motorKey || !matchesSnapshot(descriptor.motorModel, machine.motor.motorPhysics?.modelRef) ||
+      !matchesSnapshot(descriptor.profile, machine.contour)) throw new Error("三轴加工的电机修订、模型或装夹工况与工程快照不符。");
+  const tracked = (fields: Record<string, unknown>) => Object.fromEntries(Object.entries(fields).filter(([key]) => key !== "targetMm"));
+  const axes = machine.axes.map((a, i) => ({
+    coordinate: CONTOUR_AXES[i].toUpperCase(), axisId: a.port.id, axisKey: packageKey(a.axis), axisPath: a.port.path,
+    motorSlot: a.port.motorSlot, motorKey: a.motorKey, fixtureSource: a.port.source,
+    parameters: tracked(a.parameters), parameterSources: tracked(a.sources),
+  }));
+  if (!matchesSnapshot(descriptor.axes, axes)) throw new Error("X、Y、Z 的轴修订、电机槽位或参数来源与工程快照不符。");
+  const program = resource.contourRun?.program;
+  if (!file || program === undefined) throw new Error("三轴加工缺少 program.nc 或机床实例上的程序。");
+  const bytes = encode.encode(program);
+  if (file.size !== bytes.length) throw new Error("program.nc 与机床实例保存的程序不符。");
+  const actual = (await file.read(signal)).data;
+  if (!actual.every((v, i) => v === bytes[i]) || !matchesSnapshot(descriptor.program, { file: file.path, sha256: await sha256Hex(actual) })) {
+    throw new Error("program.nc、程序 SHA-256 或机床实例保存的程序不符。");
+  }
+  signal?.throwIfAborted();
+  return resource.id;
+}
+
 /** The accompanying Modelica source is for native tools. Restore the versioned Studio snapshot in this archive. */
 async function readFactorySnapshot(entries: SourceFile[], signal?: AbortSignal) {
   const byName = new Map(entries.map(entry => [entry.path, entry]));
   if (!byName.has("run.mos")) return;
   const formats = [
+    ["ContourRun.mo", "contour-map.json", "cnc-contour-map", "contour.twin.json"],
     ["FactoryRun.mo", "factory-map.json", "factory-modelica-map", "factory.twin.json"],
     ["MotorAxisRun.mo", "motor-map.json", "motor-axis-map", "installed.twin.json"],
   ];
@@ -513,10 +554,17 @@ async function readFactorySnapshot(entries: SourceFile[], signal?: AbortSignal) 
     if (!meta || !map || !byName.has(source)) continue;
     if (map.size > MAX_PROJECT_JSON_BYTES || meta.size > MAX_PROJECT_JSON_BYTES) throw new Error("工厂工程或设备映射超过 8 MiB。");
     const descriptor = JSON.parse(utf8.decode((await map.read(signal)).data));
-    if (descriptor?.kind !== kind || descriptor.schemaVersion !== 1) continue;
+    if (descriptor?.kind !== kind || descriptor.schemaVersion !== 1) {
+      if (kind === "cnc-contour-map") throw new Error("三轴加工映射的格式或版本不受支持。");
+      continue;
+    }
     const workspace = parseWorkspace(JSON.parse(utf8.decode((await meta.read(signal)).data)));
     signal?.throwIfAborted();
     if (workspace.factories?.length !== 1 || workspace.catalog?.models.length) throw new Error("Modelica 工厂快照须包含一座自带设备修订的工厂。");
+    if (kind === "cnc-contour-map") {
+      const contourFocus = await restoreContourFocus(workspace, descriptor, byName.get("program.nc"), signal);
+      return { workspace, models: [] as StoredModel[], contourFocus };
+    }
     if (kind === "motor-axis-map") {
       const layout = workspace.factories[0], resource = layout.resources.find(r => r.id === descriptor.resourceId);
       const root = workspace.packages.find(p => packageKey(p) === resource?.packageKey);
@@ -530,7 +578,7 @@ async function readFactorySnapshot(entries: SourceFile[], signal?: AbortSignal) 
   }
 }
 
-export async function readProjectArchive(file: File): Promise<{ workspace: TwinWorkspace; models: StoredModel[] }> {
+export async function readProjectArchive(file: File): Promise<RestoredProject> {
   const index = await indexZip(file);
   if (!index.some(entry => entry.path === "workspace.json")) {
     const factory = await readFactorySnapshot(index);
