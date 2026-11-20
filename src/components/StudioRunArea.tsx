@@ -96,8 +96,10 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
       </div>}
     </header>}
     {route && (missing || (!target && !isExample)) && <div className="surface space-y-3 p-5">
-      <p className="text-sm">{missing ?? "当前工程还没有可装配或运行的对象。"}</p>
+      <p className="text-sm">{missing ?? "当前工程还没有可装配或运行的对象。可先体验跨品牌闭环示例或新建闭环装配。"}</p>
       <div className="flex flex-wrap gap-2">
+        <Button size="sm" asChild><Link to={studioHref({ view: "workbench", exampleId: "closed-loop-feed-system" })}>体验机电控闭环与实测对标</Link></Button>
+        <Button size="sm" variant="secondary" asChild><Link to={studioHref({ view: "workbench", target: "system-new" })}><Plus />新建机电控闭环系统</Link></Button>
         <Button size="sm" variant="outline" asChild><Link to={studioHref({ view: "resources" })}><FolderInput />打开工程资源</Link></Button>
         <Button size="sm" variant="ghost" asChild><Link to={studioHref({ view: "examples" })}>浏览示例库</Link></Button>
       </div>

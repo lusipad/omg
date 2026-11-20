@@ -6,7 +6,7 @@ import { signalIdSchema } from "./twin-device";
 import { isPackageKey } from "./package-identity";
 import type { TwinWorkspace } from "./twin-simulation";
 
-export type StudioExampleKind = "wiring" | "servo" | "linear-assembly" | "factory" | "so101" | "milo" | "physics";
+export type StudioExampleKind = "wiring" | "servo" | "linear-assembly" | "factory" | "system" | "so101" | "milo" | "physics";
 export interface StudioExample {
   id: string;
   name: string;
@@ -28,6 +28,10 @@ export interface StudioExample {
 export const modelicaServoProjectPath = "modelica/servo-axis.twin.json";
 
 export const STUDIO_EXAMPLES: readonly StudioExample[] = [
+  { id: "closed-loop-feed-system", kind: "system", name: "跨品牌机电控限位闭环与实测对标", category: "机电控闭环",
+    description: "将台达伺服、THK 丝杠、常闭接近开关（-not 反相扇出）与 GL10 防抖滤波连入同一 Modelica 闭环 RuntimeTrace，支持换件、LinuxCNC 导入与实机录波对标。",
+    preview: "assemblies/feed-axis/preview.webp", download: "assemblies/closed-loop-axis/project.twin.json",
+    source: "https://github.com/lusipad/omg/blob/main/docs/twin-platform-roadmap.md" },
   { id: "cnc-factory", kind: "factory", name: "数控加工工厂", category: "工厂物流", contourResource: "cnc-a",
     description: "回放两条产线的上下料与运输，或进入 CNC-A，用自组电机铣圆槽并比较指令和反馈。",
     preview: "assemblies/cnc-factory/preview.webp", download: "assemblies/cnc-factory/project.twin.json",

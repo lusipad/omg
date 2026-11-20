@@ -11,6 +11,7 @@ import { modelicaServoProjectPath, type StudioExampleKind } from "@contracts/stu
 import { createTwinDemo } from "@contracts/twin-demo";
 import { packageKey } from "@contracts/twin-device";
 import { emptyWorkspace, installDeviceDependencies, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
+import { evaluateSystemReadiness, upsertTwinSystem } from "@contracts/system-twin";
 import { decodeImportUtf8, parseImportText } from "@contracts/workbench-import";
 import { miloBomSource, so101BomSource } from "./bom-sources";
 
@@ -53,15 +54,17 @@ export async function loadStudioExample(kind: StudioBenchKind, signal: AbortSign
     case "wiring": return { workspace: createTwinDemo() };
     case "servo":
     case "factory":
-    case "linear-assembly": {
+    case "linear-assembly":
+    case "system": {
       const path = download ?? (kind === "servo" ? modelicaServoProjectPath : undefined);
       if (!path) throw new Error("示例缺少可下载的装配工程。");
       const text = await readStudioExampleText(import.meta.env.BASE_URL + path, signal);
       const result = parseImportText(text, path);
-      if (result.kind !== "project") throw new Error("示例文件不是可导入的设备工程。");
+      if (result.kind !== "project") throw new Error("示例不是可导入的设备工程。");
       if (kind === "servo" && !result.workspace.servoAxis) throw new Error("示例工程中缺少已装配的伺服轴。");
       if (kind === "linear-assembly" && result.workspace.assemblies?.length !== 1) throw new Error("每个直线装配示例须指定一份可编辑的装配。");
       if (kind === "factory" && result.workspace.factories?.length !== 1) throw new Error("每个工厂示例须指定一份可编辑的工厂布局。");
+      if (kind === "system" && result.workspace.systems?.length !== 1) throw new Error("每个机电控闭环示例须指定一份可编辑的闭环系统。");
       return { workspace: result.workspace };
     }
     case "so101": {
@@ -167,6 +170,17 @@ export function prepareStudioExampleJoin(kind: StudioBenchKind, project: TwinWor
       const replacement = previous && !same(previous, layout)
         ? `将以“${layout.name}”的 ${layout.lines.length} 条产线和 ${layout.resources.length} 台设备更新当前工程中的“${previous.name}”。` : undefined;
       return { next: upsertFactoryLayout(merged, layout), replacement };
+    }
+    case "system": {
+      const sys = sample.systems?.[0];
+      if (!sys) throw new Error("请先载入机电控闭环系统。");
+      const readiness = evaluateSystemReadiness(sample, sys);
+      if (!readiness.ready) throw new Error([...readiness.pendingItems, ...readiness.blockingErrors].join("\n"));
+      const merged = joinMaterials(project, sample, sample.packages.map(packageKey));
+      const previous = merged.systems?.find(s => s.id === sys.id);
+      const replacement = previous && !same(previous, sys)
+        ? `将用示例中的“${sys.name}”更新当前工程中的“${previous.name}”，包含 ${sys.axes.length} 根轴与 ${sys.wires.length} 条连线。` : undefined;
+      return { next: upsertTwinSystem(merged, sys), replacement };
     }
     case "so101": {
       const so101 = parseSo101Assembly(sample.so101);

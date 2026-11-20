@@ -13,7 +13,7 @@ const filters = [
 ] as const;
 type Filter = typeof filters[number]["id"];
 const group: Record<StudioExample["kind"], Exclude<Filter, "all">> = {
-  physics: "physics", so101: "physics", milo: "machining", factory: "factory", "linear-assembly": "automation", servo: "automation", wiring: "automation",
+  physics: "physics", so101: "physics", milo: "machining", factory: "factory", "linear-assembly": "automation", servo: "automation", wiring: "automation", system: "automation",
 };
 
 function assetUrl(path: string) {

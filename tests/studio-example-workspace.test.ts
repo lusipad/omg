@@ -8,6 +8,8 @@ import { applySo101BomImport } from "../contracts/import-apply";
 import { createDocumentMaterial } from "../contracts/material-import";
 import { getStudioExample } from "../contracts/studio-navigation";
 import { inspectLinearAssembly } from "../contracts/linear-assembly";
+import { requireReadySystem } from "../contracts/system-twin";
+import { integrateSystemTwin } from "../src/lib/system-twin-runtime";
 
 const file = (name: string) => readFileSync(new URL("../public/" + name, import.meta.url), "utf8");
 function fakeSources() {
@@ -218,5 +220,20 @@ describe("四个工作台示例", () => {
     expect(() => prepareStudioExampleJoin("wiring", project, sample)).toThrow();
     expect(project.packages).toEqual([old]);
     expect(project.instances).toEqual([]);
+  });
+
+  it("跨品牌机电控闭环示例可直接加载、执行 WASM 仿真并并入现有工程", async () => {
+    fakeSources();
+    const example = getStudioExample("closed-loop-feed-system");
+    expect(example?.kind).toBe("system");
+    const sample = (await loadStudioExample("system", new AbortController().signal, example!.download)).workspace;
+    expect(sample.systems).toHaveLength(1);
+    const wasm = new WebAssembly.Module(Uint8Array.from(readFileSync(new URL("../public/modelica/runtime/feed-tracking-axis.wasm", import.meta.url))));
+    const trace = integrateSystemTwin(requireReadySystem(sample, sample.systems![0]), wasm);
+    expect(trace.axisSummaries[0].stopTriggeredAtMs).toBeGreaterThan(200);
+    const joined = prepareStudioExampleJoin("system", createServoDemo(), sample);
+    expect(joined.replacement).toBeUndefined();
+    expect(joined.next.systems).toHaveLength(1);
+    expect(joined.next.packages.length).toBeGreaterThan(sample.packages.length);
   });
 });

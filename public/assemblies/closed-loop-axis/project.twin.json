@@ -1,0 +1,574 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "schemaVersion": 1,
+      "manufacturer": "Delta Electronics",
+      "model": "ASD-B3-0421-L",
+      "revision": "C-20240703",
+      "source": {
+        "title": "Delta AC Servo Drive ASDA-B3 Series Catalogue (DELTA_IA-ASDA_ASDA-B3_C_EN_20240703)",
+        "url": "https://www.deltaww.com/en-US/products/Servo-Systems-AC-Servo-Motors-and-Drives/5158",
+        "locator": "第 32 页 · ASD-B3-0421 连续/峰值输出电流",
+        "excerpt": "ASD-B3-0421 Continuous output current 2.65 Arms / Instantaneous max output current 7.95 Arms"
+      },
+      "ports": [],
+      "rules": [],
+      "parameters": {
+        "driveRatedCurrentA": {
+          "status": "catalog",
+          "value": 2.65,
+          "unit": "Arms",
+          "label": "驱动器连续额定电流",
+          "locator": "第 32 页"
+        },
+        "drivePeakCurrentA": {
+          "status": "catalog",
+          "value": 7.95,
+          "unit": "Arms",
+          "label": "驱动器瞬时峰值电流",
+          "locator": "第 32 页"
+        }
+      },
+      "modelBindings": [
+        {
+          "id": "delta-b3-drive",
+          "modelRef": {
+            "id": "Gouyuan.PositionDrive",
+            "version": "1.0.0"
+          },
+          "mappings": [
+            { "kind": "parameter", "source": "driveRatedCurrentA", "target": "driveRatedCurrentA" },
+            { "kind": "parameter", "source": "drivePeakCurrentA", "target": "drivePeakCurrentA" }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "Delta Electronics",
+      "model": "ECM-B3M-CA0604RB1",
+      "revision": "C-20240703",
+      "source": {
+        "title": "Delta AC Servo Motor ECM-B3 Series Catalogue (DELTA_IA-ASDA_ASDA-B3_C_EN_20240703)",
+        "url": "https://www.deltaww.com/en-US/products/Servo-Systems-AC-Servo-Motors-and-Drives/5158",
+        "locator": "第 41 页 · ECM-B3M-CA0604RB1 无抱闸规格表",
+        "excerpt": "400W Rated power 0.4 kW | Rated torque 1.27 N.m | Max torque 3.81 N.m | Rated speed 3000 r/min | Max speed 6000 r/min | Rotor inertia 0.254 x10^-4 kg.m^2 | Rated current 2.40 Arms"
+      },
+      "ports": [],
+      "rules": [],
+      "parameters": {
+        "ratedPowerW": {
+          "status": "catalog",
+          "value": 0.4,
+          "unit": "kW",
+          "label": "额定输出功率",
+          "locator": "第 41 页"
+        },
+        "ratedTorqueNm": {
+          "status": "catalog",
+          "value": 1.27,
+          "unit": "N.m",
+          "label": "额定输出转矩",
+          "locator": "第 41 页"
+        },
+        "peakTorqueNm": {
+          "status": "catalog",
+          "value": 3.81,
+          "unit": "N.m",
+          "label": "瞬时峰值转矩",
+          "locator": "第 41 页"
+        },
+        "ratedSpeedRpm": {
+          "status": "catalog",
+          "value": 3000,
+          "unit": "r/min",
+          "label": "额定转速",
+          "locator": "第 41 页"
+        },
+        "maxSpeedRpm": {
+          "status": "catalog",
+          "value": 6000,
+          "unit": "r/min",
+          "label": "最高转速",
+          "locator": "第 41 页"
+        },
+        "rotorInertiaKgM2": {
+          "status": "catalog",
+          "value": 0.254,
+          "unit": "1e-4 kg.m2",
+          "label": "转子惯量（R 无抱闸）",
+          "locator": "第 41 页"
+        },
+        "motorRatedCurrentA": {
+          "status": "catalog",
+          "value": 2.4,
+          "unit": "Arms",
+          "label": "额定相电流",
+          "locator": "第 41 页"
+        }
+      },
+      "modelBindings": [
+        {
+          "id": "delta-b3-motor",
+          "modelRef": {
+            "id": "Gouyuan.RatedTorqueMotor",
+            "version": "1.0.0"
+          },
+          "compatiblePeerModels": ["ASD-B3-0421-L"],
+          "mappings": [
+            { "kind": "parameter", "source": "ratedPowerW", "target": "ratedPowerW" },
+            { "kind": "parameter", "source": "ratedTorqueNm", "target": "ratedTorqueNm" },
+            { "kind": "parameter", "source": "peakTorqueNm", "target": "peakTorqueNm" },
+            { "kind": "parameter", "source": "ratedSpeedRpm", "target": "ratedSpeedRpm" },
+            { "kind": "parameter", "source": "maxSpeedRpm", "target": "maxSpeedRpm" },
+            { "kind": "parameter", "source": "rotorInertiaKgM2", "target": "rotorInertiaKgM2" },
+            { "kind": "parameter", "source": "motorRatedCurrentA", "target": "motorRatedCurrentA" }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "THK",
+      "model": "BNK1005",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "THK 精密滚珠丝杠 BNK 系列样本",
+        "url": "",
+        "locator": "BOM · 5 mm 导程丝杠",
+        "excerpt": "THK BNK1005 导程 5 mm/rev 理想刚性滚珠丝杠"
+      },
+      "ports": [],
+      "rules": [],
+      "parameters": {
+        "leadMmPerRev": {
+          "status": "catalog",
+          "value": 5,
+          "unit": "mm/rev",
+          "label": "丝杠导程",
+          "locator": "THK BNK"
+        }
+      },
+      "modelBindings": [
+        {
+          "id": "thk-bnk1005",
+          "modelRef": {
+            "id": "Gouyuan.IdealLeadScrew",
+            "version": "1.0.0"
+          },
+          "mappings": [
+            { "kind": "parameter", "source": "leadMmPerRev", "target": "leadMmPerRev" }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "THK",
+      "model": "BNK1010",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "THK 精密滚珠丝杠 BNK 系列样本",
+        "url": "",
+        "locator": "BOM · 10 mm 导程备选丝杠",
+        "excerpt": "THK BNK1010 导程 10 mm/rev 理想刚性滚珠丝杠（换件对比用）"
+      },
+      "ports": [],
+      "rules": [],
+      "parameters": {
+        "leadMmPerRev": {
+          "status": "catalog",
+          "value": 10,
+          "unit": "mm/rev",
+          "label": "丝杠导程",
+          "locator": "THK BNK"
+        }
+      },
+      "modelBindings": [
+        {
+          "id": "thk-bnk1010",
+          "modelRef": {
+            "id": "Gouyuan.IdealLeadScrew",
+            "version": "1.0.0"
+          },
+          "mappings": [
+            { "kind": "parameter", "source": "leadMmPerRev", "target": "leadMmPerRev" }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "通用机械件",
+      "model": "STAGE-TABLE-5KG",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "精密送料工作台结构清单",
+        "url": "",
+        "locator": "装配 BOM · 5 kg 移动滑台",
+        "excerpt": "移动工作台总质量 5 kg"
+      },
+      "ports": [],
+      "rules": [],
+      "parameters": {
+        "massKg": {
+          "status": "catalog",
+          "value": 5,
+          "unit": "kg",
+          "label": "移动总质量",
+          "locator": "装配 BOM"
+        }
+      },
+      "modelBindings": [
+        {
+          "id": "stage-mass-5",
+          "modelRef": {
+            "id": "Modelica.Mechanics.Translational.Components.Mass",
+            "version": "4.0.0"
+          },
+          "mappings": [
+            { "kind": "parameter", "source": "massKg", "target": "massKg" }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "通用机械件",
+      "model": "STAGE-TABLE-12KG",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "精密送料工作台结构清单",
+        "url": "",
+        "locator": "装配 BOM · 12 kg 重载滑台",
+        "excerpt": "移动工作台总质量 12 kg（换载对比用）"
+      },
+      "ports": [],
+      "rules": [],
+      "parameters": {
+        "massKg": {
+          "status": "catalog",
+          "value": 12,
+          "unit": "kg",
+          "label": "移动总质量",
+          "locator": "装配 BOM"
+        }
+      },
+      "modelBindings": [
+        {
+          "id": "stage-mass-12",
+          "modelRef": {
+            "id": "Modelica.Mechanics.Translational.Components.Mass",
+            "version": "4.0.0"
+          },
+          "mappings": [
+            { "kind": "parameter", "source": "massKg", "target": "massKg" }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "通用传感件",
+      "model": "LJ12A3-4-Z-AY",
+      "revision": "1",
+      "source": {
+        "kind": "local",
+        "title": "电感式接近开关 LJ12A3-4-Z/AY 接线说明",
+        "url": "",
+        "locator": "开关规格表 · PNP NC 24 VDC",
+        "excerpt": "Sensing distance 4 mm | Output type PNP Normally Closed (NC) | Supply 24 VDC"
+      },
+      "ports": [],
+      "rules": [],
+      "parameters": {
+        "senseDistanceMm": {
+          "status": "catalog",
+          "value": 4,
+          "unit": "mm",
+          "label": "标称感应距离",
+          "locator": "开关规格表"
+        },
+        "supplyVoltageV": {
+          "status": "catalog",
+          "value": 24,
+          "unit": "V",
+          "label": "供电电压",
+          "locator": "开关规格表"
+        },
+        "normallyClosed": {
+          "status": "catalog",
+          "value": true,
+          "unit": "1",
+          "label": "常闭触点 (NC)",
+          "locator": "开关规格表"
+        }
+      },
+      "modelBindings": [
+        {
+          "id": "limit-sw-nc",
+          "modelRef": {
+            "id": "GouyuanSignal.PositionLimitSwitch",
+            "version": "1.0.0"
+          },
+          "mappings": [
+            { "kind": "parameter", "source": "senseDistanceMm", "target": "senseDistanceMm" },
+            { "kind": "parameter", "source": "supplyVoltageV", "target": "supplyVoltageV" },
+            { "kind": "parameter", "source": "normallyClosed", "target": "normallyClosed" }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "manufacturer": "汇川技术",
+      "model": "GL10-1600END",
+      "revision": "A03",
+      "source": {
+        "title": "GL10-1600END Digital Input Module User Guide",
+        "url": "https://portal-file.inovance.com/owfile/ProdDoc/SC/19011103-SC/A03/19011103-SC_A03_GL10-1600END%20Digital%20Input%20Module%20User%20Guide-EN.pdf",
+        "locator": "PDF 第 1 页 · General specifications",
+        "excerpt": "Number of input channels 16 | ON voltage > 15 VDC | OFF voltage < 5 VDC | DI filter time 10 ms"
+      },
+      "ports": [],
+      "rules": [],
+      "parameters": {
+        "onAbove": {
+          "status": "catalog",
+          "value": 15,
+          "unit": "VDC",
+          "label": "导通高电平阈值",
+          "locator": "第 1 页"
+        },
+        "offBelow": {
+          "status": "catalog",
+          "value": 5,
+          "unit": "VDC",
+          "label": "关断低电平阈值",
+          "locator": "第 1 页"
+        },
+        "filterMs": {
+          "status": "catalog",
+          "value": 10,
+          "unit": "ms",
+          "label": "输入防抖滤波时间",
+          "locator": "第 1 页"
+        }
+      },
+      "modelBindings": [
+        {
+          "id": "gl10-di-ch0",
+          "modelRef": {
+            "id": "GouyuanSignal.DigitalInputChannel",
+            "version": "1.0.0"
+          },
+          "mappings": [
+            { "kind": "parameter", "source": "onAbove", "target": "onAbove" },
+            { "kind": "parameter", "source": "offBelow", "target": "offBelow" },
+            { "kind": "parameter", "source": "filterMs", "target": "filterMs" }
+          ]
+        }
+      ]
+    }
+  ],
+  "instances": [],
+  "connections": [],
+  "catalog": {
+    "models": [],
+    "materials": [
+      {
+        "id": "cl-drive",
+        "name": "台达 ASDA-B3 伺服驱动器",
+        "quantity": 1,
+        "unit": "台",
+        "manufacturer": "Delta Electronics",
+        "model": "ASD-B3-0421-L",
+        "source": "https://www.deltaww.com/en-US/products/Servo-Systems-AC-Servo-Motors-and-Drives/5158",
+        "binding": {
+          "kind": "device",
+          "key": "[\"Delta Electronics\",\"ASD-B3-0421-L\",\"C-20240703\"]"
+        }
+      },
+      {
+        "id": "cl-motor",
+        "name": "台达 ECM-B3M 伺服电机（无抱闸 R）",
+        "quantity": 1,
+        "unit": "台",
+        "manufacturer": "Delta Electronics",
+        "model": "ECM-B3M-CA0604RB1",
+        "source": "https://www.deltaww.com/en-US/products/Servo-Systems-AC-Servo-Motors-and-Drives/5158",
+        "binding": {
+          "kind": "device",
+          "key": "[\"Delta Electronics\",\"ECM-B3M-CA0604RB1\",\"C-20240703\"]"
+        }
+      },
+      {
+        "id": "cl-screw-5",
+        "name": "THK 5 mm 导程滚珠丝杠",
+        "quantity": 1,
+        "unit": "根",
+        "manufacturer": "THK",
+        "model": "BNK1005",
+        "leadMmPerRev": 5,
+        "binding": {
+          "kind": "device",
+          "key": "[\"THK\",\"BNK1005\",\"1\"]"
+        }
+      },
+      {
+        "id": "cl-screw-10",
+        "name": "THK 10 mm 导程备选丝杠",
+        "quantity": 1,
+        "unit": "根",
+        "manufacturer": "THK",
+        "model": "BNK1010",
+        "leadMmPerRev": 10,
+        "binding": {
+          "kind": "device",
+          "key": "[\"THK\",\"BNK1010\",\"1\"]"
+        }
+      },
+      {
+        "id": "cl-table-5",
+        "name": "5 kg 移动滑台",
+        "quantity": 1,
+        "unit": "件",
+        "manufacturer": "通用机械件",
+        "model": "STAGE-TABLE-5KG",
+        "massKg": 5,
+        "binding": {
+          "kind": "device",
+          "key": "[\"通用机械件\",\"STAGE-TABLE-5KG\",\"1\"]"
+        }
+      },
+      {
+        "id": "cl-table-12",
+        "name": "12 kg 重载备选滑台",
+        "quantity": 1,
+        "unit": "件",
+        "manufacturer": "通用机械件",
+        "model": "STAGE-TABLE-12KG",
+        "massKg": 12,
+        "binding": {
+          "kind": "device",
+          "key": "[\"通用机械件\",\"STAGE-TABLE-12KG\",\"1\"]"
+        }
+      },
+      {
+        "id": "cl-limit-sw",
+        "name": "LJ12A3-4-Z/AY 常闭接近开关",
+        "quantity": 1,
+        "unit": "只",
+        "manufacturer": "通用传感件",
+        "model": "LJ12A3-4-Z-AY",
+        "binding": {
+          "kind": "device",
+          "key": "[\"通用传感件\",\"LJ12A3-4-Z-AY\",\"1\"]"
+        }
+      },
+      {
+        "id": "cl-di-gl10",
+        "name": "GL10-1600END 数字输入模块",
+        "quantity": 1,
+        "unit": "台",
+        "manufacturer": "汇川技术",
+        "model": "GL10-1600END",
+        "binding": {
+          "kind": "device",
+          "key": "[\"汇川技术\",\"GL10-1600END\",\"A03\"]"
+        }
+      }
+    ]
+  },
+  "systems": [
+    {
+      "schemaVersion": 1,
+      "kind": "system-twin-assembly",
+      "id": "closed-loop-feed",
+      "name": "台达+THK+GL10 限位急停闭环轴",
+      "commStepMs": 1,
+      "durationMs": 600,
+      "axes": [
+        {
+          "id": "axis-x",
+          "name": "X 轴送料模组（THK BNK1005 + 台达 ASDA-B3）",
+          "direction": [1, 0, 0],
+          "originMm": [0, 0, 0],
+          "factor": 1,
+          "driveKey": "[\"Delta Electronics\",\"ASD-B3-0421-L\",\"C-20240703\"]",
+          "motorKey": "[\"Delta Electronics\",\"ECM-B3M-CA0604RB1\",\"C-20240703\"]",
+          "screwKey": "[\"THK\",\"BNK1005\",\"1\"]",
+          "tableKey": "[\"通用机械件\",\"STAGE-TABLE-5KG\",\"1\"]",
+          "provenance": "confirmed",
+          "note": "由纯 parameters + modelBindings 驱动"
+        }
+      ],
+      "sensors": [
+        {
+          "id": "sw-x-pos",
+          "name": "LJ12A3-4-Z/AY PNP NC 正限位",
+          "packageKey": "[\"通用传感件\",\"LJ12A3-4-Z-AY\",\"1\"]",
+          "axisId": "axis-x",
+          "triggerPositionMm": 16,
+          "senseDistanceMm": 4,
+          "triggerMode": "positive_overtravel",
+          "normallyClosed": true,
+          "supplyVoltageV": 24,
+          "provenance": "confirmed",
+          "note": "实机安装于 X=+16.0 mm 处"
+        }
+      ],
+      "diChannels": [
+        {
+          "id": "di-x",
+          "name": "GL10-1600END CH0（10 ms 防抖）",
+          "packageKey": "[\"汇川技术\",\"GL10-1600END\",\"A03\"]",
+          "filterMs": 10,
+          "provenance": "confirmed"
+        }
+      ],
+      "wires": [
+        {
+          "id": "w-v",
+          "from": { "kind": "sensor", "nodeId": "sw-x-pos", "portId": "voltageOut" },
+          "to": { "kind": "di", "nodeId": "di-x", "portId": "voltageIn" },
+          "provenance": "confirmed"
+        },
+        {
+          "id": "w-pos",
+          "from": { "kind": "di", "nodeId": "di-x", "portId": "stateOut" },
+          "to": { "kind": "controller", "nodeId": "ctrl-x", "portId": "posLimitIn" },
+          "invert": true,
+          "provenance": "confirmed",
+          "note": "NC 开关断电 (-not) 触发正限位"
+        },
+        {
+          "id": "w-home",
+          "from": { "kind": "di", "nodeId": "di-x", "portId": "stateOut" },
+          "to": { "kind": "controller", "nodeId": "ctrl-x", "portId": "homeSwitchIn" },
+          "invert": true,
+          "provenance": "confirmed",
+          "note": "一对多扇出至回零输入"
+        }
+      ],
+      "controllers": [
+        {
+          "id": "ctrl-x",
+          "axisId": "axis-x",
+          "mode": "move_with_limit_stop",
+          "targetMm": 35,
+          "cruiseVelocityMmS": 80,
+          "initialPositionMm": 0,
+          "stopOnPosLimit": true,
+          "stopOnNegLimit": true,
+          "stopOnHome": true
+        }
+      ]
+    }
+  ]
+}

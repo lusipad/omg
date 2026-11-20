@@ -65,7 +65,7 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState<"url" | "pdf" | "ai" | null>(null);
-  const [aiOpen, setAiOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(true);
   const [manualPrompt, setManualPrompt] = useState("");
   const [artifact, setArtifact] = useState<SourceArtifact | null>(null);
   const [gateHint, setGateHint] = useState("");
@@ -384,14 +384,55 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
         <div className="space-y-4 p-4 sm:p-5">
           {mode === "source" ? <>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="max-w-md text-xs leading-5 text-muted-foreground">本地规则可从数字量输入模块规格表提取通道数、通断阈值和滤波时间。</p>
-              <Button variant="outline" size="sm" onClick={() => {
-                invalidate();
-                setSource({ ...inovanceSource });
-                textOrigin.current = { url: inovanceSource.url, text: inovanceSource.text };
-                autofilled.current = new Set(metadataKeys);
-                setNotice("已填入汇川 GL10-1600END 的示例规格摘录。");
-              }}><BookOpen />填入汇川示例</Button>
+              <p className="max-w-md text-xs leading-5 text-muted-foreground">支持任意品牌信号手册本地提取，或选择目标行为模型后按统一模型契约提取并校验单位与原文证据。</p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => {
+                  invalidate();
+                  const panaUrl = "https://industry.panasonic.com/global/en/products/motor/fa-motor/ac-servo/number/msmf012l1t1";
+                  const panaText = [
+                    "MSMF012L1T1 — MINAS A6 Series AC Servo Motor",
+                    "Rated output: 100 W",
+                    "Rated torque: 0.32 N·m",
+                    "Momentary Max. peak torque: 0.95 N·m",
+                    "Rated rotational speed: 3000 r/min",
+                    "Max. rotational speed: 6000 r/min",
+                    "Inertia of rotor: 0.051 ×10⁻⁴ kg·m²",
+                    "Rated current: 1.1 A (rms)",
+                  ].join("\n");
+                  setSource({
+                    manufacturer: "Panasonic Industry",
+                    model: "MSMF012L1T1",
+                    revision: "A6-1.0",
+                    title: "MSMF012L1T1 — Spec Detail (MINAS A6)",
+                    url: panaUrl,
+                    locator: "Spec Detail 表",
+                    text: panaText,
+                  });
+                  textOrigin.current = { url: panaUrl, text: panaText };
+                  autofilled.current = new Set(metadataKeys);
+                  setTargetModelKey("Gouyuan.RatedTorqueMotor@1.0.0");
+                  setAiOpen(true);
+                  setExtractedJson(JSON.stringify({
+                    fields: {
+                      ratedPowerW: { status: "confirmed", value: 100, rawUnit: "W", tableLocation: "Spec Detail", excerpt: "Rated output: 100 W" },
+                      ratedTorqueNm: { status: "confirmed", value: 0.32, rawUnit: "N·m", tableLocation: "Spec Detail", excerpt: "Rated torque: 0.32 N·m" },
+                      peakTorqueNm: { status: "confirmed", value: 0.95, rawUnit: "N·m", tableLocation: "Spec Detail", excerpt: "Momentary Max. peak torque: 0.95 N·m" },
+                      ratedSpeedRpm: { status: "confirmed", value: 3000, rawUnit: "r/min", tableLocation: "Spec Detail", excerpt: "Rated rotational speed: 3000 r/min" },
+                      maxSpeedRpm: { status: "confirmed", value: 6000, rawUnit: "r/min", tableLocation: "Spec Detail", excerpt: "Max. rotational speed: 6000 r/min" },
+                      rotorInertiaKgM2: { status: "confirmed", value: 0.051, rawUnit: "10^-4 kg.m2", tableLocation: "Spec Detail", excerpt: "Inertia of rotor: 0.051 ×10⁻⁴ kg·m²" },
+                      motorRatedCurrentA: { status: "confirmed", value: 1.1, rawUnit: "A (rms)", tableLocation: "Spec Detail", excerpt: "Rated current: 1.1 A (rms)" },
+                    },
+                  }, null, 2));
+                  setNotice("已填入松下 MSMF012L1T1 资料与待核验提取 JSON，可直接点下方“校验提取结果并生成草案”体验跨品牌惯量单位换算与摘录核验。");
+                }}><Sparkles />填入松下电机跨品牌示例</Button>
+                <Button variant="outline" size="sm" onClick={() => {
+                  invalidate();
+                  setSource({ ...inovanceSource });
+                  textOrigin.current = { url: inovanceSource.url, text: inovanceSource.text };
+                  autofilled.current = new Set(metadataKeys);
+                  setNotice("已填入汇川 GL10-1600END 的示例规格摘录。");
+                }}><BookOpen />填入汇川示例</Button>
+              </div>
             </div>
             <div>
               <label className="field-label" htmlFor="twin-source-url">制造商资料链接</label>
@@ -445,8 +486,8 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
               ))}
             </div>
             <Button disabled={busy !== null} onClick={generate}>生成设备草案<ArrowRight /></Button>
-            <details className="rounded-md border bg-background/30 px-3 py-2 text-xs" onToggle={(event) => setAiOpen(event.currentTarget.open)}>
-              <summary className="cursor-pointer py-1 font-medium">AI 辅助提取（按行为模型契约）</summary>
+            <details open={aiOpen} className="rounded-md border bg-background/30 px-3 py-2 text-xs" onToggle={(event) => setAiOpen(event.currentTarget.open)}>
+              <summary className="cursor-pointer py-1 font-medium">按行为模型契约提取（跨品牌通用 · 支持粘贴 AI JSON 本地防幻觉核验）</summary>
               <div className="mt-2 space-y-2.5">
                 <p className="leading-5 text-muted-foreground">选择目标行为模型后，系统只向 AI 索取该模型所需字段的原始值、单位和逐字摘录，再由确定性代码校验并换算。</p>
                 <label className="block"><span className="field-label">目标行为模型</span>

@@ -19,7 +19,7 @@ import {
 } from "@contracts/system-twin";
 import { draftSystemFromWorkspace } from "@contracts/system-draft";
 import { packageKey } from "@contracts/twin-device";
-import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { installPackage, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,6 +30,8 @@ import { runSystemTwin } from "@/lib/system-twin-runtime";
 type Props = {
   workspace: TwinWorkspace;
   system?: TwinSystemAssembly;
+  trial?: boolean;
+  onTrialReady?: (ready: boolean) => void;
   onSave: (system: TwinSystemAssembly, revisedWorkspace?: TwinWorkspace) => void;
 };
 
@@ -66,12 +68,13 @@ function tryInitialDraft(workspace: TwinWorkspace): TwinSystemAssembly | null {
   }
 }
 
-export default function SystemTwinBench({ workspace, system, onSave }: Props) {
+export default function SystemTwinBench({ workspace, system, trial = false, onTrialReady, onSave }: Props) {
   const [draft, setDraft] = useState<TwinSystemAssembly | null>(() => system ?? tryInitialDraft(workspace));
   const [iniText, setIniText] = useState("");
   const [halText, setHalText] = useState("");
   const [showLinuxCnc, setShowLinuxCnc] = useState(false);
   const [running, setRunning] = useState(false);
+  const [loadingStarter, setLoadingStarter] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [trace, setTrace] = useState<RuntimeTrace | null>(null);
@@ -87,6 +90,7 @@ export default function SystemTwinBench({ workspace, system, onSave }: Props) {
   const [reverifyComparison, setReverifyComparison] = useState<FieldComparisonReport | null>(null);
   const [calMassInput, setCalMassInput] = useState("");
   const runAbort = useRef<AbortController | null>(null);
+  const autoRanId = useRef<string | null>(null);
 
   const drives = useMemo(() => workspace.packages.filter((p) => hasServoRole(p, "drive")), [workspace.packages]);
   const motors = useMemo(() => workspace.packages.filter((p) => hasServoRole(p, "motor")), [workspace.packages]);
@@ -99,6 +103,27 @@ export default function SystemTwinBench({ workspace, system, onSave }: Props) {
   );
 
   useEffect(() => () => { runAbort.current?.abort(); }, []);
+
+  useEffect(() => {
+    onTrialReady?.(Boolean(readiness?.ready));
+  }, [onTrialReady, readiness?.ready]);
+
+  useEffect(() => {
+    if (!draft || !readiness?.ready || autoRanId.current === draft.id) return;
+    const controller = new AbortController();
+    void runSystemTwin(workspace, draft, controller.signal).then((nextTrace) => {
+      if (!controller.signal.aborted) {
+        autoRanId.current = draft.id;
+        setTrace(nextTrace);
+        setFrameIndex(nextTrace.frames.length - 1);
+      }
+    }).catch((cause) => {
+      if (!controller.signal.aborted && (cause as { name?: string })?.name !== "AbortError") {
+        setError(cause instanceof Error ? cause.message : "机电控闭环初始化仿真失败。");
+      }
+    });
+    return () => controller.abort();
+  }, [draft, readiness?.ready, workspace]);
 
   useEffect(() => {
     if (!playing || !trace || trace.frames.length < 2) return;
@@ -187,15 +212,40 @@ export default function SystemTwinBench({ workspace, system, onSave }: Props) {
     }
   }
 
+  async function loadStarterKit() {
+    setError("");
+    setLoadingStarter(true);
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}assemblies/closed-loop-axis/project.twin.json`);
+      if (!response.ok) throw new Error(`读取标准闭环工程模板失败（HTTP ${response.status}）。`);
+      const starterWs = parseWorkspace(await response.json());
+      const starterSys = starterWs.systems?.[0];
+      if (!starterSys) throw new Error("标准模板缺少闭环系统定义。");
+      const mergedWs = starterWs.packages.reduce(installPackage, workspace);
+      setDraft(starterSys);
+      setTrace(null);
+      onSave(starterSys, mergedWs);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "载入跨品牌标准闭环模板失败。");
+    } finally {
+      setLoadingStarter(false);
+    }
+  }
+
   if (!draft) {
     return (
       <section className="surface space-y-4 p-5" aria-label="机电控闭环系统装配">
         <h2 className="text-lg font-semibold">机电控闭环系统</h2>
         <p className="text-sm text-muted-foreground">
-          请先安装伺服驱动器、伺服电机、滚珠丝杠与移动工作台设备包（可选配 GL10-1600END DI 模块），再从此生成闭环限位与轨迹仿真系统。
+          请先安装伺服驱动器、伺服电机、滚珠丝杠与移动工作台设备包（可选配限位开关与 DI 模块），或直接载入一套跨品牌标准闭环工程套件（台达伺服 + THK 丝杠 + 常闭限位开关 + 汇川 GL10 滤波）。
         </p>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <Button onClick={() => regenerateDraft(false)}><RefreshCw />尝试从工程资源生成草案</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={loadingStarter} onClick={() => void loadStarterKit()}>
+            <Play />{loadingStarter ? "正在载入跨品牌套件…" : "载入跨品牌标准套件并创建系统"}
+          </Button>
+          <Button variant="outline" onClick={() => regenerateDraft(false)}><RefreshCw />尝试从当前工程资源生成草案</Button>
+        </div>
       </section>
     );
   }
@@ -270,7 +320,7 @@ export default function SystemTwinBench({ workspace, system, onSave }: Props) {
               <CopyPlus />复用单轴扩展多轴
             </Button>
             <Button size="sm" variant="secondary" onClick={() => onSave(draft)}>
-              <Save />保存系统
+              <Save />{trial ? "更新试用修改" : "保存系统"}
             </Button>
             <Button size="sm" disabled={running || !readiness?.ready} onClick={() => void runSimulation()}>
               <Play />{running ? "正在运行…" : "运行闭环仿真"}

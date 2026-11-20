@@ -3,6 +3,7 @@ import { FolderInput } from "lucide-react";
 import type { MotorAxisLocation, StudioExample, StudioTarget } from "@contracts/studio-navigation";
 import { upsertLinearAssembly } from "@contracts/linear-assembly";
 import { upsertFactoryLayout } from "@contracts/factory";
+import { upsertTwinSystem } from "@contracts/system-twin";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { loadStudioExample, prepareStudioExampleJoin, type LoadedStudioExample, type StudioBenchKind } from "@/lib/studio-example-workspace";
 import { prepareContourTrial } from "@/lib/cnc-contour-example";
@@ -14,6 +15,7 @@ const Wiring = lazy(() => import("./TwinSimulation"));
 const Servo = lazy(() => import("./ServoAxisBench"));
 const Linear = lazy(() => import("./LinearAssemblyBench"));
 const Factory = lazy(() => import("./FactoryBench"));
+const SystemBench = lazy(() => import("./SystemTwinBench"));
 const Follower = lazy(() => import("./So101MotionBench"));
 const Mill = lazy(() => import("./MiloWorkbench"));
 type ProjectProps = { workspace: TwinWorkspace; initialStructureId?: string; initialMotorResourceId?: string; initialMotorAxisId?: string; initialContourId?: string;
@@ -56,6 +58,12 @@ function ExampleSession({ kind, download, workspace, initialStructureId, initial
       onApply(next, `factory:${layout.id}`, motorFocus.current, contourFocus.current);
       return;
     }
+    if (kind === "system") {
+      const sys = sample.systems?.[0];
+      if (!sys) throw new Error("请先载入机电控闭环系统。");
+      onApply(next, `system:${sys.id}`);
+      return;
+    }
     if (kind !== "linear-assembly") { onApply(next, kind); return; }
     const assembly = sample.assemblies?.[0];
     if (!assembly) throw new Error("请先载入直线装配。");
@@ -88,7 +96,7 @@ function ExampleSession({ kind, download, workspace, initialStructureId, initial
 
   const sample = loaded.workspace;
   const follower = sample.so101;
-  const unapplied = (kind === "linear-assembly" || kind === "factory") && !assemblyReady;
+  const unapplied = (kind === "linear-assembly" || kind === "factory" || kind === "system") && !assemblyReady;
   return <div className="min-w-0 space-y-4">
     <div className="flex flex-wrap items-center justify-end gap-2">
       {kind === "servo" && <p className="mr-auto text-xs text-muted-foreground">修改伺服参数后，请先组轴并运行。</p>}
@@ -105,6 +113,8 @@ function ExampleSession({ kind, download, workspace, initialStructureId, initial
         initialContourId={initialContourId} contourNote={loaded.note} onContourFocus={trackContour}
         onUpdateLibrary={edit} onTrialReady={setAssemblyReady}
         onSave={(layout, revised) => edit(upsertFactoryLayout(revised ?? sample, layout))} />}
+      {kind === "system" && <SystemBench trial workspace={sample} system={sample.systems?.[0]} onTrialReady={setAssemblyReady}
+        onSave={(sys, revised) => edit(upsertTwinSystem(revised ?? sample, sys))} />}
       {kind === "so101" && follower && <Follower waypoints={follower.waypoints}
         onChange={waypoints => edit({ ...sample, so101: { ...follower, waypoints } })} />}
       {kind === "milo" && <Mill workspace={sample} initialPlan={loaded.plan} onChange={edit} />}

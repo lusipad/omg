@@ -1,6 +1,7 @@
 import { useId, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { BookOpen, ClipboardPaste, Download, FileUp, FolderInput, FolderOpen, Link2, Package, Play, Plus, Search } from "lucide-react";
+import { BookOpen, ClipboardPaste, Cpu, Download, FileUp, FolderInput, FolderOpen, Link2, Package, Play, Plus, Search, Workflow } from "lucide-react";
+import { listRegisteredModels, modelKey } from "@contracts/model-registry";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import type { MaterialRow, ModelRef } from "@contracts/import-catalog";
@@ -10,6 +11,7 @@ import { downloadFile } from "@/lib/download";
 import { deviceLibraryGroups, isStructureOnly, motorRoleNames } from "@/lib/device-library";
 import { compositionKind } from "@contracts/device-composition";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import MaterialDetails, { MaterialIntake, type MaterialIntakeProps } from "./ImportCenterMaterials";
@@ -180,7 +182,9 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
   const [showComponents, setShowComponents] = useState(false);
   const [cursor, setCursor] = useState({ filter, query, page: 0 });
   const [selected, setSelected] = useState<string | null>(null);
+  const [registryOpen, setRegistryOpen] = useState(false);
   const [error, setError] = useState("");
+  const registeredModels = useMemo(() => listRegisteredModels(), []);
   if (!active && selected !== null) setSelected(null);
   const resources = useMemo(() => projectResources(workspace), [workspace]);
   const componentKeys = useMemo(() => new Set(deviceLibraryGroups(workspace.packages).parts.map(packageKey)), [workspace.packages]);
@@ -222,7 +226,11 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
   return <section className="min-w-0 space-y-4" aria-label="工程资源">
     <header className="flex flex-wrap items-center justify-between gap-3">
       <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">工程资源</h1>
-      <Button variant="outline" onClick={onCreateDevice}><Plus />创建设备</Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" onClick={() => setRegistryOpen(true)}><Cpu />模型注册表 ({registeredModels.length})</Button>
+        <Button variant="secondary" onClick={() => navigate(studioHref({ view: "workbench", target: "system-new" }))}><Workflow />机电控闭环装配</Button>
+        <Button variant="outline" onClick={onCreateDevice}><Plus />创建设备</Button>
+      </div>
     </header>
     <ImportEntry onImportFiles={onImportFiles} onImportText={onImportText} />
     <section className="surface min-w-0 p-4 sm:p-5" aria-label="工程资源清单">
@@ -246,8 +254,11 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
         }} />显示随附子件（{componentKeys.size} 个修订）
       </label>}
       {!resources.length ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t py-5">
-        <p className="text-sm text-muted-foreground">当前工程还没有资源。可导入自己的文件，也可从示例开始。</p>
-        <Button size="sm" variant="outline" onClick={onBrowseExamples}><BookOpen />浏览示例库</Button>
+        <p className="text-sm text-muted-foreground">当前工程还没有资源。可导入自己的文件，或直接体验跨品牌闭环仿真。</p>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => navigate(studioHref({ view: "workbench", exampleId: "closed-loop-feed-system" }))}><Play />体验跨品牌闭环与实测对标</Button>
+          <Button size="sm" variant="outline" onClick={onBrowseExamples}><BookOpen />浏览示例库</Button>
+        </div>
       </div> : !rows.length ? <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t py-5">
         <p className="text-sm text-muted-foreground">当前筛选下没有匹配的资源。</p>
         <Button variant="ghost" size="sm" onClick={() => { setQuery(""); setCursor({ filter: "all", query: "", page: 0 }); choose("all"); }}>显示全部</Button>
@@ -273,5 +284,32 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
     </section>
     {selectedRow && <MaterialDetails key={selectedRow.id} row={selectedRow} workspace={workspace} onChange={onChange} onOpenDevice={onOpenDevice}
       onOpenPhysics={onOpenModel} onUseSource={onUseSource} onClose={() => setSelected(null)} />}
+    <Dialog open={registryOpen} onOpenChange={setRegistryOpen}>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>统一模型注册表（{registeredModels.length} 个锁定版本）</DialogTitle>
+          <DialogDescription>平台按 SSP / IDTA 统一声明每个模型版本的参数量纲、端口因果方向、问题分级与原生校验工件。</DialogDescription>
+        </DialogHeader>
+        <ul className="space-y-3 text-xs">
+          {registeredModels.map((m) => (
+            <li key={modelKey(m)} className="space-y-1.5 rounded-md border bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium text-foreground">{m.label}</span>
+                <span className="mono rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">
+                  {m.id} @ {m.version} · {m.kind === "kernel" ? "WASM 求解内核" : "组件模型"} · {m.simPurpose.tier}
+                </span>
+              </div>
+              <p className="text-muted-foreground">{m.simPurpose.summary}</p>
+              <p className="mono text-[11px] text-muted-foreground">
+                参数：{m.parameters.length ? m.parameters.map((p) => `${p.key} (${p.unit})`).join("、") : "无"}
+              </p>
+              <p className="mono text-[11px] text-muted-foreground">
+                端口：{m.ports.length ? m.ports.map((p) => `${p.id} [${p.causality}/${p.domain}]`).join("、") : "配置内部求解"}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </DialogContent>
+    </Dialog>
   </section>;
 }
