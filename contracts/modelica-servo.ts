@@ -1,7 +1,8 @@
 import { z } from "zod";
 import library from "../public/modelica/library.json";
+import { resolveServoDriveRatings, resolveServoMotorRatings } from "./device-model-binding";
 import { servoAxisConfigSchema, servoAxisDevices, type ServoAxisResult } from "./servo-axis";
-import { readTwinData, type ModelReference, type ServoDrive, type ServoMotor } from "./twin-device";
+import { readTwinData, type DevicePackage, type ModelReference, type ServoDrive, type ServoMotor } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
 
 export const MODELICA_SERVO_LIBRARY = library;
@@ -39,6 +40,10 @@ export function bindModelicaServoRatings(drive: ServoDrive, motor: ServoMotor): 
   bind(values, drive, library.components.drive.parameters);
   bind(values, motor, library.components.motor.parameters);
   return readTwinData(ratingsSchema, values, "Modelica 驱动器与电机额定参数");
+}
+
+export function bindModelicaServoPackages(drive: DevicePackage, motor: DevicePackage): ModelicaServoRatings {
+  return bindModelicaServoRatings(resolveServoDriveRatings(drive), resolveServoMotorRatings(motor));
 }
 
 export function bindModelicaServo(workspace: TwinWorkspace): ModelicaServoParameters {

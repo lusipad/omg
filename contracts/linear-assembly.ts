@@ -1,8 +1,14 @@
 import { z } from "zod";
 import feedLibrary from "../public/modelica/linear-library.json";
+import {
+  bindingForModelId,
+  evaluateBindingReadiness,
+  hasFeedRole,
+  hasServoRole,
+} from "./device-model-binding";
 import type { MaterialRow } from "./import-catalog";
 import { isMeasuredMaterialUnit } from "./material-import";
-import { bindModelicaServoRatings, type ModelicaServoRatings } from "./modelica-servo";
+import { bindModelicaServoPackages, type ModelicaServoRatings } from "./modelica-servo";
 import { isCompatibleServoPair, servoAxisConfigSchema, simulateServoAxis, type ServoAxisConfig } from "./servo-axis";
 import { modelRefSchema, packageKey, readTwinData, signalIdSchema, type DevicePackage, type ModelReference } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
@@ -79,25 +85,41 @@ function mechanicalValue(role: "screw" | "table", row: MaterialRow, packages: Ma
   const isScrew = role === "screw", property = isScrew ? "导程" : "质量", unit = isScrew ? "mm/rev" : "kg";
   const label = `模块 ${moduleId} 的${roles[role]}“${row.name}”`;
   const pkg = row.binding?.kind === "device" ? packages.get(row.binding.key) : undefined;
-  const part = pkg?.feed;
+  const expected = feedLibrary.components[role];
+  const matchesRole = hasFeedRole(pkg, role);
+  const binding = pkg && matchesRole ? bindingForModelId(pkg, expected.id) : undefined;
+  const partModelRef = matchesRole ? (pkg?.feed?.modelRef ?? binding?.modelRef) : undefined;
   let packageValue: number | undefined;
-  if (isScrew && part?.kind === "lead-screw") packageValue = part.leadMmPerRev;
-  if (!isScrew && part?.kind === "moving-table") packageValue = part.massKg;
-  if (modelica && row.binding) {
-    const expected = feedLibrary.components[role];
-    if (packageValue === undefined || !part) issues.add(`${label}需要 ${expected.id} 设备包。也可解除现有绑定，使用带${property}的 BOM 行。`);
-    else if (part.modelRef.id !== expected.id || part.modelRef.version !== expected.version) {
-      issues.add(`${label}引用的模型 ${part.modelRef.id} @ ${part.modelRef.version} 不可用，需要 ${expected.id} @ ${expected.version}。`);
+  let readinessBlocked = false;
+  if (matchesRole && pkg?.feed) {
+    if (isScrew && pkg.feed.kind === "lead-screw") packageValue = pkg.feed.leadMmPerRev;
+    if (!isScrew && pkg.feed.kind === "moving-table") packageValue = pkg.feed.massKg;
+  } else if (matchesRole && pkg && binding) {
+    if (binding.modelRef.id === expected.id && binding.modelRef.version === expected.version) {
+      const readiness = evaluateBindingReadiness(pkg, binding.id);
+      if (readiness.status === "ready" || readiness.status === "ready_with_assumptions") {
+        packageValue = (isScrew ? readiness.values.leadMmPerRev : readiness.values.massKg) as number;
+      } else {
+        readinessBlocked = true;
+        readiness.issues.forEach((issue) => issues.add(`${label}：${issue}`));
+      }
     }
-  } else if (row.binding?.kind === "device" && !pkg?.mechanics && packageValue === undefined) {
+  }
+  if (modelica && row.binding) {
+    if (!matchesRole) issues.add(`${label}需要 ${expected.id} 设备包。也可解除现有绑定，使用带${property}的 BOM 行。`);
+    else if (partModelRef && (partModelRef.id !== expected.id || partModelRef.version !== expected.version)) {
+      issues.add(`${label}引用的模型 ${partModelRef.id} @ ${partModelRef.version} 不可用，需要 ${expected.id} @ ${expected.version}。`);
+    }
+  } else if (row.binding?.kind === "device" && !pkg?.mechanics && !matchesRole && packageValue === undefined) {
     issues.add(`${label}需要绑定机械丝杠，请核对设备角色。`);
   }
   const bom = isScrew ? row.leadMmPerRev : row.massKg;
   const sources = [["BOM", bom], ["设备包", packageValue], ["模块", manual]] as const;
   const specified = sources.filter((entry): entry is readonly [typeof entry[0], number] => entry[1] != null);
   const value = specified[0]?.[1];
-  if (value === undefined) issues.add(`${label}缺少${property}（${unit}）。`);
-  else if (!(value > 0) || !Number.isFinite(value)) issues.add(`${label}的${property}必须是正有限数，单位为 ${unit}。`);
+  if (value === undefined) {
+    if (!readinessBlocked) issues.add(`${label}缺少${property}（${unit}）。`);
+  } else if (!(value > 0) || !Number.isFinite(value)) issues.add(`${label}的${property}必须是正有限数，单位为 ${unit}。`);
   else if (specified.some(([, v]) => v !== value)) {
     issues.add(`${label}的${property}不一致（${specified.map(([where, v]) => `${where} ${v} ${unit}`).join("，")}）。`);
   }
@@ -144,7 +166,7 @@ function resolveAxes(workspace: TwinWorkspace, assembly: LinearAssembly) {
       const row = part(role);
       if (!row) return;
       const pkg = row.binding?.kind === "device" ? packages.get(row.binding.key) : undefined;
-      if (pkg?.servo?.kind !== role) {
+      if (!hasServoRole(pkg, role)) {
         issues.add(`模块 ${mod.id} 的“${row.name}”须绑定一个已安装的伺服${roles[role]}设备包。`); return;
       }
       return pkg;
@@ -159,8 +181,8 @@ function resolveAxes(workspace: TwinWorkspace, assembly: LinearAssembly) {
     const table = ref ? part("table") : undefined;
     const mass = table && mechanicalValue("table", table, packages, mod.id, true, issues);
     let ratings: ModelicaServoRatings | undefined;
-    if (ref && drive?.servo?.kind === "drive" && motor?.servo?.kind === "motor") {
-      try { ratings = bindModelicaServoRatings(drive.servo, motor.servo); }
+    if (ref && drive && motor) {
+      try { ratings = bindModelicaServoPackages(drive, motor); }
       catch (e) { issues.add(`模块 ${mod.id} 无法绑定驱动与电机。${e instanceof Error ? e.message : "请核对型号参数。"}`); }
     }
     resolved.set(mod.id, { drive: drive && packageKey(drive), motor: motor && packageKey(motor), lead, ratio: mod.loadInertiaRatio, mass, ratings });

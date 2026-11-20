@@ -19,7 +19,9 @@ import {
   Sheet as SheetIcon,
   ShieldCheck,
   Trash2,
+  Workflow,
 } from "lucide-react";
+import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import ProductLayout from "@/components/ProductLayout";
 import ProjectTodoPanel from "@/components/ProjectTodoPanel";
@@ -34,6 +36,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/providers/trpc";
 import { calculateModule, MODULE_KEYS, type CalculationResult, type ModuleKey } from "@contracts/engineering";
 import { defaultConfiguration, MODULE_COMPONENT_ROLES, type ModuleField } from "@contracts/module-catalog";
+import { convertProjectToTwinWorkspace, type ProjectComponentRevisionInput } from "@contracts/project-to-twin";
+import { studioHref } from "@contracts/studio-navigation";
 import { cn } from "@/lib/utils";
 import { downloadBlob } from "@/lib/download";
 
@@ -194,12 +198,57 @@ export default function ProjectWorkbench() {
     ? selectedAutomationMetadata.candidateNotes.filter((note): note is string => typeof note === "string")
     : [];
 
+  function openInTwinStudio() {
+    if (!project) return;
+    try {
+      const revisions: ProjectComponentRevisionInput[] = (componentsQuery.data ?? []).flatMap((component) =>
+        component.revisions.map((rev) => ({
+          id: rev.id,
+          manufacturer: component.manufacturer.name,
+          model: component.model,
+          category: component.category,
+          revisionLabel: rev.revisionLabel,
+          sourceTitle: rev.sourceTitle,
+          sourceUrl: rev.sourceUrl,
+          sourceVersion: rev.sourceVersion,
+          sourceLocator: rev.sourceLocator,
+          sourceEvidence: rev.sourceEvidence,
+          parameters: rev.parameters as Record<string, unknown>,
+        })),
+      );
+      const conversion = convertProjectToTwinWorkspace({
+        projectCode: project.code,
+        projectName: project.name,
+        modules: project.modules.map((m) => ({
+          id: m.id,
+          moduleKey: m.moduleVersion.definition.key,
+          instanceName: m.instanceName,
+          configuration: m.configuration as Record<string, number>,
+          selectedComponentRevisionIds: m.selectedComponentRevisionIds,
+        })),
+        componentRevisions: revisions,
+      });
+      localStorage.setItem("gouyuan.twin.workspace.v1", JSON.stringify(conversion.workspace));
+      localStorage.setItem("gouyuan.twin.workspace.v1.opened", nanoid());
+      toast.success(
+        `已转化 ${conversion.convertedPackages} 个官方部件修订与 ${conversion.workspace.systems?.length ?? 0} 套孪生系统草稿` +
+          (conversion.pendingDiagnostics.length ? `（${conversion.pendingDiagnostics.length} 项待核对）` : ""),
+      );
+      const dest = conversion.primaryTarget
+        ? studioHref({ view: "workbench", target: conversion.primaryTarget })
+        : studioHref({ view: "resources" });
+      navigate(`/twin${dest}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "转入数字孪生工作台失败");
+    }
+  }
+
   return (
     <ProductLayout>
       <div className="page-enter p-4 sm:p-5">
         <header className="mb-4 flex flex-col gap-4 rounded-md border bg-card px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-3"><Button variant="ghost" size="icon" onClick={() => navigate("/")} aria-label="返回项目列表"><ArrowLeft className="h-4 w-4" /></Button><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="display-title truncate text-xl font-medium">{project.name}</h1><StatusBadge status={project.status} /></div><div className="mono mt-1.5 text-[10px] text-muted-foreground">{project.code} <span className="mx-1.5 text-border">/</span> {project.modules.length} MODULES <span className="mx-1.5 text-border">/</span> {project.currentVersionNo ? `V${project.currentVersionNo}` : "NO SNAPSHOT"}</div></div></div>
-          <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" className="gap-2" onClick={() => setVersionOpen(true)} disabled={archived}><GitCommitHorizontal className="h-3.5 w-3.5" />冻结版本</Button><Button variant="outline" size="sm" className="gap-2" disabled={exporting !== null} onClick={() => exportProject("csv")}><SheetIcon className="h-3.5 w-3.5" />{exporting === "csv" ? "导出中…" : "溯源 BOM"}</Button><Button size="sm" className="gap-2" disabled={exporting !== null} onClick={() => exportProject("json")}><FileJson className="h-3.5 w-3.5" />{exporting === "json" ? "导出中…" : "导出设计包"}</Button></div>
+          <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" className="gap-2" onClick={openInTwinStudio}><Workflow className="h-3.5 w-3.5" />转入孪生仿真</Button><Button variant="outline" size="sm" className="gap-2" onClick={() => setVersionOpen(true)} disabled={archived}><GitCommitHorizontal className="h-3.5 w-3.5" />冻结版本</Button><Button variant="outline" size="sm" className="gap-2" disabled={exporting !== null} onClick={() => exportProject("csv")}><SheetIcon className="h-3.5 w-3.5" />{exporting === "csv" ? "导出中…" : "溯源 BOM"}</Button><Button size="sm" className="gap-2" disabled={exporting !== null} onClick={() => exportProject("json")}><FileJson className="h-3.5 w-3.5" />{exporting === "json" ? "导出中…" : "导出设计包"}</Button></div>
         </header>
 
         <ProjectTodoPanel

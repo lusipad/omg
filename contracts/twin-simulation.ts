@@ -6,6 +6,7 @@ import { parseImportCatalog, type ImportCatalog } from "./import-catalog";
 import { linearAssemblyListSchema, type LinearAssembly } from "./linear-assembly";
 import { factoryListSchema, type FactoryLayout } from "./factory";
 import { mechanismListSchema, type MechanicalAssembly } from "./mechanical-types";
+import { twinSystemListSchema, type TwinSystemAssembly } from "./system-twin";
 import { deviceCompositionClosure, getDeviceParts } from "./device-composition";
 import { packageKey, parseDevicePackage, readTwinData, signalIdSchema, type DevicePackage, type SignalPort } from "./twin-device";
 
@@ -30,6 +31,7 @@ const workspaceSchema = z.strictObject({
   assemblies: linearAssemblyListSchema.optional(),
   mechanisms: mechanismListSchema.optional(),
   factories: factoryListSchema.optional(),
+  systems: twinSystemListSchema.optional(),
 });
 
 export type TwinInstance = z.infer<typeof instanceSchema>;
@@ -46,6 +48,7 @@ export interface TwinWorkspace {
   assemblies?: LinearAssembly[];
   mechanisms?: MechanicalAssembly[];
   factories?: FactoryLayout[];
+  systems?: TwinSystemAssembly[];
 }
 export interface SimulationState {
   timeMs: number;

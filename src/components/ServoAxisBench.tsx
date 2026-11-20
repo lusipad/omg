@@ -4,6 +4,7 @@ import { CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, Responsive
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { downloadBlob } from "@/lib/download";
+import { hasServoRole, tryResolveServoDriveRatings, tryResolveServoMotorRatings } from "@contracts/device-model-binding";
 import { bindModelicaServo, modelicaServoInfo, MODELICA_SERVO_LIBRARY, MODELICA_SERVO_REF, type ModelicaServoParameters } from "@contracts/modelica-servo";
 import { packageKey } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
@@ -165,8 +166,8 @@ function ModelicaResponse({ parameters, targetDeg, filename }: { parameters: Mod
 
 export default function ServoAxisBench({ workspace, onChange, preferred }: Props) {
   const saved = workspace.servoAxis;
-  const drives = workspace.packages.filter((pkg) => pkg.servo?.kind === "drive");
-  const motors = workspace.packages.filter((pkg) => pkg.servo?.kind === "motor");
+  const drives = workspace.packages.filter((pkg) => hasServoRole(pkg, "drive"));
+  const motors = workspace.packages.filter((pkg) => hasServoRole(pkg, "motor"));
   const [draft, setDraft] = useState(() => initialForm(saved, preferred));
   const [runId, setRunId] = useState(0);
   const origin = axisSignature(saved);
@@ -182,6 +183,8 @@ export default function ServoAxisBench({ workspace, onChange, preferred }: Props
     ?? drives.find((pkg) => motors.some((candidate) => isCompatibleServoPair(pkg, candidate))) ?? drives[0];
   const compatible = drive ? motors.filter((pkg) => isCompatibleServoPair(drive, pkg)) : [];
   const motor = requestedMotor ?? compatible.find((pkg) => packageKey(pkg) === saved?.motorKey) ?? compatible[0];
+  const driveRatings = drive ? tryResolveServoDriveRatings(drive) : undefined;
+  const motorRatings = motor ? tryResolveServoMotorRatings(motor) : undefined;
   const canRun = !!(drive && motor && isCompatibleServoPair(drive, motor));
   const motorOptions = motor && !canRun ? [motor, ...compatible] : compatible;
   const targetDeg = angle.trim() ? Number(angle) : NaN;
@@ -229,8 +232,8 @@ export default function ServoAxisBench({ workspace, onChange, preferred }: Props
               {drives.map((pkg) => <option key={packageKey(pkg)} value={packageKey(pkg)}>{pkg.model} · {pkg.revision}</option>)}
             </select>
           </label>
-          {drive?.servo?.kind === "drive" && <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
-            {drive.manufacturer} · 额定输出电流 {formatValue(drive.servo.ratedCurrentA)} A
+          {drive && <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
+            {drive.manufacturer} · {driveRatings ? `额定输出电流 ${formatValue(driveRatings.ratedCurrentA)} A` : "驱动器参数待确认或缺少必填项"}
             {drive.source.url && <a className="ml-2 inline-flex items-center gap-1 text-primary hover:underline" href={drive.source.url} target="_blank" rel="noreferrer">驱动器规格表<ExternalLink className="size-3" /></a>}
           </p>}
         </div>
@@ -241,8 +244,8 @@ export default function ServoAxisBench({ workspace, onChange, preferred }: Props
               {motorOptions.map((pkg) => <option key={packageKey(pkg)} value={packageKey(pkg)}>{pkg.model} · {pkg.revision}</option>)}
             </select>
           </label>
-          {motor?.servo?.kind === "motor" && <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
-            {motor.manufacturer} · 额定 {formatValue(motor.servo.ratedTorqueNm)} N·m / {formatValue(motor.servo.ratedSpeedRpm)} rpm
+          {motor && <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
+            {motor.manufacturer} · {motorRatings ? `额定 ${formatValue(motorRatings.ratedTorqueNm)} N·m / ${formatValue(motorRatings.ratedSpeedRpm)} rpm` : "电机参数待确认或缺少必填项"}
             {motor.source.url && <a className="ml-2 inline-flex items-center gap-1 text-primary hover:underline" href={motor.source.url} target="_blank" rel="noreferrer">电机规格表<ExternalLink className="size-3" /></a>}
           </p>}
         </div>

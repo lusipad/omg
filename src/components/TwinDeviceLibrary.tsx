@@ -1,14 +1,21 @@
-import { lazy, Suspense, useCallback, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BookOpen, Box, Copy, FileJson, FileUp, Link2, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { IS_PAGES } from "@/const";
 import { useCancelOnNewImport } from "@/hooks/useWorkbenchImport";
-import { fetchSourceText } from "@/lib/twin-source-text";
+import { fetchSourceArtifactFromPdf, fetchSourceArtifactFromUrl } from "@/lib/twin-source-text";
 import type { DeviceDraftPatch, WorkbenchImportOptions } from "@/lib/workbench-import";
 import { trpc } from "@/providers/trpc";
 import type { MaterialRow } from "@contracts/import-catalog";
+import {
+  modelExtractionPrompt,
+  verifyAndBuildExtractedDevice,
+  type ModelExtractionRequest,
+} from "@contracts/model-extraction";
+import { listRegisteredModels, modelKey } from "@contracts/model-registry";
+import { SourceGateError, type SourceArtifact } from "@contracts/source-artifact";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
 import { deviceExtractionPrompt, deviceSourceFromMaterial, generateDevicePackage, inovanceSource, suggestSourceMetadata, type DeviceSourceInput } from "@contracts/twin-extract";
@@ -57,17 +64,27 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
   const [json, setJson] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState<"url" | "ai" | null>(null);
+  const [busy, setBusy] = useState<"url" | "pdf" | "ai" | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [manualPrompt, setManualPrompt] = useState("");
+  const [artifact, setArtifact] = useState<SourceArtifact | null>(null);
+  const [gateHint, setGateHint] = useState("");
+  const [targetModelKey, setTargetModelKey] = useState("auto");
+  const [extractedJson, setExtractedJson] = useState("");
   const task = useRef<AbortController | null>(null);
   const textOrigin = useRef<{ url: string; text: string } | null>(null);
   const lastPatch = useRef<number | null>(null);
   const autofilled = useRef(new Set<SourceKey>());
   const sourceFile = useRef<HTMLInputElement>(null);
+  const continuePdfFile = useRef<HTMLInputElement>(null);
   const packageFile = useRef<HTMLInputElement>(null);
   const aiStatus = trpc.twinAi.status.useQuery(undefined, { enabled: active && !IS_PAGES && aiOpen, retry: false, staleTime: 60_000 });
   const aiClient = trpc.useUtils().client;
+  const componentModels = useMemo(() => listRegisteredModels().filter((m) => m.kind === "component"), []);
+  const selectedModel = useMemo(
+    () => componentModels.find((m) => modelKey(m) === targetModelKey),
+    [componentModels, targetModelKey],
+  );
 
   const cancelRead = useCallback(() => task.current?.abort(), []);
   useCancelOnNewImport(cancelRead);
@@ -108,6 +125,8 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
       clearAutofilled(next);
       if (current.text === origin.text) next.text = "";
       textOrigin.current = null;
+      setArtifact(null);
+      setGateHint("");
     }
     return next;
   }
@@ -117,12 +136,17 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
     if (key === "url") setSource(withUrl(source, value));
     else {
       if (key !== "text") autofilled.current.delete(key);
+      else {
+        setArtifact(null);
+        setGateHint("");
+      }
       setSource({ ...source, [key]: value });
     }
   }
 
   function suggestFromText(text: string) {
     const next = { ...source, text };
+    if (text !== artifact?.text) setArtifact(null);
     if (autofilled.current.has("model") && !text.toLowerCase().includes(source.model.toLowerCase())) {
       if (next.url === textOrigin.current?.url) next.url = "";
       clearAutofilled(next);
@@ -187,24 +211,92 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
     }
   }, [incomingSource]);
 
+  function applyArtifactToSource(loaded: SourceArtifact, modeNote: string) {
+    const next = { ...source, text: loaded.text };
+    const defaultLocator = loaded.documentVersion
+      ?? (loaded.pageCount > 1 ? `PDF 第 1–${loaded.pageCount} 页` : undefined);
+    const meta = isSampleUrl(source.url)
+      ? inovanceSource
+      : {
+        ...suggestSourceMetadata(loaded.text),
+        ...(loaded.title ? { title: loaded.title } : {}),
+        ...(defaultLocator ? { locator: defaultLocator } : {}),
+      };
+    fillBlanks(next, meta);
+    if (loaded.sourceUrl && !next.url.trim()) next.url = loaded.sourceUrl;
+    textOrigin.current = next.url.trim() ? { url: next.url, text: next.text } : null;
+    setArtifact(loaded);
+    setGateHint("");
+    setSource(next);
+    setNotice(modeNote);
+  }
+
   async function readOfficialSource() {
     if (IS_PAGES) return;
     const controller = start("url");
+    setGateHint("");
     try {
-      if (!source.url.trim()) throw new Error("请先填写汇川官方资料链接。");
-      const result = await fetchSourceText("url", JSON.stringify({ url: source.url }), "application/json", controller.signal);
+      if (!source.url.trim()) throw new Error("请先填写制造商官方资料链接。");
+      const loaded = await fetchSourceArtifactFromUrl(source.url, controller.signal);
       if (controller.signal.aborted) return;
-      if (!result.trim()) throw new Error("资料中没有可提取的文字，请粘贴所需规格表。");
-      const next = { ...source, text: result };
-      fillBlanks(next, isSampleUrl(source.url) ? inovanceSource : suggestSourceMetadata(result));
-      textOrigin.current = { url: next.url, text: next.text };
-      setSource(next);
-      setNotice("已读取官网正文，请核对型号和规格表。");
+      const summary = loaded.classification === "html_series"
+        ? "已读取系列概览页，请锁定具体订货号或补充选型表 PDF。"
+        : `已读取官方资料正文${loaded.pageCount > 1 ? `（共 ${loaded.pageCount} 页）` : ""}，请核对型号和规格表。`;
+      applyArtifactToSource(loaded, summary);
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      if (cause instanceof SourceGateError) {
+        setGateHint(cause.message);
+      } else {
+        setError(message(cause));
+      }
+    } finally {
+      finish(controller);
+    }
+  }
+
+  async function continueWithLocalPdf(file: File) {
+    if (IS_PAGES) return;
+    const controller = start("pdf");
+    try {
+      const loaded = await fetchSourceArtifactFromPdf(file, {
+        sourceUrl: source.url.trim() || undefined,
+        title: source.title.trim() || undefined,
+      }, controller.signal);
+      if (controller.signal.aborted) return;
+      const note = `已载入本地 PDF（共 ${loaded.pageCount} 页，SHA-256 ${loaded.sha256.slice(0, 12)}…）${loaded.sourceUrl ? "，已继承原来源链接" : ""}。`;
+      applyArtifactToSource(loaded, note);
     } catch (cause) {
       if (!controller.signal.aborted) setError(message(cause));
     } finally {
       finish(controller);
     }
+  }
+
+  function buildExtractionRequest(): ModelExtractionRequest {
+    if (!selectedModel) throw new Error("请先选择目标行为模型。");
+    const matchingArtifact = artifact && artifact.text.trim() === source.text.trim() ? artifact : null;
+    const cleanUrl = source.url.trim() || undefined;
+    return {
+      manufacturer: source.manufacturer.trim(),
+      model: source.model.trim(),
+      revision: source.revision.trim(),
+      modelRef: { id: selectedModel.id, version: selectedModel.version },
+      artifact: matchingArtifact
+        ? {
+          sha256: matchingArtifact.sha256,
+          title: source.title.trim() || matchingArtifact.title || source.model.trim() || "本地技术资料",
+          ...(cleanUrl && { sourceUrl: cleanUrl }),
+          ...(matchingArtifact.documentVersion && { documentVersion: matchingArtifact.documentVersion }),
+          ...(matchingArtifact.pages.length <= 200 && { pages: matchingArtifact.pages }),
+          text: source.text,
+        }
+        : {
+          title: source.title.trim(),
+          ...(cleanUrl && { sourceUrl: cleanUrl }),
+          text: source.text,
+        },
+    };
   }
 
   function generate() {
@@ -220,11 +312,31 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
     }
   }
 
+  function verifyLocalExtraction() {
+    invalidate();
+    try {
+      const req = buildExtractionRequest();
+      const raw = JSON.parse(extractedJson.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, "$1")) as unknown;
+      const result = verifyAndBuildExtractedDevice(req, raw);
+      if (result.warnings.length) setNotice(result.warnings.join("；"));
+      onPreviewDevice(result.device);
+    } catch (cause) {
+      setError(cause instanceof SyntaxError ? "提取结果 JSON 格式有误，请核对后重试。" : message(cause));
+    }
+  }
+
   async function generateWithAi() {
     const controller = start("ai");
     try {
-      const result = await aiClient.twinAi.generate.mutate(source, { signal: controller.signal });
-      if (!controller.signal.aborted) onPreviewDevice(parseDevicePackage(result.device));
+      if (selectedModel) {
+        const result = await aiClient.twinAi.extractForModel.mutate(buildExtractionRequest(), { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        if (result.warnings.length) setNotice(result.warnings.join("；"));
+        onPreviewDevice(parseDevicePackage(result.device));
+      } else {
+        const result = await aiClient.twinAi.generate.mutate(source, { signal: controller.signal });
+        if (!controller.signal.aborted) onPreviewDevice(parseDevicePackage(result.device));
+      }
     } catch (cause) {
       if (!controller.signal.aborted) setError(message(cause));
     } finally {
@@ -236,7 +348,7 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
     invalidate();
     let prompt: string;
     try {
-      prompt = deviceExtractionPrompt(source);
+      prompt = selectedModel ? modelExtractionPrompt(buildExtractionRequest()) : deviceExtractionPrompt(source);
     } catch (cause) {
       setError(message(cause));
       return;
@@ -246,7 +358,11 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
     try {
       if (!navigator.clipboard) throw new Error("clipboard");
       await navigator.clipboard.writeText(prompt);
-      if (!controller.signal.aborted) setNotice("已复制提示词和当前资料。将模型返回的 JSON 贴入“导入设备包”即可核对。");
+      if (!controller.signal.aborted) {
+        setNotice(selectedModel
+          ? "已复制按目标模型生成的提取提示词。把 AI 返回的 JSON 贴入下方校验框即可核对并生成设备包。"
+          : "已复制提示词和当前资料。将模型返回的 JSON 贴入“导入设备包”即可核对。");
+      }
     } catch {
       if (!controller.signal.aborted) setManualPrompt(prompt);
     } finally {
@@ -282,9 +398,23 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
               <div className="flex flex-wrap gap-2 sm:flex-nowrap">
                 <Input id="twin-source-url" type="url" className="min-w-0 flex-1 basis-52" placeholder="https://…" value={source.url} onChange={(event) => updateSource("url", event.target.value)} />
                 {!IS_PAGES && <Button variant="outline" disabled={!source.url.trim() || busy !== null} onClick={() => void readOfficialSource()}>
-                  {busy === "url" ? <Loader2 className="animate-spin" /> : <Link2 />}读取汇川官网
+                  {busy === "url" ? <Loader2 className="animate-spin" /> : <Link2 />}读取官方资料
                 </Button>}
               </div>
+              {!IS_PAGES && <input ref={continuePdfFile} type="file" accept=".pdf,application/pdf" className="hidden" aria-label="上传本地 PDF 继续提取" onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void continueWithLocalPdf(file);
+              }} />}
+              {gateHint && <div role="alert" className="mt-2 space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+                <p className="leading-5 text-amber-200">{gateHint}</p>
+                {!IS_PAGES && <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => continuePdfFile.current?.click()}>
+                  {busy === "pdf" ? <Loader2 className="animate-spin" /> : <FileUp />}上传本地 PDF 继续当前提取
+                </Button>}
+              </div>}
+              {artifact && <p className="mt-1.5 text-xs text-primary">
+                资料工件已就绪：{artifact.format.toUpperCase()} · {artifact.pageCount} 页{artifact.documentVersion ? ` · ${artifact.documentVersion}` : ""} · SHA-256 {artifact.sha256.slice(0, 12)}…
+              </p>}
               <p className="mt-1.5 text-xs leading-5 text-muted-foreground">本地资料可留空链接，用标题、页码和原文记录出处。{IS_PAGES && "粘贴规格或选择 TXT、Markdown 即可本地解析。"}</p>
             </div>
             <div>
@@ -316,13 +446,34 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
             </div>
             <Button disabled={busy !== null} onClick={generate}>生成设备草案<ArrowRight /></Button>
             <details className="rounded-md border bg-background/30 px-3 py-2 text-xs" onToggle={(event) => setAiOpen(event.currentTarget.open)}>
-              <summary className="cursor-pointer py-1 font-medium">AI 辅助提取</summary>
-              <div className="mt-2 space-y-2">
-                <p className="leading-5 text-muted-foreground">可复制当前资料及设备包格式给自己的 AI，再将返回的 JSON 导入并核对。</p>
+              <summary className="cursor-pointer py-1 font-medium">AI 辅助提取（按行为模型契约）</summary>
+              <div className="mt-2 space-y-2.5">
+                <p className="leading-5 text-muted-foreground">选择目标行为模型后，系统只向 AI 索取该模型所需字段的原始值、单位和逐字摘录，再由确定性代码校验并换算。</p>
+                <label className="block"><span className="field-label">目标行为模型</span>
+                  <select aria-label="目标行为模型" className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs" value={targetModelKey} onChange={(event) => {
+                    invalidate();
+                    setTargetModelKey(event.target.value);
+                  }}>
+                    <option value="auto">通用信号/安装点规则（原单文件入口）</option>
+                    {componentModels.map((model) => (
+                      <option key={modelKey(model)} value={modelKey(model)}>
+                        {model.label}（{model.id} @ {model.version}）
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <Button variant="outline" size="sm" disabled={busy !== null || !source.text.trim()} onClick={() => void copyPrompt()}><Copy />复制 AI 提取提示词</Button>
                 {manualPrompt && <label className="block"><span className="field-label">请选择并复制提示词</span><Textarea value={manualPrompt} readOnly onFocus={(event) => event.target.select()} /></label>}
-                {!IS_PAGES && source.url.trim() && aiStatus.data?.available && aiStatus.data.authenticated && <div className="border-t pt-2">
-                  <p className="mb-2 leading-5 text-muted-foreground">点击后，型号、资料链接、定位和规格原文将发送给工作区配置的模型服务。</p>
+                {selectedModel && <div className="space-y-2 border-t pt-2">
+                  <label className="block"><span className="field-label">粘贴 AI 提取结果 JSON（本地校验）</span>
+                    <Textarea className="mono h-28 resize-y text-xs" spellCheck={false} value={extractedJson} placeholder='{"fields": { ... }}' onChange={(event) => setExtractedJson(event.target.value)} />
+                  </label>
+                  <Button variant="outline" size="sm" disabled={busy !== null || !extractedJson.trim() || !source.text.trim()} onClick={verifyLocalExtraction}>
+                    校验提取结果并生成草案
+                  </Button>
+                </div>}
+                {!IS_PAGES && (Boolean(selectedModel) || Boolean(source.url.trim())) && aiStatus.data?.available && aiStatus.data.authenticated && <div className="border-t pt-2">
+                  <p className="mb-2 leading-5 text-muted-foreground">点击后，型号、资料定位、规格原文与所选模型参数契约将发送给工作区配置的模型服务。</p>
                   <Button variant="outline" size="sm" disabled={busy !== null || !source.text.trim()} onClick={() => void generateWithAi()}>
                     {busy === "ai" ? <Loader2 className="animate-spin" /> : <Sparkles />}发送当前资料给 AI，生成草案
                   </Button>
@@ -348,7 +499,14 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
             <Button disabled={!json.trim() || busy !== null} onClick={generate}>预览设备包<ArrowRight /></Button>
           </>}
           {busy !== null && <p role="status" className="text-xs text-muted-foreground">{busy === "ai" ? "正在从模型服务读取草案…" : "正在读取资料…"}</p>}
-          {error && <p role="alert" className="break-words rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
+          {error && <div role="alert" className="space-y-2 break-words rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            <p>{error}</p>
+            {!IS_PAGES && mode === "source" && source.url.trim() && (
+              <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => continuePdfFile.current?.click()}>
+                <FileUp />上传本地 PDF 继续当前提取
+              </Button>
+            )}
+          </div>}
           {notice && <p role="status" className="break-words text-xs leading-5 text-primary">{notice}</p>}
         </div>
       </section>

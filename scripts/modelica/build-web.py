@@ -68,6 +68,10 @@ MODELS["contour"] = WebModel("GouyuanContour.TrackingAxis", "contour-library.jso
                              MODELS["motor"].flags, MODELS["motor"].parameters[1:], MODELS["motor"].outputs,
                              "contour-axis.wasm", "contour-axis.json", ("Gouyuan.mo", "GouyuanMotor.mo"),
                              state_count=3, step_us=25, reference="referenceMm")
+MODELS["feed_tracking"] = WebModel("GouyuanFeedTracking.TrackingFeedAxis", "feed-tracking-library.json", "FeedTrackingWeb",
+                                   MODELS["feed"].flags, MODELS["feed"].parameters[1:], MODELS["feed"].outputs,
+                                   "feed-tracking-axis.wasm", "feed-tracking-axis.json", ("Gouyuan.mo",),
+                                   state_count=2, step_us=50, reference="referenceMm")
 
 
 def digest(data):

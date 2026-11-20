@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  compatibleDriveModelsForMotor,
+  hasServoRole,
+  resolveServoDriveRatings,
+  resolveServoMotorRatings,
+} from "./device-model-binding";
 import { modelRefSchema, packageKey, readTwinData, type DevicePackage } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
 
@@ -25,22 +31,27 @@ export interface ServoAxisResult {
 }
 
 export function isCompatibleServoPair(drive: DevicePackage, motor: DevicePackage): boolean {
-  return drive.servo?.kind === "drive" && motor.servo?.kind === "motor" &&
-    drive.manufacturer === motor.manufacturer && motor.servo.compatibleDriveModels.includes(drive.model);
+  return hasServoRole(drive, "drive") && hasServoRole(motor, "motor") &&
+    drive.manufacturer === motor.manufacturer && compatibleDriveModelsForMotor(motor).includes(drive.model);
+}
+
+function servoAxisPackages(ws: TwinWorkspace, config: ServoAxisConfig) {
+  const drive = ws.packages.find((pkg) => packageKey(pkg) === config.driveKey);
+  const motor = ws.packages.find((pkg) => packageKey(pkg) === config.motorKey);
+  if (!hasServoRole(drive, "drive")) throw new Error("请选择已安装的伺服驱动器修订");
+  if (!hasServoRole(motor, "motor")) throw new Error("请选择已安装的伺服电机修订");
+  if (!isCompatibleServoPair(drive!, motor!)) throw new Error("装配需要同一制造商，且电机配套表中须列有该驱动器的完整型号");
+  return { drive: drive!, motor: motor! };
 }
 
 export function servoAxisDevices(ws: TwinWorkspace, config: ServoAxisConfig) {
-  const drive = ws.packages.find((pkg) => packageKey(pkg) === config.driveKey);
-  const motor = ws.packages.find((pkg) => packageKey(pkg) === config.motorKey);
-  if (drive?.servo?.kind !== "drive") throw new Error("请选择已安装的伺服驱动器修订");
-  if (motor?.servo?.kind !== "motor") throw new Error("请选择已安装的伺服电机修订");
-  if (!isCompatibleServoPair(drive, motor)) throw new Error("装配需要同一制造商，且电机配套表中须列有该驱动器的完整型号");
-  return { drive: drive.servo, motor: motor.servo };
+  const { drive, motor } = servoAxisPackages(ws, config);
+  return { drive: resolveServoDriveRatings(drive), motor: resolveServoMotorRatings(motor) };
 }
 
 export function assembleServoAxis(ws: TwinWorkspace, config: z.input<typeof servoAxisConfigSchema>): TwinWorkspace {
   const servoAxis = readTwinData(servoAxisConfigSchema, config, "伺服轴参数");
-  servoAxisDevices(ws, servoAxis);
+  servoAxisPackages(ws, servoAxis);
   return { ...ws, servoAxis };
 }
 

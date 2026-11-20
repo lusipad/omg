@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import MaterialDetails, { MaterialIntake, type MaterialIntakeProps } from "./ImportCenterMaterials";
 
 const acceptedSuffixes = WORKBENCH_FILE_ACCEPT.split(",").filter((entry) => entry.startsWith("."));
-type System = "so101" | "milo" | "servo" | "wiring" | `assembly:${string}` | `mechanism:${string}` | `factory:${string}`;
+type System = "so101" | "milo" | "servo" | "wiring" | `assembly:${string}` | `mechanism:${string}` | `factory:${string}` | `system:${string}`;
 type Props = MaterialIntakeProps & {
   workspace: TwinWorkspace;
   onChange: (next: TwinWorkspace) => void;
@@ -128,6 +128,10 @@ function projectResources(workspace: TwinWorkspace) {
   for (const assembly of workspace.assemblies ?? []) {
     rows.push({ id: `assembly:${assembly.id}`, kind: "system", system: `assembly:${assembly.id}`, section: "system",
       category: "直线轴装配", name: assembly.name, detail: `${assembly.modules.length} 种轴模块 · ${assembly.axes.length} 根轴`, action: "打开装配" });
+  }
+  for (const sys of workspace.systems ?? []) {
+    rows.push({ id: `system:${sys.id}`, kind: "system", system: `system:${sys.id}`, section: "system",
+      category: "机电控系统", name: sys.name, detail: `${sys.axes.length} 根轴 · ${sys.sensors.length} 开关 · ${sys.diChannels.length} 滤波通道`, action: "打开系统" });
   }
   if (so101) rows.push({ id: "system:so101", kind: "system", system: "so101", section: "material",
     category: "BOM", name: "SO-101 Follower 采购清单", detail: `${so101.bom.length} 行物料 · ${so101.waypoints.length} 个动作关键帧`, action: "打开 SO-101" });

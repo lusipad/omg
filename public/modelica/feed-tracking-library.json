@@ -1,0 +1,25 @@
+{
+  "package": "GouyuanFeedTracking",
+  "version": "1.0.0",
+  "source": "GouyuanFeedTracking.mo",
+  "uses": { "Gouyuan": "1.0.0", "Modelica": "4.0.0" },
+  "assembly": {
+    "id": "GouyuanFeedTracking.TrackingFeedAxis",
+    "inputs": { "referenceMm": "mm" },
+    "states": ["motor.rotor.phi", "motor.rotor.w"],
+    "parameters": {
+      "leadMmPerRev": { "unit": "mm/rev" },
+      "tableMassKg": { "unit": "kg" },
+      "rotorInertiaKgM2": { "unit": "kg.m2" },
+      "ratedTorqueNm": { "unit": "N.m" },
+      "ratedPowerW": { "unit": "W" },
+      "ratedSpeedRpm": { "unit": "rpm" },
+      "driveRatedCurrentA": { "unit": "A" },
+      "motorRatedCurrentA": { "unit": "A" }
+    },
+    "outputs": {
+      "positionMm": "mm", "velocityMmS": "mm/s", "motorTorqueNm": "N.m",
+      "axialForceN": "N", "angleDeg": "deg", "speedRpm": "rpm"
+    }
+  }
+}

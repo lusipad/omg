@@ -1,5 +1,6 @@
 import digitalModule from "../examples/GL10-1600END-A03.device.json";
 import servoDrive from "../examples/SV660NS2R8I-FS-INT.device.json";
+import { hasFeedRole, hasServoRole } from "./device-model-binding";
 import { PICK_PLACE_EXAMPLE, ROBOT_EXAMPLES } from "./robot-examples";
 import { signalIdSchema } from "./twin-device";
 import { isPackageKey } from "./package-identity";
@@ -68,8 +69,8 @@ export function getStudioExample(id: string | null | undefined): StudioExample |
 
 export type StudioResourceSection = "device" | "material" | "physics" | "system" | "author";
 export type MotorAxisLocation = { resourceId: string; axisId: string };
-export type StudioTarget = "wiring" | "servo" | "so101" | "milo" | "incoming" | "assembly-new" | "mechanism-new" | "factory-new"
-  | `model:${string}` | `assembly:${string}` | `mechanism:${string}` | `factory:${string}`;
+export type StudioTarget = "wiring" | "servo" | "so101" | "milo" | "incoming" | "assembly-new" | "mechanism-new" | "factory-new" | "system-new"
+  | `model:${string}` | `assembly:${string}` | `mechanism:${string}` | `factory:${string}` | `system:${string}`;
 export type StudioRoute =
   | { view: "resources"; section?: StudioResourceSection; source?: string; motorPart?: string }
   | { view: "examples" }
@@ -101,11 +102,11 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
     }
     if (target === null) return { view };
     if (target === "wiring" || target === "servo" || target === "so101" || target === "milo" || target === "incoming") return { view, target };
-    if (target === "mechanism-new" || target === "assembly-new" || target === "factory-new") {
+    if (target === "mechanism-new" || target === "assembly-new" || target === "factory-new" || target === "system-new") {
       const part = params.get("part");
       return part ? { view, target, part } : { view, target };
     }
-    for (const prefix of ["assembly:", "mechanism:", "factory:"] as const) {
+    for (const prefix of ["assembly:", "mechanism:", "factory:", "system:"] as const) {
       if (!target.startsWith(prefix)) continue;
       const id = signalIdSchema.safeParse(target.slice(prefix.length));
       if (id.success && prefix === "factory:" && contour.success) return { view, target: `factory:${id.data}`, contour: contour.data };
@@ -162,7 +163,7 @@ export function studioHref(route: StudioRoute, hash = ""): string {
         if (route.axis) params.set("axis", route.axis);
         if (route.motorKey) params.set("motorKey", route.motorKey);
       }
-      if ((route.target === "mechanism-new" || route.target === "assembly-new" || route.target === "factory-new") && route.part) params.set("part", route.part);
+      if ((route.target === "mechanism-new" || route.target === "assembly-new" || route.target === "factory-new" || route.target === "system-new") && route.part) params.set("part", route.part);
     }
     else if (route.unavailableTarget !== undefined) params.set("target", route.unavailableTarget);
   }
@@ -189,13 +190,14 @@ export function getWorkbenchTargets(workspace: TwinWorkspace): StudioTargetOptio
   if (workspace.milo?.assembled.length) targets.push(milo);
   for (const assembly of workspace.mechanisms ?? []) targets.push({ id: `mechanism:${assembly.id}`, name: assembly.name });
   for (const assembly of workspace.assemblies ?? []) targets.push({ id: `assembly:${assembly.id}`, name: assembly.name });
+  for (const sys of workspace.systems ?? []) targets.push({ id: `system:${sys.id}`, name: sys.name });
   for (const layout of workspace.factories ?? []) targets.push({ id: `factory:${layout.id}`, name: layout.name });
   for (const model of workspace.catalog?.models ?? []) targets.push({ id: `model:${model.id}`, name: model.name });
   if (workspace.milo && !workspace.milo.assembled.length && (workspace.milo.bom?.length || workspace.milo.program.trim())) targets.push(milo);
   if (!workspace.mechanisms?.length && workspace.packages.some(p => p.mechanics)) targets.push({ id: "mechanism-new", name: "用机械部件新建装配" });
-  if (!workspace.assemblies?.length && workspace.packages.some(p => p.feed)) targets.push({ id: "assembly-new", name: "用进给部件新建直线轴" });
+  if (!workspace.assemblies?.length && workspace.packages.some(p => hasFeedRole(p, "screw") || hasFeedRole(p, "table"))) targets.push({ id: "assembly-new", name: "用进给部件新建直线轴" });
   if (!workspace.factories?.length && workspace.packages.some(p => p.factory)) targets.push({ id: "factory-new", name: "用已装设备搭建工厂" });
-  if (!workspace.instances.length && workspace.packages.some((p) => !p.servo && p.ports.length > 0)) targets.push(wiring);
-  if (!workspace.servoAxis && workspace.packages.some((p) => p.servo)) targets.push(servo);
+  if (!workspace.instances.length && workspace.packages.some((p) => !hasServoRole(p, "drive") && !hasServoRole(p, "motor") && p.ports.length > 0)) targets.push(wiring);
+  if (!workspace.servoAxis && workspace.packages.some((p) => hasServoRole(p, "drive") || hasServoRole(p, "motor"))) targets.push(servo);
   return targets;
 }

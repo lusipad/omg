@@ -3,9 +3,17 @@ import { Box, Download, ExternalLink, PackageCheck, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { downloadJson } from "@/lib/download";
+import {
+  capabilitiesForDevice,
+  evaluateBindingReadiness,
+  hasFeedRole,
+  hasServoRole,
+  resolveParameterChoice,
+  type ReadinessStatus,
+} from "@contracts/device-model-binding";
 import { bundleMechanicalDevice, type MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { packageKey, type DevicePackage, type ModelReference } from "@contracts/twin-device";
-import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { installPackage, type TwinWorkspace } from "@contracts/twin-simulation";
 import { getFactoryModel, resolveFactoryParameters } from "@contracts/factory";
 import { compositionKind } from "@contracts/device-composition";
 import { exportDeviceLibrary, motorRoleNames, previewDevicePackages } from "@/lib/device-library";
@@ -141,6 +149,117 @@ export function MechanicalDetails({ mechanics }: { mechanics: NonNullable<Device
   </section>;
 }
 
+const readinessLabels: Record<ReadinessStatus, { label: string; className: string }> = {
+  ready: { label: "已就绪", className: "text-primary" },
+  ready_with_assumptions: { label: "含试算假设", className: "text-amber-300" },
+  pending: { label: "待确认选件", className: "text-amber-300" },
+  incomplete: { label: "缺少参数", className: "text-destructive" },
+  uninstalled_model: { label: "未安装模型", className: "text-destructive" },
+};
+
+function ModelBindingsSection({ device, workspace, installed, onApply }: {
+  device: DevicePackage;
+  workspace: TwinWorkspace;
+  installed: boolean;
+  onApply?: ApplyDeviceRevision;
+}) {
+  const report = capabilitiesForDevice(device, workspace.packages);
+  const bindings = report.capabilities;
+  const parameterEntries = Object.entries(device.parameters ?? {});
+
+  function chooseCandidate(sourceKey: string, candidateIndex: number) {
+    if (!onApply) return;
+    let suffix = 1;
+    let nextRevision = `${device.revision}-r${suffix}`;
+    while (workspace.packages.some((p) => p.manufacturer === device.manufacturer && p.model === device.model && p.revision === nextRevision)) {
+      suffix += 1;
+      nextRevision = `${device.revision}-r${suffix}`;
+    }
+    const updated = resolveParameterChoice(device, sourceKey, candidateIndex, nextRevision);
+    onApply(installPackage(workspace, updated), packageKey(updated));
+  }
+
+  return (
+    <section aria-label="参数来源与模型绑定" className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-medium">参数来源与模型绑定</h3>
+        {report.geometryAvailable && <span className="text-xs text-primary">几何安装点已就绪</span>}
+      </div>
+      {bindings.map((cap) => {
+        const readiness = evaluateBindingReadiness(device, cap.bindingId, { workspacePackages: workspace.packages });
+        const badge = readinessLabels[cap.status];
+        const resolvedRows = Object.values(readiness.resolved);
+        return (
+          <div key={cap.bindingId} className="surface-inset space-y-2.5 p-3 text-xs">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <p className="font-medium">{cap.modelLabel}</p>
+                <p className="mono break-all text-[11px] text-muted-foreground">{cap.modelRef.id} @ {cap.modelRef.version}</p>
+              </div>
+              <span className={`font-medium ${badge.className}`}>{badge.label}</span>
+            </div>
+            {readiness.model && <p className="text-muted-foreground">{readiness.model.simPurpose.summary}</p>}
+            {resolvedRows.length > 0 && (
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5">
+                {resolvedRows.map((item) => (
+                  <div key={item.key} className="contents">
+                    <dt className="text-muted-foreground">{item.key}</dt>
+                    <dd className="mono break-words">
+                      {String(item.value)} {item.unit !== "1" ? item.unit : ""}
+                      {item.sourceUnit && item.sourceUnit !== item.unit && (
+                        <span className="ml-1.5 font-sans text-muted-foreground">（原值 {String(item.sourceValue)} {item.sourceUnit}）</span>
+                      )}
+                      {item.condition && <span className="ml-1.5 font-sans text-muted-foreground">· {item.condition}</span>}
+                      {item.locator && <span className="ml-1.5 font-sans text-muted-foreground">· {item.locator}</span>}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {readiness.pendingParameters.map((pending) => (
+              <div key={pending.key} className="space-y-1.5 rounded border border-amber-500/30 bg-amber-500/5 p-2.5">
+                <p className="font-medium text-amber-300">待确认 · {pending.label}（{pending.key}）</p>
+                <p className="text-muted-foreground">{pending.reason}</p>
+                {pending.candidates.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {pending.candidates.map((candidate, index) => (
+                      installed && onApply ? (
+                        <Button key={candidate.option} type="button" size="sm" variant="outline" onClick={() => chooseCandidate(pending.sourceKey, index)}>
+                          采用：{candidate.option}（{String(candidate.value)}{candidate.unit ? ` ${candidate.unit}` : ""}）
+                        </Button>
+                      ) : (
+                        <span key={candidate.option} className="rounded border px-2 py-0.5 text-[11px]">
+                          {candidate.option}：{String(candidate.value)}{candidate.unit ? ` ${candidate.unit}` : ""}
+                          {candidate.convertedValue !== undefined ? ` → ${candidate.convertedValue} ${pending.modelUnit}` : ""}
+                        </span>
+                      )
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {readiness.missingParameters.map((missing) => (
+              <p key={missing.key} className="break-words text-destructive">缺项（影响 {missing.affectedTier}）：{missing.reason}</p>
+            ))}
+          </div>
+        );
+      })}
+      {bindings.length === 0 && parameterEntries.length > 0 && (
+        <dl className="surface-inset grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 p-3 text-xs">
+          {parameterEntries.map(([key, entry]) => (
+            <div key={key} className="contents">
+              <dt className="text-muted-foreground">{entry.label ?? key}</dt>
+              <dd className="mono break-words">
+                {entry.status === "pending" ? `待确认：${entry.reason}` : `${String(entry.value)}${entry.unit ? ` ${entry.unit}` : ""}`}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
+  );
+}
+
 export default function TwinPackagePreview({ device, workspace, installed, error, onClose, onInstall, onAssemble, onApplyDeviceRevision }: {
   device: DevicePackage;
   workspace: TwinWorkspace;
@@ -151,8 +270,10 @@ export default function TwinPackagePreview({ device, workspace, installed, error
   onAssemble: (mode?: "factory" | "motor") => void;
   onApplyDeviceRevision?: ApplyDeviceRevision;
 }) {
-  const canAssemble = Boolean(device.feed || device.mechanics || device.servo || device.ports.length);
-  const [structure, setStructure] = useState(!canAssemble && !device.factory && !device.motorPhysics);
+  const isFeed = Boolean(device.feed || hasFeedRole(device, "screw") || hasFeedRole(device, "table"));
+  const isServo = Boolean(device.servo || hasServoRole(device, "drive") || hasServoRole(device, "motor"));
+  const canAssemble = Boolean(isFeed || device.mechanics || isServo || device.ports.length);
+  const [structure, setStructure] = useState(!canAssemble && !device.factory && !device.motorPhysics && !device.modelBindings?.length);
   const [editing, setEditing] = useState(false);
   const preview = useMemo(() => installed ? workspace : previewDevicePackages(workspace, [device]), [installed, workspace, device]);
   const kind = compositionKind(device);
@@ -163,8 +284,10 @@ export default function TwinPackagePreview({ device, workspace, installed, error
     device.factory && "工厂设备",
     device.motorPhysics && motorRoleNames[device.motorPhysics.kind],
     device.mechanics && (device.mechanics.kind === "part" ? "机械部件" : "可复用机械装配"),
-    device.servo && (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机"),
-    device.feed && (device.feed.kind === "lead-screw" ? "丝杠" : "移动工作台"),
+    (device.servo ? (device.servo.kind === "drive" ? "伺服驱动器" : "伺服电机")
+      : hasServoRole(device, "drive") ? "伺服驱动器" : hasServoRole(device, "motor") ? "伺服电机" : false),
+    (device.feed ? (device.feed.kind === "lead-screw" ? "丝杠" : "移动工作台")
+      : hasFeedRole(device, "screw") ? "丝杠" : hasFeedRole(device, "table") ? "移动工作台" : false),
     device.composition && (kind === "leaf" ? "最小件" : "结构总成"),
     device.ports.length > 0 && (device.ports.length + " 个端口 · " + device.rules.length + " 条行为规则"),
   ].filter(Boolean).join(" · ");
@@ -217,6 +340,9 @@ export default function TwinPackagePreview({ device, workspace, installed, error
         {device.servo && <section aria-label="伺服参数" className="space-y-3">
           <h3 className="text-sm font-medium">型号参数</h3><ServoRatings servo={device.servo} />
         </section>}
+        {(device.parameters || device.modelBindings?.length) && (
+          <ModelBindingsSection device={device} workspace={preview} installed={installed} onApply={onApplyDeviceRevision} />
+        )}
         {device.ports.length > 0 && <><section aria-label="仿真行为">
           <h3 className="mb-2 text-sm font-medium">仿真行为</h3>
           <div className="max-h-48 overflow-auto rounded-md border thin-scrollbar">
@@ -248,7 +374,7 @@ export default function TwinPackagePreview({ device, workspace, installed, error
           {installed && device.motorPhysics && <Button onClick={() => onAssemble("motor")}><Plus />
             {device.motorPhysics.kind === "motor" ? "安装到机床轴" : "用于组装电机"}</Button>}
           {installed && canAssemble && <Button onClick={() => onAssemble()}><Plus />
-            {device.feed ? "用于直线轴装配" : device.mechanics ? "用于机械装配" : device.servo ? "用于伺服仿真" : "添加到仿真装配"}</Button>}
+            {isFeed ? "用于直线轴装配" : device.mechanics ? "用于机械装配" : isServo ? "用于伺服仿真" : "添加到仿真装配"}</Button>}
           {!installed && <Button onClick={onInstall}><PackageCheck />确认安装</Button>}
         </fieldset>
       </DialogContent>

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { nanoid } from "nanoid";
 import { ArrowLeft, ChevronDown, CircuitBoard, Download, FilePlus2, FolderOpen, Github, LayoutGrid, Package, Upload, Workflow } from "lucide-react";
 import { IS_PAGES } from "@/const";
+import { hasFeedRole, hasServoRole } from "@contracts/device-model-binding";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import { MAX_PROJECT_JSON_BYTES, parseImportCatalog, type MaterialRow } from "@contracts/import-catalog";
 import { matchMaterials } from "@contracts/material-import";
@@ -11,6 +12,7 @@ import { initialMiloWorkspace } from "@contracts/milo-workspace";
 import { upsertLinearAssembly, type LinearAssembly } from "@contracts/linear-assembly";
 import { upsertFactoryLayout, type FactoryLayout } from "@contracts/factory";
 import { installMechanicalBundle, upsertMechanicalAssembly, type MechanicalAssembly } from "@contracts/mechanical-assembly";
+import { upsertTwinSystem, type TwinSystemAssembly } from "@contracts/system-twin";
 import { deviceSourceFromMaterial, type DeviceSourceInput } from "@contracts/twin-extract";
 import { getWorkbenchTargets, publishedStudioFile, readStudioRoute, studioHref, type MotorAxisLocation, type StudioRoute, type StudioTarget } from "@contracts/studio-navigation";
 import { addInstance, emptyWorkspace, installDeviceDependencies, installPackage, nextInstanceName, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
@@ -90,8 +92,8 @@ export default function TwinStudio() {
   const remembered = targets.find(item => item.id === lastTarget)?.id;
   const workbenchTarget = route.view === "workbench" && route.exampleId === undefined && route.unavailableTarget === undefined
     ? route.target ?? remembered ?? targets[0]?.id : undefined;
-  const editingAssembly = workbenchTarget === "assembly-new" || workbenchTarget === "mechanism-new" || workbenchTarget === "factory-new" ||
-    ((workbenchTarget?.startsWith("assembly:") || workbenchTarget?.startsWith("mechanism:") || workbenchTarget?.startsWith("factory:")) && targets.some(item => item.id === workbenchTarget));
+  const editingAssembly = workbenchTarget === "assembly-new" || workbenchTarget === "mechanism-new" || workbenchTarget === "factory-new" || workbenchTarget === "system-new" ||
+    ((workbenchTarget?.startsWith("assembly:") || workbenchTarget?.startsWith("mechanism:") || workbenchTarget?.startsWith("factory:") || workbenchTarget?.startsWith("system:")) && targets.some(item => item.id === workbenchTarget));
   const [cncReceiver, setCncReceiver] = useState<CncProgramReceiver | null>(null);
   const intake = useWorkbenchImport((model, onInstalled) => {
     setIncomingModel({ selection: model, token: ++modelToken.current, onInstalled });
@@ -171,7 +173,7 @@ export default function TwinStudio() {
       next = { ...next, catalog: parseImportCatalog(catalog, next.packages) };
     }
     const raw = JSON.stringify(next);
-    if ((next.catalog || next.assemblies?.length || next.mechanisms?.length || next.factories?.length || next.packages.some(p => p.mechanics || p.factory || p.composition)) &&
+    if ((next.catalog || next.assemblies?.length || next.mechanisms?.length || next.factories?.length || next.systems?.length || next.packages.some(p => p.mechanics || p.factory || p.composition)) &&
       new TextEncoder().encode(raw).byteLength > MAX_PROJECT_JSON_BYTES) {
       throw new Error("工程文字资料超过 8 MiB，请将本次清单拆分到单独工程。");
     }
@@ -226,7 +228,7 @@ export default function TwinStudio() {
   }
 
   function confirmOpen(label: string) {
-    const occupied = workspace.packages.length || workspace.so101 || workspace.milo || workspace.assemblies?.length || workspace.mechanisms?.length || workspace.factories?.length || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
+    const occupied = workspace.packages.length || workspace.so101 || workspace.milo || workspace.assemblies?.length || workspace.mechanisms?.length || workspace.factories?.length || workspace.systems?.length || workspace.catalog?.models.length || workspace.catalog?.materials.length || session.damaged;
     return !occupied || window.confirm(`用“${label}”替换当前本机工程？如需保留当前工程，请先取消并导出备份。`);
   }
 
@@ -238,13 +240,14 @@ export default function TwinStudio() {
     setOpenedProject((value) => value + 1);
     setSelection({ version: 0 });
     setLastTarget(undefined); setShowPairSource(false);
-    if ((next.mechanisms?.length ?? 0) + (next.assemblies?.length ?? 0) + (next.factories?.length ?? 0) > 1) go({ view: "resources", section: "system" }, message);
+    if ((next.mechanisms?.length ?? 0) + (next.assemblies?.length ?? 0) + (next.factories?.length ?? 0) + (next.systems?.length ?? 0) > 1) go({ view: "resources", section: "system" }, message);
     else if (next.factories?.length) {
       const factory = next.factories[0], runs = factory.resources.filter(r => r.contourRun);
       const contour = contourFocus ?? (!motorFocus && runs.length === 1 ? runs[0].id : undefined);
       go({ view: "workbench", target: `factory:${factory.id}`,
         ...(contour ? { contour } : motorFocus && { motorAxis: motorFocus.resourceId, axis: motorFocus.axisId }) }, message);
     }
+    else if (next.systems?.length) go({ view: "workbench", target: `system:${next.systems[0].id}` }, message);
     else if (next.mechanisms?.length) go({ view: "workbench", target: `mechanism:${next.mechanisms[0].id}` }, message);
     else if (next.assemblies?.length) go({ view: "workbench", target: `assembly:${next.assemblies[0].id}` }, message);
     else if (next.milo) go({ view: "workbench", target: "milo" }, message);
@@ -384,18 +387,20 @@ export default function TwinStudio() {
   }
 
   function assemble(pkg: DevicePackage, mode?: "factory" | "motor") {
-    if (pkg.motorPhysics && (mode === "motor" || (!pkg.servo && !pkg.factory && !pkg.feed && !pkg.mechanics))) {
+    const isServo = hasServoRole(pkg, "drive") || hasServoRole(pkg, "motor");
+    const isFeed = hasFeedRole(pkg, "screw") || hasFeedRole(pkg, "table");
+    if (pkg.motorPhysics && (mode === "motor" || (!isServo && !pkg.factory && !isFeed && !pkg.mechanics))) {
       if (pkg.motorPhysics.kind === "motor") {
         cancelImport();
         setMotorToMount(packageKey(pkg));
       } else go({ view: "resources", section: "author", motorPart: packageKey(pkg) });
       return;
     }
-    if (pkg.factory && (mode === "factory" || (!pkg.feed && !pkg.mechanics && !pkg.servo))) {
+    if (pkg.factory && (mode === "factory" || (!isFeed && !pkg.mechanics && !isServo))) {
       go({ view: "workbench", target: "factory-new", part: packageKey(pkg) });
       return;
     }
-    if (pkg.feed) {
+    if (isFeed) {
       go({ view: "workbench", target: "assembly-new", part: packageKey(pkg) });
       return;
     }
@@ -403,9 +408,9 @@ export default function TwinStudio() {
       go({ view: "workbench", target: "mechanism-new", part: packageKey(pkg) });
       return;
     }
-    if (pkg.servo) {
+    if (isServo) {
       const key = packageKey(pkg);
-      const role = pkg.servo.kind;
+      const role = hasServoRole(pkg, "drive") ? "drive" : "motor";
       setSelection((previous) => ({ version: previous.version + 1, ...(role === "drive" ? { driveKey: key } : { motorKey: key }) }));
       go({ view: "workbench", target: "servo" }, `已选中 ${pkg.model}，可在伺服轴中核对配套型号。`);
       return;
@@ -452,6 +457,11 @@ export default function TwinStudio() {
   function saveMechanism(assembly: MechanicalAssembly) {
     save(upsertMechanicalAssembly(workspace, assembly));
     go({ view: "workbench", target: `mechanism:${assembly.id}` }, "", target === "mechanism-new");
+  }
+
+  function saveSystem(sys: TwinSystemAssembly, revised?: TwinWorkspace) {
+    save(upsertTwinSystem(revised ?? workspace, sys));
+    go({ view: "workbench", target: `system:${sys.id}` }, `已保存机电控系统“${sys.name}”。`, target === "system-new");
   }
 
   return (
@@ -535,7 +545,7 @@ export default function TwinStudio() {
         </section>
         <StudioRunArea route={route.view === "workbench" ? route : null} workspace={workspace} generation={generation} openedProject={openedProject}
           bomRevision={bomRevision} servoChoice={selection} targets={targets} target={workbenchTarget} incoming={incomingModel}
-          onChange={save} onSaveAssembly={saveAssembly} onSaveFactory={saveFactory} onOpenImport={() => importInput.current?.click()} onSaveMechanism={saveMechanism}
+          onChange={save} onSaveAssembly={saveAssembly} onSaveFactory={saveFactory} onSaveSystem={saveSystem} onOpenImport={() => importInput.current?.click()} onSaveMechanism={saveMechanism}
           onInstallBundle={bundle => save(installMechanicalBundle(workspace, bundle))} onNavigate={go}
           onApplyExample={applyExample} onImportFile={importFile} onImportText={importText} />
         <Dialog open={motorToMount !== undefined} onOpenChange={open => { if (!open) setMotorToMount(undefined); }}>
