@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ArrowRight, Download, ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 import { STUDIO_EXAMPLES, studioHref, type StudioExample } from "@contracts/studio-navigation";
@@ -57,20 +57,91 @@ function ExampleCard({ item }: { item: StudioExample }) {
   </li>;
 }
 
+function ProblemTierSection({
+  title,
+  subtitle,
+  items,
+  extraFooter,
+}: {
+  title: string;
+  subtitle: string;
+  items: readonly StudioExample[];
+  extraFooter?: ReactNode;
+}) {
+  if (!items.length && !extraFooter) return null;
+  return (
+    <section className="space-y-3">
+      <div className="space-y-0.5">
+        <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+      <ul className="grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {items.map((item) => <ExampleCard key={item.id} item={item} />)}
+      </ul>
+      {extraFooter}
+    </section>
+  );
+}
+
+const LEGACY_BENCHMARK_IDS = new Set(["wiring-demo", "inovance-servo", "modelica-feed-axis"]);
+
 export default function StudioExamples() {
   const [filter, setFilter] = useState<Filter>("all");
   const visible = filter === "all" ? STUDIO_EXAMPLES : STUDIO_EXAMPLES.filter((item) => group[item.kind] === filter || (filter === "machining" && item.contourResource));
-  return <section aria-labelledby="studio-examples-heading" className="min-w-0 space-y-4">
+
+  const mechatronicPrimary = STUDIO_EXAMPLES.filter(
+    (item) => group[item.kind] === "automation" && !LEGACY_BENCHMARK_IDS.has(item.id),
+  );
+  const legacyBenchmarks = STUDIO_EXAMPLES.filter((item) => LEGACY_BENCHMARK_IDS.has(item.id));
+  const kinematicsMachining = STUDIO_EXAMPLES.filter(
+    (item) => group[item.kind] === "physics" || group[item.kind] === "machining",
+  );
+  const factoryTemplates = STUDIO_EXAMPLES.filter((item) => group[item.kind] === "factory");
+
+  return <section aria-labelledby="studio-examples-heading" className="min-w-0 space-y-5">
     <header className="flex flex-wrap items-baseline justify-between gap-2">
-      <h1 id="studio-examples-heading" className="display-title text-2xl font-semibold tracking-tight">示例库</h1>
-      <p role="status" className="text-sm text-muted-foreground">{filter === "all" ? "共 " : "当前 "}{visible.length} 个示例</p>
+      <div className="space-y-1">
+        <h1 id="studio-examples-heading" className="display-title text-2xl font-semibold tracking-tight">参考工程模板</h1>
+        <p className="text-xs text-muted-foreground">按要验证的工程问题分层浏览现成样板，可一键载入装配工作台对比参考结果。</p>
+      </div>
+      <p role="status" className="text-sm text-muted-foreground">{filter === "all" ? "共 " : "当前 "}{visible.length} 个模板</p>
     </header>
     <div role="group" aria-label="按领域筛选示例" className="flex flex-wrap gap-1 border-b pb-3 sm:gap-1.5">
       {filters.map(({ id, label }) => <Button key={id} type="button" size="sm" variant={id === filter ? "default" : "ghost"}
         className="px-1.5 text-xs sm:px-3 sm:text-sm" aria-pressed={id === filter} onClick={() => setFilter(id)}>{label}</Button>)}
     </div>
-    <ul className="grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {visible.map((item) => <ExampleCard key={item.id} item={item} />)}
-    </ul>
+    {filter === "all" ? (
+      <div className="space-y-6">
+        <ProblemTierSection
+          title="① 机电控闭环与伺服进给系统（主干能力）"
+          subtitle="把“设备资料 → 行为模型参数绑定 → 限位接线 → Modelica 闭环运动跟踪 → 现场对标”完整串通的样板。"
+          items={mechatronicPrimary}
+          extraFooter={legacyBenchmarks.length > 0 && (
+            <details className="rounded-lg border bg-card/40 p-3">
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+                展开 {legacyBenchmarks.length} 个单机理基础验证基准（24V 接线 / 单伺服轴 / Modelica 进给核）
+              </summary>
+              <ul className="mt-3 grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {legacyBenchmarks.map((item) => <ExampleCard key={item.id} item={item} />)}
+              </ul>
+            </details>
+          )}
+        />
+        <ProblemTierSection
+          title="② 三维机构、机器人与数控轮廓"
+          subtitle="机械装配几何验证、机械臂动力学对比，以及铣床进给轮廓 G 代码误差分析样板。"
+          items={kinematicsMachining}
+        />
+        <ProblemTierSection
+          title="③ 产线节拍与多机物流"
+          subtitle="多工位加工单元、输送节拍与搬运产线仿真模板。"
+          items={factoryTemplates}
+        />
+      </div>
+    ) : (
+      <ul className="grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {visible.map((item) => <ExampleCard key={item.id} item={item} />)}
+      </ul>
+    )}
   </section>;
 }

@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, CheckCircle2, CopyPlus, Download, Pause, Play, RefreshCw, Save, ShieldAlert, Wrench } from "lucide-react";
-import { hasFeedRole, hasServoRole } from "@contracts/device-model-binding";
+import {
+  effectiveModelBindings,
+  evaluateBindingReadiness,
+  fillPendingParameterValue,
+  hasFeedRole,
+  hasServoRole,
+  resolveParameterChoice,
+  type PendingParameterIssue,
+} from "@contracts/device-model-binding";
 import {
   applyFieldCalibrationRevision,
   compareRuntimeWithFieldTrace,
@@ -89,6 +97,7 @@ export default function SystemTwinBench({ workspace, system, trial = false, onTr
   const [primaryComparison, setPrimaryComparison] = useState<FieldComparisonReport | null>(null);
   const [reverifyComparison, setReverifyComparison] = useState<FieldComparisonReport | null>(null);
   const [calMassInput, setCalMassInput] = useState("");
+  const [pendingInputs, setPendingInputs] = useState<Record<string, string>>({});
   const runAbort = useRef<AbortController | null>(null);
   const autoRanId = useRef<string | null>(null);
 
@@ -101,6 +110,143 @@ export default function SystemTwinBench({ workspace, system, trial = false, onTr
     () => (draft ? evaluateSystemReadiness(workspace, draft) : null),
     [workspace, draft],
   );
+
+  const devicePendingItems = useMemo(() => {
+    if (!draft) return [];
+    const referencedKeys = Array.from(
+      new Set([
+        ...draft.axes.flatMap((a) => [a.driveKey, a.motorKey, a.screwKey, a.tableKey]),
+        ...draft.sensors.map((s) => s.packageKey).filter((k): k is string => Boolean(k)),
+        ...draft.diChannels.map((d) => d.packageKey).filter((k): k is string => Boolean(k)),
+      ]),
+    );
+    const seen = new Set<string>();
+    const items: Array<{
+      itemId: string;
+      pkgKey: string;
+      pkgLabel: string;
+      key: string;
+      sourceKey: string;
+      label: string;
+      unit: string;
+      reason: string;
+      valueType: "number" | "boolean";
+      candidates: PendingParameterIssue["candidates"];
+    }> = [];
+
+    for (const refKey of referencedKeys) {
+      const pkg = workspace.packages.find((p) => packageKey(p) === refKey);
+      if (!pkg) continue;
+      for (const binding of effectiveModelBindings(pkg)) {
+        const res = evaluateBindingReadiness(pkg, binding.id);
+        for (const pend of res.pendingParameters) {
+          if (
+            binding.modelRef.id === "GouyuanSignal.PositionLimitSwitch"
+            && pend.key === "triggerPositionMm"
+            && draft.sensors.some((s) => s.packageKey === refKey && s.triggerPositionMm !== undefined)
+          ) {
+            continue;
+          }
+          const itemId = `${refKey}::${pend.sourceKey}`;
+          if (seen.has(itemId)) continue;
+          seen.add(itemId);
+          const spec = res.model?.parameters.find((p) => p.key === pend.key);
+          items.push({
+            itemId,
+            pkgKey: refKey,
+            pkgLabel: `${pkg.manufacturer} ${pkg.model}`,
+            key: pend.key,
+            sourceKey: pend.sourceKey,
+            label: pend.label,
+            unit: pend.modelUnit,
+            reason: pend.reason,
+            valueType: spec?.valueType ?? "number",
+            candidates: pend.candidates,
+          });
+        }
+        for (const miss of res.missingParameters) {
+          const itemId = `${refKey}::${miss.key}`;
+          if (seen.has(itemId)) continue;
+          seen.add(itemId);
+          const spec = res.model?.parameters.find((p) => p.key === miss.key);
+          items.push({
+            itemId,
+            pkgKey: refKey,
+            pkgLabel: `${pkg.manufacturer} ${pkg.model}`,
+            key: miss.key,
+            sourceKey: miss.key,
+            label: miss.label,
+            unit: miss.unit,
+            reason: miss.reason,
+            valueType: spec?.valueType ?? "number",
+            candidates: [],
+          });
+        }
+      }
+    }
+    return items;
+  }, [draft, workspace.packages]);
+
+  function applyPendingParameter(item: (typeof devicePendingItems)[number]) {
+    if (!draft) return;
+    setError("");
+    const raw = (pendingInputs[item.itemId] ?? "").trim();
+    if (!raw) {
+      setError(`请先填写「${item.label}」的数值。`);
+      return;
+    }
+    try {
+      let parsedValue: number | boolean;
+      if (item.valueType === "boolean") {
+        const lowered = raw.toLowerCase();
+        if (["true", "1", "yes", "是", "nc", "常闭"].includes(lowered)) parsedValue = true;
+        else if (["false", "0", "no", "否", "常开"].includes(lowered)) parsedValue = false;
+        else throw new Error(`“${item.label}”需输入布尔值（true/false 或 1/0）。`);
+      } else {
+        const num = Number(raw);
+        if (!Number.isFinite(num)) throw new Error(`“${item.label}”请输入有效数字（支持科学计数法，如 2.6e-5）。`);
+        parsedValue = num;
+      }
+      const pkg = workspace.packages.find((p) => packageKey(p) === item.pkgKey);
+      if (!pkg) throw new Error(`找不到设备包：${item.pkgKey}`);
+      const updatedPkg = fillPendingParameterValue(
+        pkg,
+        item.sourceKey,
+        parsedValue,
+        item.unit,
+        "assumed",
+        "闭环工作台人工补全照片/资料未列参数",
+      );
+      const nextWorkspace = parseWorkspace({
+        ...workspace,
+        packages: workspace.packages.map((p) => (packageKey(p) === item.pkgKey ? updatedPkg : p)),
+      });
+      autoRanId.current = null;
+      setTrace(null);
+      onSave(draft, nextWorkspace);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "补全待确认参数失败。");
+    }
+  }
+
+  function choosePendingCandidate(item: (typeof devicePendingItems)[number], candidateIndex: number) {
+    if (!draft) return;
+    setError("");
+    try {
+      const pkg = workspace.packages.find((p) => packageKey(p) === item.pkgKey);
+      if (!pkg) throw new Error(`找不到设备包：${item.pkgKey}`);
+      const updatedPkg = resolveParameterChoice(pkg, item.sourceKey, candidateIndex);
+      const nextWorkspace = parseWorkspace({
+        ...workspace,
+        packages: workspace.packages.map((p) => (packageKey(p) === item.pkgKey ? updatedPkg : p)),
+      });
+      autoRanId.current = null;
+      setTrace(null);
+      onSave(draft, nextWorkspace);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "应用选件候选失败。");
+    }
+  }
 
   useEffect(() => () => { runAbort.current?.abort(); }, []);
 
@@ -401,6 +547,116 @@ export default function SystemTwinBench({ workspace, system, trial = false, onTr
                   <li key={idx}>{msg}</li>
                 ))}
               </ul>
+            )}
+            {(devicePendingItems.length > 0 || draft.sensors.some((s) => s.triggerPositionMm === undefined)) && (
+              <div className="mt-2.5 space-y-2 rounded border border-amber-500/40 bg-background/80 p-2.5 text-foreground">
+                <p className="font-medium text-amber-200">
+                  待补全器件参数（不编造照片/资料未列数值，补全后立即解锁闭环仿真）：
+                </p>
+                {devicePendingItems.map((item) => (
+                  <div
+                    key={item.itemId}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded border bg-background p-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">
+                        {item.pkgLabel} · {item.label}
+                        <span className="ml-1.5 text-[11px] text-muted-foreground">
+                          ({item.key} / {item.unit})
+                        </span>
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">{item.reason}</p>
+                    </div>
+                    {item.candidates.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.candidates.map((cand, cIdx) => (
+                          <Button
+                            key={`${item.itemId}-cand-${cIdx}`}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => choosePendingCandidate(item, cIdx)}
+                          >
+                            采用「{cand.option}」({String(cand.value)} {cand.unit ?? item.unit})
+                          </Button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          aria-label={`补全 ${item.pkgLabel} ${item.label}`}
+                          placeholder={
+                            item.key === "rotorInertiaKgM2"
+                              ? "例如 0.000026 或 2.6e-5"
+                              : `输入数值 (${item.unit})`
+                          }
+                          className="h-8 w-44 text-xs"
+                          value={pendingInputs[item.itemId] ?? ""}
+                          onChange={(e) =>
+                            setPendingInputs((prev) => ({ ...prev, [item.itemId]: e.target.value }))
+                          }
+                        />
+                        <Button size="sm" onClick={() => applyPendingParameter(item)}>
+                          确认补全并解锁
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {draft.sensors
+                  .filter((s) => s.triggerPositionMm === undefined)
+                  .map((s) => (
+                    <div
+                      key={`missing-trig-${s.id}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded border bg-background p-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">
+                          {s.name} · 安装触发坐标
+                          <span className="ml-1.5 text-[11px] text-muted-foreground">(triggerPositionMm / mm)</span>
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {s.note || "草图/设备包未标注限位开关触发坐标（mm），填写后即可参与限位截断仿真。"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          aria-label={`补全限位 ${s.name} 触发坐标`}
+                          placeholder="例如 115"
+                          className="h-8 w-44 text-xs"
+                          value={pendingInputs[`sensor::${s.id}`] ?? ""}
+                          onChange={(e) =>
+                            setPendingInputs((prev) => ({ ...prev, [`sensor::${s.id}`]: e.target.value }))
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const num = Number((pendingInputs[`sensor::${s.id}`] ?? "").trim());
+                            if (!Number.isFinite(num)) {
+                              setError(`限位「${s.name}」的触发坐标请输入有效数字（mm）。`);
+                              return;
+                            }
+                            setError("");
+                            setDraft({
+                              ...draft,
+                              sensors: draft.sensors.map((item) =>
+                                item.id === s.id ? { ...item, triggerPositionMm: num, provenance: "confirmed" } : item,
+                              ),
+                            });
+                            autoRanId.current = null;
+                            setTrace(null);
+                          }}
+                        >
+                          设置坐标并确认
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
             )}
           </div>
         )}

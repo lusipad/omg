@@ -1,15 +1,16 @@
 import { useId, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { BookOpen, ClipboardPaste, Cpu, Download, FileUp, FolderInput, FolderOpen, Link2, Package, Play, Plus, Search, Workflow } from "lucide-react";
+import { BookOpen, Camera, ClipboardPaste, Cpu, Download, FileUp, FolderInput, FolderOpen, Link2, Package, Play, Plus, Search, Workflow } from "lucide-react";
 import { listRegisteredModels, modelKey } from "@contracts/model-registry";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import type { MaterialRow, ModelRef } from "@contracts/import-catalog";
-import { readStudioRoute, studioHref } from "@contracts/studio-navigation";
+import { readStudioRoute, studioHref, type StudioTarget } from "@contracts/studio-navigation";
 import { WORKBENCH_FILE_ACCEPT } from "@/lib/workbench-import";
 import { downloadFile } from "@/lib/download";
 import { deviceLibraryGroups, isStructureOnly, motorRoleNames } from "@/lib/device-library";
 import { compositionKind } from "@contracts/device-composition";
+import { VisionIntakePanel } from "@/components/VisionIntakePanel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -32,9 +33,22 @@ type Props = MaterialIntakeProps & {
 };
 const emptyPaste = { text: "", name: "", source: "" };
 
-function ImportEntry({ onImportFiles, onImportText }: MaterialIntakeProps) {
+type ImportEntryProps = MaterialIntakeProps & {
+  workspace: TwinWorkspace;
+  onApplyVision: (nextWorkspace: TwinWorkspace, options?: { openTarget?: StudioTarget; message?: string }) => void;
+  onBrowseRegistry: () => void;
+};
+
+function ImportEntry({
+  onImportFiles,
+  onImportText,
+  workspace,
+  onApplyVision,
+  onBrowseRegistry,
+}: ImportEntryProps) {
   const files = useRef<HTMLInputElement>(null), directory = useRef<HTMLInputElement>(null);
   const pasteId = useId();
+  const [intakeTab, setIntakeTab] = useState<"vision" | "files">("vision");
   const [pasteOpen, setPasteOpen] = useState(false);
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [{ text, name, source }, setDraft] = useState(emptyPaste);
@@ -50,54 +64,94 @@ function ImportEntry({ onImportFiles, onImportText }: MaterialIntakeProps) {
   }
 
   return <section className="surface min-w-0 space-y-4 p-4 sm:p-5" aria-label="统一导入入口">
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
-      <div className="min-w-0">
-        <h2 className="flex items-center gap-2 text-lg font-semibold"><FolderInput className="size-5 text-primary" />导入自己的模型和资料</h2>
-        <p className="mt-1.5 text-sm leading-6 text-muted-foreground">选择文件或粘贴内容即可自动识别。模型引用外部网格、纹理时，可选择整个文件夹。</p>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+      <div className="flex items-center gap-2">
+        <FolderInput className="size-5 text-primary" />
+        <h2 className="text-base font-semibold">快速导入器件或草图</h2>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => files.current?.click()}><FileUp />选择文件</Button>
-        <Button variant="outline" onClick={() => directory.current?.click()}><FolderOpen />选择文件夹</Button>
-        <Button variant="outline" aria-expanded={pasteOpen} aria-controls={pasteId} onClick={() => {
-          if (!pasteOpen && (name || source)) setMetadataOpen(true);
-          setPasteOpen(!pasteOpen);
-        }}><ClipboardPaste />粘贴内容或链接</Button>
+      <div role="tablist" aria-label="导入方式切换" className="flex flex-wrap gap-1 rounded-md border bg-background/60 p-1">
+        <Button
+          size="sm"
+          type="button"
+          role="tab"
+          aria-selected={intakeTab === "vision"}
+          variant={intakeTab === "vision" ? "secondary" : "ghost"}
+          onClick={() => setIntakeTab("vision")}
+        >
+          <Camera />
+          拍照 / 传图自动构建
+        </Button>
+        <Button
+          size="sm"
+          type="button"
+          role="tab"
+          aria-selected={intakeTab === "files"}
+          variant={intakeTab === "files" ? "secondary" : "ghost"}
+          onClick={() => setIntakeTab("files")}
+        >
+          <FileUp />
+          导入文件 / 链接与 BOM
+        </Button>
       </div>
     </div>
-    <input ref={files} className="hidden" type="file" multiple accept={WORKBENCH_FILE_ACCEPT} aria-label="统一选择导入文件" onChange={select} />
-    <input ref={directory} className="hidden" type="file" multiple {...{ webkitdirectory: "" }} aria-label="统一选择导入目录" onChange={select} />
-    {pasteOpen && <form id={pasteId} className="space-y-3 border-t pt-4" onSubmit={(event) => {
-      event.preventDefault();
-      if (!text.trim()) return;
-      const title = name.trim(), location = source.trim();
-      const fileName = acceptedSuffixes.some((suffix) => title.toLowerCase().endsWith(suffix)) ? title : "粘贴内容";
-      const submitted = ++revision.current;
-      onImportText(text, fileName, { hint: "auto", ...(title && { title }), ...(location && { source: location }) }, () => {
-        if (revision.current !== submitted) return;
-        revision.current++;
-        setDraft(emptyPaste);
-        setMetadataOpen(false);
-      });
-      setPasteOpen(false);
-    }}>
-      <label className="block"><span className="field-label">内容或资料链接</span>
-        <Textarea autoFocus aria-label="待导入内容或链接" className="h-32 resize-y" placeholder="粘贴模型 XML、设备包或装配 JSON、清单、手册、G 代码或资料链接"
-          value={text} onChange={(event) => edit("text", event.target.value)} />
-      </label>
-      <details className="text-xs" open={metadataOpen} onToggle={(event) => setMetadataOpen(event.currentTarget.open)}>
-        <summary className="cursor-pointer text-muted-foreground">名称与来源（可选）</summary>
-        <div className="mt-3 grid items-end gap-3 sm:grid-cols-2">
-          <label><span className="field-label">名称（可选）</span>
-            <Input aria-label="粘贴资料名称" value={name} onChange={(event) => edit("name", event.target.value)} placeholder="文件名或资料标题" />
-          </label>
-          <label><span className="field-label">来源（可选）</span>
-            <Input aria-label="粘贴资料来源" value={source} onChange={(event) => edit("source", event.target.value)} placeholder="网址、版本或章节" />
-          </label>
+
+    {intakeTab === "vision" ? (
+      <VisionIntakePanel
+        workspace={workspace}
+        onApply={onApplyVision}
+        onBrowseRegistry={onBrowseRegistry}
+      />
+    ) : (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <p className="text-xs leading-6 text-muted-foreground">
+            选择文件或文件夹（支持 .twin.json / STEP / GLB / URDF / XML / BOM 清单），或在下方粘贴资料链接与规格文本。
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={() => files.current?.click()}><FileUp />选择文件</Button>
+            <Button size="sm" variant="outline" onClick={() => directory.current?.click()}><FolderOpen />选择文件夹</Button>
+            <Button size="sm" variant="outline" aria-expanded={pasteOpen} aria-controls={pasteId} onClick={() => {
+              if (!pasteOpen && (name || source)) setMetadataOpen(true);
+              setPasteOpen(!pasteOpen);
+            }}><ClipboardPaste />粘贴内容或链接</Button>
+          </div>
         </div>
-      </details>
-      <Button size="sm" type="submit" disabled={!text.trim()}>识别并导入</Button>
-    </form>}
-    <MaterialIntake onImportFiles={onImportFiles} onImportText={onImportText} />
+        <input ref={files} className="hidden" type="file" multiple accept={WORKBENCH_FILE_ACCEPT} aria-label="统一选择导入文件" onChange={select} />
+        <input ref={directory} className="hidden" type="file" multiple {...{ webkitdirectory: "" }} aria-label="统一选择导入目录" onChange={select} />
+        {pasteOpen && <form id={pasteId} className="space-y-3 border-t pt-4" onSubmit={(event) => {
+          event.preventDefault();
+          if (!text.trim()) return;
+          const title = name.trim(), location = source.trim();
+          const fileName = acceptedSuffixes.some((suffix) => title.toLowerCase().endsWith(suffix)) ? title : "粘贴内容";
+          const submitted = ++revision.current;
+          onImportText(text, fileName, { hint: "auto", ...(title && { title }), ...(location && { source: location }) }, () => {
+            if (revision.current !== submitted) return;
+            revision.current++;
+            setDraft(emptyPaste);
+            setMetadataOpen(false);
+          });
+          setPasteOpen(false);
+        }}>
+          <label className="block"><span className="field-label">内容或资料链接</span>
+            <Textarea autoFocus aria-label="待导入内容或链接" className="h-32 resize-y" placeholder="粘贴模型 XML、设备包或装配 JSON、清单、手册、G 代码或资料链接"
+              value={text} onChange={(event) => edit("text", event.target.value)} />
+          </label>
+          <details className="text-xs" open={metadataOpen} onToggle={(event) => setMetadataOpen(event.currentTarget.open)}>
+            <summary className="cursor-pointer text-muted-foreground">名称与来源（可选）</summary>
+            <div className="mt-3 grid items-end gap-3 sm:grid-cols-2">
+              <label><span className="field-label">名称（可选）</span>
+                <Input aria-label="粘贴资料名称" value={name} onChange={(event) => edit("name", event.target.value)} placeholder="文件名或资料标题" />
+              </label>
+              <label><span className="field-label">来源（可选）</span>
+                <Input aria-label="粘贴资料来源" value={source} onChange={(event) => edit("source", event.target.value)} placeholder="网址、版本或章节" />
+              </label>
+            </div>
+          </details>
+          <Button size="sm" type="submit" disabled={!text.trim()}>识别并导入</Button>
+        </form>}
+        <MaterialIntake onImportFiles={onImportFiles} onImportText={onImportText} />
+      </div>
+    )}
   </section>;
 }
 
@@ -223,16 +277,28 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
       case "system": return <Button size="sm" variant="outline" onClick={() => void run(() => onOpenSystem(item.system))}>{item.action}</Button>;
     }
   }
-  return <section className="min-w-0 space-y-4" aria-label="工程资源">
+  return <section className="min-w-0 space-y-4" aria-label="设备与资料">
     <header className="flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">工程资源</h1>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">设备与资料</h1>
+        <p className="mt-1 text-xs text-muted-foreground">先拍照或导入真实器件参数，再绑定可执行行为模型并进入闭环装配。</p>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" onClick={() => setRegistryOpen(true)}><Cpu />模型注册表 ({registeredModels.length})</Button>
         <Button variant="secondary" onClick={() => navigate(studioHref({ view: "workbench", target: "system-new" }))}><Workflow />机电控闭环装配</Button>
         <Button variant="outline" onClick={onCreateDevice}><Plus />创建设备</Button>
       </div>
     </header>
-    <ImportEntry onImportFiles={onImportFiles} onImportText={onImportText} />
+    <ImportEntry
+      workspace={workspace}
+      onImportFiles={onImportFiles}
+      onImportText={onImportText}
+      onBrowseRegistry={() => setRegistryOpen(true)}
+      onApplyVision={(nextWs, opts) => {
+        onChange(nextWs);
+        if (opts?.openTarget) navigate(studioHref({ view: "workbench", target: opts.openTarget }));
+      }}
+    />
     <section className="surface min-w-0 p-4 sm:p-5" aria-label="工程资源清单">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-base font-semibold">资源清单 <span className="mono ml-1 text-sm text-muted-foreground">{resources.length}</span></h2>

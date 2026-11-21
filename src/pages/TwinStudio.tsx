@@ -33,9 +33,9 @@ const openedProjectKey = storageKey + ".opened";
 const ImportCenter = lazy(() => import("@/components/ImportCenter"));
 const StudioExamples = lazy(() => import("@/components/StudioExamples"));
 const destinations = [
-  { route: { view: "resources" }, label: "工程资源", icon: Package },
-  { route: { view: "workbench" }, label: "装配与仿真", icon: Workflow },
-  { route: { view: "examples" }, label: "示例库", icon: LayoutGrid },
+  { route: { view: "resources" }, label: "① 设备与资料", icon: Package },
+  { route: { view: "workbench" }, label: "② 装配与仿真", icon: Workflow },
+  { route: { view: "examples" }, label: "③ 参考模板", icon: LayoutGrid },
 ] as const;
 
 function readLocalWorkspace() {

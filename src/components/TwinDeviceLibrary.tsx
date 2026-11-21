@@ -65,7 +65,6 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState<"url" | "pdf" | "ai" | null>(null);
-  const [aiOpen, setAiOpen] = useState(true);
   const [manualPrompt, setManualPrompt] = useState("");
   const [artifact, setArtifact] = useState<SourceArtifact | null>(null);
   const [gateHint, setGateHint] = useState("");
@@ -78,7 +77,7 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
   const sourceFile = useRef<HTMLInputElement>(null);
   const continuePdfFile = useRef<HTMLInputElement>(null);
   const packageFile = useRef<HTMLInputElement>(null);
-  const aiStatus = trpc.twinAi.status.useQuery(undefined, { enabled: active && !IS_PAGES && aiOpen, retry: false, staleTime: 60_000 });
+  const aiStatus = trpc.twinAi.status.useQuery(undefined, { enabled: active && !IS_PAGES, retry: false, staleTime: 60_000 });
   const aiClient = trpc.useUtils().client;
   const componentModels = useMemo(() => listRegisteredModels().filter((m) => m.kind === "component"), []);
   const selectedModel = useMemo(
@@ -374,11 +373,12 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
     <section className="surface min-w-0" aria-labelledby="twin-add-heading">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-4 sm:px-5">
           <h1 id="twin-add-heading" className="text-xl font-semibold">创建设备</h1>
-          <div className="flex flex-wrap gap-1 rounded-md border bg-background/50 p-1">
-            <Button size="sm" variant={mode === "source" ? "secondary" : "ghost"} aria-pressed={mode === "source"} onClick={() => switchMode("source")}><BookOpen />从资料生成</Button>
+          <div className="flex flex-wrap items-center gap-1 rounded-md border bg-background/50 p-1">
+            <Button size="sm" variant={mode === "source" ? "secondary" : "ghost"} aria-pressed={mode === "source"} onClick={() => switchMode("source")}><BookOpen />从资料提取</Button>
             <Button size="sm" variant={mode === "package" ? "secondary" : "ghost"} aria-pressed={mode === "package"} onClick={() => switchMode("package")}><FileJson />导入设备包</Button>
+            <div className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
             <Button size="sm" variant={mode === "leaf" ? "secondary" : "ghost"} aria-pressed={mode === "leaf"} onClick={() => switchMode("leaf")}><Box />创建最小件</Button>
-            <Button size="sm" variant={mode === "motor" ? "secondary" : "ghost"} aria-pressed={mode === "motor"} onClick={() => switchMode("motor")}>从部件组装电机</Button>
+            <Button size="sm" variant={mode === "motor" ? "secondary" : "ghost"} aria-pressed={mode === "motor"} onClick={() => switchMode("motor")}>零件组装电机</Button>
           </div>
         </header>
         <div className="space-y-4 p-4 sm:p-5">
@@ -411,7 +411,6 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
                   textOrigin.current = { url: panaUrl, text: panaText };
                   autofilled.current = new Set(metadataKeys);
                   setTargetModelKey("Gouyuan.RatedTorqueMotor@1.0.0");
-                  setAiOpen(true);
                   setExtractedJson(JSON.stringify({
                     fields: {
                       ratedPowerW: { status: "confirmed", value: 100, rawUnit: "W", tableLocation: "Spec Detail", excerpt: "Rated output: 100 W" },
@@ -485,42 +484,55 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
                 </label>
               ))}
             </div>
-            <Button disabled={busy !== null} onClick={generate}>生成设备草案<ArrowRight /></Button>
-            <details open={aiOpen} className="rounded-md border bg-background/30 px-3 py-2 text-xs" onToggle={(event) => setAiOpen(event.currentTarget.open)}>
-              <summary className="cursor-pointer py-1 font-medium">按行为模型契约提取（跨品牌通用 · 支持粘贴 AI JSON 本地防幻觉核验）</summary>
-              <div className="mt-2 space-y-2.5">
-                <p className="leading-5 text-muted-foreground">选择目标行为模型后，系统只向 AI 索取该模型所需字段的原始值、单位和逐字摘录，再由确定性代码校验并换算。</p>
-                <label className="block"><span className="field-label">目标行为模型</span>
-                  <select aria-label="目标行为模型" className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs" value={targetModelKey} onChange={(event) => {
-                    invalidate();
-                    setTargetModelKey(event.target.value);
-                  }}>
-                    <option value="auto">通用信号/安装点规则（原单文件入口）</option>
-                    {componentModels.map((model) => (
-                      <option key={modelKey(model)} value={modelKey(model)}>
-                        {model.label}（{model.id} @ {model.version}）
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Button variant="outline" size="sm" disabled={busy !== null || !source.text.trim()} onClick={() => void copyPrompt()}><Copy />复制 AI 提取提示词</Button>
-                {manualPrompt && <label className="block"><span className="field-label">请选择并复制提示词</span><Textarea value={manualPrompt} readOnly onFocus={(event) => event.target.select()} /></label>}
-                {selectedModel && <div className="space-y-2 border-t pt-2">
-                  <label className="block"><span className="field-label">粘贴 AI 提取结果 JSON（本地校验）</span>
-                    <Textarea className="mono h-28 resize-y text-xs" spellCheck={false} value={extractedJson} placeholder='{"fields": { ... }}' onChange={(event) => setExtractedJson(event.target.value)} />
-                  </label>
-                  <Button variant="outline" size="sm" disabled={busy !== null || !extractedJson.trim() || !source.text.trim()} onClick={verifyLocalExtraction}>
-                    校验提取结果并生成草案
-                  </Button>
-                </div>}
-                {!IS_PAGES && (Boolean(selectedModel) || Boolean(source.url.trim())) && aiStatus.data?.available && aiStatus.data.authenticated && <div className="border-t pt-2">
-                  <p className="mb-2 leading-5 text-muted-foreground">点击后，型号、资料定位、规格原文与所选模型参数契约将发送给工作区配置的模型服务。</p>
-                  <Button variant="outline" size="sm" disabled={busy !== null || !source.text.trim()} onClick={() => void generateWithAi()}>
-                    {busy === "ai" ? <Loader2 className="animate-spin" /> : <Sparkles />}发送当前资料给 AI，生成草案
-                  </Button>
-                </div>}
-              </div>
-            </details>
+            <div className="space-y-3 rounded-md border bg-background/40 p-3 text-xs">
+              <label className="block"><span className="field-label">目标行为模型</span>
+                <select aria-label="目标行为模型" className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs" value={targetModelKey} onChange={(event) => {
+                  invalidate();
+                  setTargetModelKey(event.target.value);
+                }}>
+                  <option value="auto">通用信号/安装点规则（本地规则直接生成）</option>
+                  {componentModels.map((model) => (
+                    <option key={modelKey(model)} value={modelKey(model)}>
+                      {model.label}（{model.id} @ {model.version}）
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {!selectedModel ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button disabled={busy !== null} onClick={generate}>生成信号设备草案<ArrowRight /></Button>
+                  <Button variant="outline" size="sm" disabled={busy !== null || !source.text.trim()} onClick={() => void copyPrompt()}><Copy />复制提取提示词</Button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <p className="leading-5 text-muted-foreground">
+                    系统会只向 AI 索取目标模型所需参数的原始值、单位与逐字摘录，再由确定性代码校验并换算；照片或草图建库建议直接使用「设备与资料 → 拍照/传图自动构建」。
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!IS_PAGES && aiStatus.data?.available && aiStatus.data.authenticated && (
+                      <Button disabled={busy !== null || !source.text.trim()} onClick={() => void generateWithAi()}>
+                        {busy === "ai" ? <Loader2 className="animate-spin" /> : <Sparkles />}AI 提取参数并绑定模型
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" disabled={busy !== null || !source.text.trim()} onClick={() => void copyPrompt()}><Copy />复制提取提示词</Button>
+                  </div>
+                  {manualPrompt && (
+                    <label className="block"><span className="field-label">请选择并复制提示词</span>
+                      <Textarea value={manualPrompt} readOnly onFocus={(event) => event.target.select()} />
+                    </label>
+                  )}
+                  <div className="space-y-2 border-t pt-2">
+                    <label className="block"><span className="field-label">粘贴 AI 提取结果 JSON（本地防幻觉核验）</span>
+                      <Textarea className="mono h-28 resize-y text-xs" spellCheck={false} value={extractedJson} placeholder='{"fields": { ... }}' onChange={(event) => setExtractedJson(event.target.value)} />
+                    </label>
+                    <Button size="sm" variant={!IS_PAGES && aiStatus.data?.available && aiStatus.data.authenticated ? "outline" : "default"} disabled={busy !== null || !extractedJson.trim() || !source.text.trim()} onClick={verifyLocalExtraction}>
+                      校验提取结果并生成草案<ArrowRight />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </> : mode === "motor" ? <Suspense fallback={<p role="status">正在打开电机选件表单…</p>}>
             <MotorAssemblyForm key={initialMotorPartKey} workspace={workspace} initialPartKey={initialMotorPartKey}
               submitLabel="核对组装电机" onBuild={device => onPreviewDevice(device)} />

@@ -14,6 +14,7 @@ import {
   type DevicePackage,
   type DeviceParameterEntry,
   type ModelReference,
+  type ParameterMapping,
   type PendingParameterCandidate,
   type ServoDrive,
   type ServoMotor,
@@ -608,6 +609,83 @@ export function resolveParameterChoice(
     parameters: {
       ...pkg.parameters,
       [parameterKey]: resolvedEntry,
+    },
+  });
+}
+
+export function fillPendingParameterValue(
+  pkg: DevicePackage,
+  parameterKey: string,
+  value: number | boolean,
+  unit?: string,
+  sourceStatus: "catalog" | "measured" | "derived" | "assumed" = "assumed",
+  note = "人工补全照片/资料未列参数",
+): DevicePackage {
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    throw new Error(`参数 ${parameterKey} 的数值必须为有限实数。`);
+  }
+  const effectiveBindings = effectiveModelBindings(pkg);
+  let targetKey = parameterKey;
+  if (!pkg.parameters?.[targetKey]) {
+    for (const binding of effectiveBindings) {
+      const mapped = binding.mappings.find(
+        (m): m is Extract<ParameterMapping, { kind: "parameter" }> => m.kind === "parameter" && m.target === parameterKey,
+      );
+      if (mapped) {
+        targetKey = mapped.source;
+        break;
+      }
+    }
+  }
+  const existing = pkg.parameters?.[targetKey];
+  if (existing && existing.status !== "pending" && existing.status !== "assumed") {
+    throw new Error(`参数 ${targetKey} 当前状态为 ${existing.status}，非待确认项。`);
+  }
+  const resolvedUnit = unit ?? (existing && "unit" in existing ? existing.unit : undefined);
+  const label = existing && "label" in existing ? existing.label : undefined;
+
+  let nextBindings = pkg.modelBindings;
+  if (pkg.modelBindings) {
+    let changed = false;
+    nextBindings = pkg.modelBindings.map((binding) => {
+      const registered = getRegisteredModel(binding.modelRef);
+      if (!registered) return binding;
+      const spec = registered.parameters.find((p) =>
+        p.key === parameterKey
+        || p.aliases?.includes(parameterKey)
+        || binding.mappings.some((m) => m.kind === "parameter" && m.source === targetKey && (m.target === p.key || p.aliases?.includes(m.target))),
+      );
+      if (!spec) return binding;
+      if (typeof value === "number" && resolvedUnit) {
+        convertUnit(value, resolvedUnit, spec.unit);
+      }
+      const alreadyMapped = binding.mappings.some((m) => m.target === spec.key || spec.aliases?.includes(m.target));
+      if (!alreadyMapped) {
+        changed = true;
+        return {
+          ...binding,
+          mappings: [...binding.mappings, { kind: "parameter" as const, source: targetKey, target: spec.key }],
+        };
+      }
+      return binding;
+    });
+    if (!changed) nextBindings = pkg.modelBindings;
+  }
+
+  const resolvedEntry: DeviceParameterEntry = {
+    status: sourceStatus,
+    value,
+    ...(resolvedUnit !== undefined && { unit: resolvedUnit }),
+    ...(label !== undefined && { label }),
+    condition: note,
+  };
+
+  return parseDevicePackage({
+    ...pkg,
+    ...(nextBindings !== undefined && { modelBindings: nextBindings }),
+    parameters: {
+      ...pkg.parameters,
+      [targetKey]: resolvedEntry,
     },
   });
 }

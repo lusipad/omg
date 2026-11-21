@@ -88,11 +88,12 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
           装配方式
           <select aria-label="装配方式" className="h-9 rounded border bg-background px-2 text-sm text-foreground" value={target}
             onChange={event => onNavigate({ view: "workbench", target: event.target.value as "mechanism-new" | "assembly-new" | "factory-new" | "system-new" })}>
-            <option value="mechanism-new">安装点与关节</option><option value="assembly-new">直驱丝杠伺服轴</option>
-            <option value="system-new">机电控闭环系统</option>
+            <option value="system-new">机电控闭环系统（推荐主干）</option>
+            <option value="assembly-new">直驱丝杠伺服轴</option>
+            <option value="mechanism-new">安装点与关节</option>
             <option value="factory-new">工厂与生产线</option>
           </select>
-        </label> : <Button size="sm" variant="outline" asChild><Link to={studioHref({ view: "workbench", target: factory ? "factory-new" : system ? "system-new" : assembly ? "assembly-new" : "mechanism-new" })}><Plus />新建装配</Link></Button>}
+        </label> : <Button size="sm" variant="outline" asChild><Link to={studioHref({ view: "workbench", target: factory ? "factory-new" : assembly ? "assembly-new" : "system-new" })}><Plus />新建装配</Link></Button>}
       </div>}
     </header>}
     {route && (missing || (!target && !isExample)) && <div className="surface space-y-3 p-5">
