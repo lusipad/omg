@@ -1,20 +1,38 @@
-import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Download, ExternalLink, Play, Plus, Save, Trash2 } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, Cpu, Download, ExternalLink, Layers, PackagePlus, Pause, Play, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
+import {
+  buildComposableFeedModuleTemplate,
+  buildComposableMiloMillTemplate,
+  mapSystemTraceFrameToCommands,
+} from "@contracts/articulated-kinematics";
 import {
   inspectMechanicalAssembly, MECHANICAL_LIMITS, parseMechanicalAssembly, resolveMechanicalAssembly,
   type MechanicalAssembly, type MechanicalBundle, type MechanicalPart, type ResolvedMechanicalAssembly,
 } from "@contracts/mechanical-assembly";
+import { evaluateSystemReadiness, type RuntimeTrace } from "@contracts/system-twin";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
-import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { installPackage, parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
 import { downloadJson } from "@/lib/download";
+import { runSystemTwin } from "@/lib/system-twin-runtime";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import MechanicalPoseResults from "./MechanicalPoseResults";
 import MechanicalBundleControls from "./MechanicalBundleControls";
 
-type Props = { workspace: TwinWorkspace; assembly?: MechanicalAssembly; initialPackageKey?: string;
-  onSave: (a: MechanicalAssembly) => void; onInstallBundle: (b: MechanicalBundle) => void };
+const ArticulatedAssemblyViewport = lazy(() => import("./ArticulatedAssemblyViewport"));
+const PrimitivePartCreator = lazy(() => import("./PrimitivePartCreator"));
+
+type Props = {
+  workspace: TwinWorkspace;
+  assembly?: MechanicalAssembly;
+  initialPackageKey?: string;
+  trial?: boolean;
+  onTrialReady?: (ready: boolean) => void;
+  onSave: (a: MechanicalAssembly, revisedWorkspace?: TwinWorkspace) => void;
+  onInstallBundle: (b: MechanicalBundle) => void;
+};
 type Node = MechanicalAssembly["nodes"][number];
 type EditNode = Node & { key: string };
 type Draft = Omit<MechanicalAssembly, "nodes" | "commands"> & { nodes: EditNode[]; commands: Record<string, string> };
@@ -50,9 +68,17 @@ function draftOf(source: MechanicalAssembly | undefined, seed: string | undefine
   }
   const keys = new Map(source.nodes.map(n => [n.id, nodeKey()]));
   const key = (id: string) => keys.get(id) ?? "!" + id;
-  return { ...source, nodes: source.nodes.map(n => ({ ...n, key: key(n.id), parent: n.parent && { ...n.parent, node: key(n.parent.node) } })),
+  return {
+    ...source,
+    nodes: source.nodes.map(n => ({
+      ...n,
+      key: key(n.id),
+      parent: n.parent && { ...n.parent, node: key(n.parent.node) },
+      ...(n.coupledTo ? { coupledTo: { ...n.coupledTo, path: remapPath(n.coupledTo.path, key) } } : {}),
+    })),
     output: { ...source.output, node: key(source.output.node) },
-    commands: Object.fromEntries(Object.entries(source.commands).map(([path, v]) => [remapPath(path, key), String(v)])) };
+    commands: Object.fromEntries(Object.entries(source.commands).map(([path, v]) => [remapPath(path, key), String(v)])),
+  };
 }
 function definition(d: Draft): MechanicalAssembly {
   const commands: Record<string, number> = {};
@@ -62,14 +88,36 @@ function definition(d: Draft): MechanicalAssembly {
     if (!Number.isFinite(value)) throw new Error(`关节 ${path} 的指令需要有限数值。`);
     commands[path] = value;
   }
-  return parseMechanicalAssembly({ schemaVersion: 1, kind: d.kind, id: d.id, name: d.name, commands,
-    nodes: d.nodes.map(n => ({ id: n.id, packageKey: n.packageKey, parent: n.parent && { ...n.parent, node: idOf(d, n.parent.node) },
-      ...(n.materialId ? { materialId: n.materialId } : {}) })),
-    output: { ...d.output, node: idOf(d, d.output.node) } });
+  return parseMechanicalAssembly({
+    schemaVersion: 1,
+    kind: d.kind,
+    id: d.id,
+    name: d.name,
+    commands,
+    nodes: d.nodes.map((n) => ({
+      id: n.id,
+      packageKey: n.packageKey,
+      parent: n.parent && { ...n.parent, node: idOf(d, n.parent.node) },
+      ...(n.materialId ? { materialId: n.materialId } : {}),
+      ...(n.label ? { label: n.label } : {}),
+      ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}),
+      ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}),
+      ...(n.coupledTo ? { coupledTo: { ...n.coupledTo, path: remapPath(n.coupledTo.path, (ref) => idOf(d, ref)) } } : {}),
+    })),
+    output: { ...d.output, node: idOf(d, d.output.node) },
+  });
 }
 function signature(a?: MechanicalAssembly) {
-  return a ? JSON.stringify([a.id, a.name, a.nodes.map(n => [n.id, n.packageKey, n.parent?.node, n.parent?.mount, n.materialId]),
-    a.output.node, a.output.mount, Object.entries(a.commands).sort(([x], [y]) => x.localeCompare(y))]) : null;
+  return a
+    ? JSON.stringify([
+        a.id,
+        a.name,
+        a.nodes.map((n) => [n.id, n.packageKey, n.parent?.node, n.parent?.mount, n.materialId, n.label, n.explodeStep, n.explodeVectorMm, n.coupledTo]),
+        a.output.node,
+        a.output.mount,
+        Object.entries(a.commands).sort(([x], [y]) => x.localeCompare(y)),
+      ])
+    : null;
 }
 function dependencies(ws: TwinWorkspace, a: MechanicalAssembly, packages: Packages) {
   const queue = [...a.nodes], parts = new Map<string, DevicePackage["mechanics"]>(), rows = new Set<string>();
@@ -136,7 +184,14 @@ function fresh(assembly: MechanicalAssembly | undefined, seed: string | undefine
     run: null as Run | null, error: "", notice: "" };
 }
 
-export default function MechanicalAssemblyBench({ workspace, assembly, initialPackageKey, onSave, onInstallBundle }: Props) {
+export default function MechanicalAssemblyBench({
+  workspace,
+  assembly,
+  initialPackageKey,
+  onTrialReady,
+  onSave,
+  onInstallBundle,
+}: Props) {
   const packages = useMemo(() => new Map(workspace.packages.map(p => [packageKey(p), p])), [workspace.packages]);
   const available = useMemo(() => workspace.packages.filter(p => p.mechanics), [workspace.packages]);
   const seed = assembly ? undefined : initialPackageKey;
@@ -146,11 +201,42 @@ export default function MechanicalAssemblyBench({ workspace, assembly, initialPa
     if (assembly?.id === state.draft.id && incoming === state.submitted) setState({ ...state, seen: incoming, seed, submitted: null });
     else setState(fresh(assembly, seed, packages));
   }
+
+  const [creatorOpen, setCreatorOpen] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState("");
+  const [driveSystemId, setDriveSystemId] = useState(() => workspace.systems?.[0]?.id ?? "");
+  const [systemTrace, setSystemTrace] = useState<RuntimeTrace | null>(null);
+  const [systemFrameIdx, setSystemFrameIdx] = useState(0);
+  const [systemPlaying, setSystemPlaying] = useState(false);
+  const [systemBusy, setSystemBusy] = useState(false);
+  const traceAbort = useRef<AbortController | null>(null);
+
   const d = state.draft;
   const checked = useMemo(() => {
     try { const a = definition(d); return { a, issues: inspectMechanicalAssembly(workspace, a) }; }
     catch (e) { return { a: null, issues: [message(e)] }; }
   }, [d, workspace]);
+
+  useEffect(() => {
+    onTrialReady?.(Boolean(checked.a && checked.issues.length === 0));
+  }, [onTrialReady, checked.a, checked.issues.length]);
+
+  useEffect(() => () => { traceAbort.current?.abort(); }, []);
+
+  useEffect(() => {
+    if (!systemPlaying || !systemTrace || systemTrace.frames.length < 2) return;
+    const timer = window.setInterval(() => {
+      setSystemFrameIdx((prev) => {
+        if (prev + 4 >= systemTrace.frames.length - 1) {
+          setSystemPlaying(false);
+          return systemTrace.frames.length - 1;
+        }
+        return prev + 4;
+      });
+    }, 35);
+    return () => window.clearInterval(timer);
+  }, [systemPlaying, systemTrace]);
+
   const known = useMemo(() => packageControls(d.nodes, workspace, packages), [d.nodes, workspace, packages]);
   const controls = useMemo(() => {
     const entries = new Map(known.map(c => [c.key, c]));
@@ -163,6 +249,46 @@ export default function MechanicalAssemblyBench({ workspace, assembly, initialPa
   const run = state.run && checked.a && !checked.issues.length && state.run.signature === signature(checked.a) && state.run.basis === basis ? state.run : null;
   const materials = workspace.catalog?.materials ?? [];
   const endNode = nodeOf(d, d.output.node), endPorts = mounts(endNode && packages.get(endNode.packageKey));
+
+  const previewAssembly = useMemo<MechanicalAssembly | null>(() => {
+    if (checked.a) return checked.a;
+    const validNodes = d.nodes.filter((n) => Boolean(n.packageKey));
+    if (!validNodes.length) return null;
+    try {
+      const idSet = new Set(validNodes.map((n) => idOf(d, n.key)));
+      const fallbackOutNode = idSet.has(idOf(d, d.output.node)) ? idOf(d, d.output.node) : validNodes[0].id;
+      const outPkg = packages.get(validNodes.find((n) => n.id === fallbackOutNode)?.packageKey ?? "");
+      const outMount = d.output.mount || mounts(outPkg)[0] || "out";
+      return {
+        schemaVersion: 1,
+        kind: "mechanical-assembly",
+        id: d.id,
+        name: d.name,
+        nodes: validNodes.map((n) => ({
+          id: n.id,
+          packageKey: n.packageKey,
+          parent: n.parent && idSet.has(idOf(d, n.parent.node))
+            ? { node: idOf(d, n.parent.node), mount: n.parent.mount || mounts(packages.get(nodeOf(d, n.parent.node)?.packageKey ?? ""))[0] || "out" }
+            : null,
+          ...(n.label ? { label: n.label } : {}),
+          ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}),
+          ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}),
+          ...(n.coupledTo ? { coupledTo: { ...n.coupledTo, path: remapPath(n.coupledTo.path, (ref) => idOf(d, ref)) } } : {}),
+        })),
+        output: { node: fallbackOutNode, mount: outMount },
+        commands: {},
+      };
+    } catch {
+      return null;
+    }
+  }, [checked.a, d, packages]);
+
+  const activeSystems = workspace.systems ?? [];
+  const selectedSystem = activeSystems.find((s) => s.id === driveSystemId) ?? activeSystems[0];
+  const drivenCommands = useMemo(() => {
+    if (!systemTrace || !previewAssembly) return undefined;
+    return mapSystemTraceFrameToCommands(previewAssembly, systemTrace.frames[systemFrameIdx]);
+  }, [systemTrace, systemFrameIdx, previewAssembly]);
 
   function edit(next: Draft) { setState(old => ({ ...old, draft: next, error: "", notice: "" })); }
   function update(key: string, patch: Partial<EditNode>) { edit({ ...d, nodes: d.nodes.map(n => n.key === key ? { ...n, ...patch } : n) }); }
@@ -201,13 +327,225 @@ export default function MechanicalAssemblyBench({ workspace, assembly, initialPa
     } catch (e) { setState(old => ({ ...old, error: message(e), notice: "" })); }
   }
 
+  function loadComposablePreset(kind: "mill" | "feed") {
+    try {
+      const tpl = kind === "mill" ? buildComposableMiloMillTemplate() : buildComposableFeedModuleTemplate(selectedSystem);
+      let nextWs = parseWorkspace(workspace);
+      for (const pkg of tpl.workspace.packages) {
+        if (!nextWs.packages.some((existing) => packageKey(existing) === packageKey(pkg))) {
+          nextWs = installPackage(nextWs, pkg);
+        }
+      }
+      const nextMap = new Map(nextWs.packages.map((p) => [packageKey(p), p]));
+      const nextAssembly = assembly?.id && assembly.id !== tpl.assembly.id
+        ? { ...tpl.assembly, id: assembly.id }
+        : tpl.assembly;
+      const stamp = signature(nextAssembly)!;
+      setSystemTrace(null);
+      setSystemPlaying(false);
+      setState({
+        draft: draftOf(nextAssembly, undefined, nextMap),
+        seen: signature(assembly),
+        seed,
+        submitted: stamp,
+        run: null,
+        error: "",
+        notice: `已载入「${nextAssembly.name}」及全部标准化基本件。`,
+      });
+      onSave(nextAssembly, nextWs);
+    } catch (cause) {
+      setState((old) => ({ ...old, error: message(cause), notice: "" }));
+    }
+  }
+
+  function handlePrimitiveCreated(pkg: DevicePackage) {
+    try {
+      const bundle: MechanicalBundle = {
+        schemaVersion: 1,
+        kind: "mechanical-package",
+        rootKey: packageKey(pkg),
+        packages: [pkg],
+      };
+      onInstallBundle(bundle);
+      const pkgKey = packageKey(pkg);
+      const firstMount = mounts(pkg)[0] || "center";
+      let i = 1;
+      while (d.nodes.some((n) => n.id === "part" + i)) i++;
+      const hasOnlyBlankRoot = d.nodes.length === 1 && !d.nodes[0].packageKey;
+      if (hasOnlyBlankRoot) {
+        const root = d.nodes[0];
+        edit({
+          ...d,
+          nodes: [{ ...root, label: pkg.model, packageKey: pkgKey, parent: null }],
+          output: { node: root.key, mount: firstMount },
+        });
+      } else {
+        const key = nodeKey();
+        const parent = endNode ?? d.nodes.at(-1);
+        const parentMount = parent ? chooseMount(packages.get(parent.packageKey), d.output.mount) || mounts(packages.get(parent.packageKey))[0] || "" : "";
+        edit({
+          ...d,
+          nodes: [
+            ...d.nodes,
+            {
+              key,
+              id: "part" + i,
+              label: pkg.model,
+              packageKey: pkgKey,
+              parent: parent ? { node: parent.key, mount: parentMount } : null,
+            },
+          ],
+          output: { node: key, mount: firstMount },
+        });
+      }
+      setCreatorOpen(false);
+    } catch (cause) {
+      setState((old) => ({ ...old, error: message(cause), notice: "" }));
+    }
+  }
+
+  async function runClosedLoopDrive() {
+    if (!selectedSystem || systemBusy) return;
+    const readiness = evaluateSystemReadiness(workspace, selectedSystem);
+    if (!readiness.ready) {
+      setState((old) => ({
+        ...old,
+        error: `闭环系统「${selectedSystem.name}」尚有待补全项：${[...readiness.pendingItems, ...readiness.blockingErrors][0] ?? ""}`,
+      }));
+      return;
+    }
+    traceAbort.current?.abort();
+    const ctrl = new AbortController();
+    traceAbort.current = ctrl;
+    setSystemBusy(true);
+    setState((old) => ({ ...old, error: "", notice: "" }));
+    try {
+      const nextTrace = await runSystemTwin(workspace, selectedSystem, ctrl.signal);
+      if (ctrl.signal.aborted) return;
+      setSystemTrace(nextTrace);
+      setSystemFrameIdx(0);
+      setSystemPlaying(true);
+    } catch (cause) {
+      if (!ctrl.signal.aborted) {
+        setState((old) => ({ ...old, error: message(cause) }));
+      }
+    } finally {
+      if (!ctrl.signal.aborted) setSystemBusy(false);
+    }
+  }
+
   return <section className="min-w-0 space-y-4" aria-label="机械装配编辑器">
     <section className="surface space-y-3 p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-base font-semibold">{assembly ? "机械装配设置" : "新建机械装配"}</h3>
-        <a target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline" href="https://github.com/lusipad/omg/blob/main/docs/机械安装点与子装配.md">机械安装点与子装配<ExternalLink className="size-3" /></a></div>
-      <label className="block max-w-xl"><span className="field-label">装配名称</span><Input maxLength={160} value={d.name} onChange={e => edit({ ...d, name: e.target.value })} /></label>
-      {!available.length && <p className="text-sm text-muted-foreground">工程还没有机械设备包。可先留存草稿，导入带安装点的设备后再连接。</p>}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Layers className="size-4 text-primary" />
+          <h3 className="text-base font-semibold">{assembly ? "机械装配设置" : "新建三维基本件可动装配"}</h3>
+        </div>
+        <a target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline" href="https://github.com/lusipad/omg/blob/main/docs/机械安装点与子装配.md">机械安装点与子装配<ExternalLink className="size-3" /></a>
+      </div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <label className="min-w-60 flex-1"><span className="field-label">装配名称</span><Input maxLength={160} value={d.name} onChange={e => edit({ ...d, name: e.target.value })} /></label>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="secondary" onClick={() => setCreatorOpen(true)}>
+            <PackagePlus />
+            + 新建参数化基本件
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => loadComposablePreset("mill")}>
+            <Sparkles />
+            载入拼装式三轴铣床样板（23件·可动·爆炸图）
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => loadComposablePreset("feed")}>
+            <Cpu />
+            载入单轴丝杠模组
+          </Button>
+        </div>
+      </div>
+
+      {activeSystems.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-background/50 px-3 py-2 text-xs">
+          <span className="font-medium text-foreground">闭环仿真联动驱动：</span>
+          <select
+            aria-label="选择闭环系统驱动三维机构"
+            className="h-8 rounded border bg-background px-2 text-xs"
+            value={selectedSystem?.id ?? ""}
+            onChange={(e) => {
+              setDriveSystemId(e.target.value);
+              setSystemTrace(null);
+              setSystemPlaying(false);
+            }}
+          >
+            {activeSystems.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <Button size="sm" variant="outline" disabled={systemBusy} onClick={() => void runClosedLoopDrive()}>
+            <Play />
+            {systemBusy ? "求解 Modelica 闭环中..." : "按闭环仿真轨迹驱动机构运动"}
+          </Button>
+          {systemTrace && (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => setSystemPlaying((v) => !v)}>
+                {systemPlaying ? <Pause /> : <Play />}
+                {systemPlaying ? "暂停轨迹" : "继续回放"}
+              </Button>
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => { setSystemTrace(null); setSystemPlaying(false); }}
+              >
+                切回手动手轮控制
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {!available.length && <p className="text-sm text-muted-foreground">点击上方「+ 新建参数化基本件」创建铝型材、导轨、丝杠、平板或电机，或者直接「载入拼装式三轴铣床样板」立即体验可动机构与三维爆炸视图。</p>}
     </section>
+
+    {previewAssembly && (
+      <Suspense fallback={<p role="status" className="surface p-4 text-xs text-muted-foreground">正在加载三维可动与爆炸视口…</p>}>
+        <ArticulatedAssemblyViewport
+          workspace={workspace}
+          assembly={previewAssembly}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={setSelectedNodeId}
+          externalCommands={drivenCommands}
+          externalStatusLabel={
+            systemTrace
+              ? `当前由闭环系统「${selectedSystem?.name}」实时驱动 · 帧 ${systemFrameIdx + 1}/${systemTrace.frames.length} · ${(systemTrace.frames[systemFrameIdx]?.timeMs ?? 0).toFixed(0)} ms`
+              : undefined
+          }
+          onApplyCommands={(cmds) => {
+            const nextCmds: Record<string, string> = { ...d.commands };
+            for (const [path, val] of Object.entries(cmds)) {
+              const targetNode = d.nodes.find((n) => n.id === path);
+              const k = targetNode ? targetNode.key : path;
+              nextCmds[k] = String(Number(val.toFixed(3)));
+            }
+            edit({ ...d, commands: nextCmds });
+          }}
+        />
+      </Suspense>
+    )}
+
+    <Dialog open={creatorOpen} onOpenChange={setCreatorOpen}>
+      <DialogContent className="max-h-[88dvh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>新建参数化三维基本件</DialogTitle>
+          <DialogDescription>
+            支持基础几何积木、工业铝型材/导轨/丝杠/电机/电主轴与外部 .STL/.OBJ/.GLB 网格，生成后自动加入当前装配。
+          </DialogDescription>
+        </DialogHeader>
+        <Suspense fallback={<p role="status" className="py-4 text-xs text-muted-foreground">正在加载基本件编辑器…</p>}>
+          <PrimitivePartCreator
+            onCreate={handlePrimitiveCreated}
+            onCancel={() => setCreatorOpen(false)}
+            submitLabel="创建并加入当前装配"
+          />
+        </Suspense>
+      </DialogContent>
+    </Dialog>
     <section className="surface space-y-3 p-4 sm:p-5" aria-label="设备实例与安装关系">
       <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-base font-semibold">设备实例与安装关系</h3>
         <Button size="sm" variant="outline" disabled={d.nodes.length >= MECHANICAL_LIMITS.nodes} onClick={add}><Plus />添加实例</Button></div>

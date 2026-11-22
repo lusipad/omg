@@ -1,7 +1,9 @@
 import { applyMiloBomImport, mergeImportedMaterials } from "@contracts/import-apply";
+import { buildComposableMiloMillTemplate } from "@contracts/articulated-kinematics";
 import type { MaterialRow } from "@contracts/import-catalog";
 import { inspectLinearAssembly, upsertLinearAssembly, type LinearAssembly } from "@contracts/linear-assembly";
 import { inspectFactoryLayout, upsertFactoryLayout } from "@contracts/factory";
+import { inspectMechanicalAssembly, upsertMechanicalAssembly } from "@contracts/mechanical-assembly";
 import { assembleMiloAxis, miloAxisIds } from "@contracts/milo-bom";
 import { planMiloProgram, type MiloMotionPlan } from "@contracts/milo-motion";
 import { parseMiloWorkspace } from "@contracts/milo-workspace";
@@ -72,6 +74,7 @@ export async function loadStudioExample(kind: StudioBenchKind, signal: AbortSign
       const so101 = parseSo101Assembly({ modelId: SO101_MODEL_ID, bom, waypoints: DEFAULT_SO101_MOTION });
       return { workspace: { ...emptyWorkspace(), so101 } };
     }
+    case "mechanism": return { workspace: buildComposableMiloMillTemplate().workspace };
     case "milo": return loadMiloPocket(signal);
   }
 }
@@ -195,6 +198,17 @@ export function prepareStudioExampleJoin(kind: StudioBenchKind, project: TwinWor
       const replacement = project.milo
         ? `当前 Milo 的清单、已装 ${project.milo.assembled.length} 根轴和 G 代码程序将被替换。示例中已装 ${milo.assembled.length} 根轴。` : undefined;
       return { next: { ...project, milo }, replacement };
+    }
+    case "mechanism": {
+      const mech = sample.mechanisms?.[0];
+      if (!mech) throw new Error("请先载入基本件机械装配示例。");
+      const issues = inspectMechanicalAssembly(sample, mech);
+      if (issues.length) throw new Error(issues.join("\n"));
+      const merged = installDeviceDependencies(project, sample.packages, sample.packages.map(packageKey));
+      const previous = merged.mechanisms?.find(m => m.id === mech.id);
+      const replacement = previous && !same(previous, mech)
+        ? `将用示例中的“${mech.name}”（含 ${mech.nodes.length} 个基本件实例）更新当前工程的“${previous.name}”。` : undefined;
+      return { next: upsertMechanicalAssembly(merged, mech), replacement };
     }
   }
 }

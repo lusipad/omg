@@ -6,7 +6,7 @@ import { signalIdSchema } from "./twin-device";
 import { isPackageKey } from "./package-identity";
 import type { TwinWorkspace } from "./twin-simulation";
 
-export type StudioExampleKind = "wiring" | "servo" | "linear-assembly" | "factory" | "system" | "so101" | "milo" | "physics";
+export type StudioExampleKind = "wiring" | "servo" | "linear-assembly" | "factory" | "system" | "mechanism" | "so101" | "milo" | "physics";
 export interface StudioExample {
   id: string;
   name: string;
@@ -28,6 +28,9 @@ export interface StudioExample {
 export const modelicaServoProjectPath = "modelica/servo-axis.twin.json";
 
 export const STUDIO_EXAMPLES: readonly StudioExample[] = [
+  { id: "composable-milo-mill", kind: "mechanism", name: "拼装式三轴铣床（基本件·可动·爆炸图）", category: "基本件可动装配",
+    description: "完全由 23 个标准化基本件（铝型材、带孔端板、L 角件、线性导轨滑块、耦合滚珠丝杠、电机与电主轴）拼装而成，支持多轴实时联动与层级三维爆炸视图。",
+    preview: "examples/previews/milo.webp" },
   { id: "closed-loop-feed-system", kind: "system", name: "跨品牌机电控限位闭环与实测对标", category: "机电控闭环",
     description: "将台达伺服、THK 丝杠、常闭接近开关（-not 反相扇出）与 GL10 防抖滤波连入同一 Modelica 闭环 RuntimeTrace，支持换件、LinuxCNC 导入与实机录波对标。",
     preview: "assemblies/feed-axis/preview.webp", download: "assemblies/closed-loop-axis/project.twin.json",

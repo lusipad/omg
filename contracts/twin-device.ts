@@ -1,12 +1,14 @@
 import { z } from "zod";
-import { mechanicsSchema, signalIdSchema } from "./mechanical-types";
+import { mechanicsSchema, signalIdSchema, type MechanicalFrame, type MechanicalPart } from "./mechanical-types";
 import { factoryParameterIssues, factoryParametersSchema, getFactoryModel } from "./factory-model";
 import { deviceCompositionSchema, factoryPartParametersSchema } from "./device-composition";
 import { getRegisteredModel } from "./model-registry";
 import { packageKey } from "./package-identity";
+import { defaultPrimitiveMechanics, primitivePartSchema, type PrimitivePartSpec } from "./primitive-parts";
 import { areUnitsCompatible, convertUnit, parseUnitSpec } from "./units";
 export { signalIdSchema } from "./mechanical-types";
 export { packageKey } from "./package-identity";
+export { primitivePartSchema, type PrimitivePartSpec } from "./primitive-parts";
 
 const text = (limit: number) => z.string().trim().min(1).max(limit);
 
@@ -161,6 +163,7 @@ const packageSchema = z.strictObject({
   ports: z.array(portSchema).max(256), rules: z.array(ruleSchema).max(128), servo: servoSchema.optional(), feed: feedSchema.optional(),
   factory: z.strictObject({ modelRef: modelRefSchema, parameters: factoryParametersSchema, partParameters: factoryPartParametersSchema.optional() }).optional(),
   calibration: calibrationSchema.optional(), mechanics: mechanicsSchema.optional(),
+  primitive: primitivePartSchema.optional(),
   composition: deviceCompositionSchema.optional(),
   motorPhysics: motorPhysicsSchema.optional(),
   axisPorts: z.array(axisPortSchema).refine(ports => new Set(ports.map(p => p.id)).size === ports.length, "同一设备的调试轴标识不能重复。").optional(),
@@ -313,7 +316,7 @@ export function parseDevicePackage(value: unknown): DevicePackage {
     if (/[*?□…]/u.test(pkg.model)) throw new Error("伺服设备需要完整型号");
     return pkg;
   }
-  if (pkg.ports.length === 0 && !pkg.mechanics && !pkg.feed && !pkg.factory && !pkg.composition && !pkg.motorPhysics && !pkg.axisPorts?.length && !pkg.modelBindings?.length) throw new Error("信号设备至少需要一个端口");
+  if (pkg.ports.length === 0 && !pkg.mechanics && !pkg.primitive && !pkg.feed && !pkg.factory && !pkg.composition && !pkg.motorPhysics && !pkg.axisPorts?.length && !pkg.modelBindings?.length) throw new Error("信号设备至少需要一个端口");
   const ports = new Map(pkg.ports.map((port) => [port.id, port]));
   if (ports.size !== pkg.ports.length) throw new Error("设备包内的端口标识必须唯一");
   for (const port of pkg.ports) {
@@ -342,4 +345,93 @@ export function parseDevicePackage(value: unknown): DevicePackage {
     if (port.direction === "output" && !driven.has(port.id)) throw new Error(`输出端口 ${port.id} 缺少行为规则`);
   }
   return pkg;
+}
+
+export type PrimitiveBehaviorPreset =
+  | { kind: "lead_screw"; leadMmPerRev?: number }
+  | {
+      kind: "servo_motor";
+      ratedPowerW: number;
+      ratedTorqueNm: number;
+      ratedSpeedRpm: number;
+      rotorInertiaKgM2: number;
+      motorRatedCurrentA?: number;
+    }
+  | { kind: "moving_table"; massKg: number };
+
+export interface BuildPrimitivePartPackageOptions {
+  manufacturer?: string;
+  model: string;
+  revision?: string;
+  title?: string;
+  locator?: string;
+  excerpt?: string;
+  primitive: PrimitivePartSpec;
+  joint?: MechanicalPart["joint"];
+  input?: MechanicalFrame;
+  extraOutputs?: MechanicalPart["outputs"];
+  behavior?: PrimitiveBehaviorPreset;
+}
+
+export function buildPrimitivePartPackage(options: BuildPrimitivePartPackageOptions): DevicePackage {
+  const mechanics = defaultPrimitiveMechanics(options.primitive, {
+    joint: options.joint,
+    input: options.input,
+    extraOutputs: options.extraOutputs,
+  });
+
+  const parameters: Record<string, DeviceParameterEntry> = {};
+  const modelBindings: DeviceModelBinding[] = [];
+
+  if (options.behavior?.kind === "lead_screw") {
+    const lead = options.behavior.leadMmPerRev ?? (options.primitive.shape === "lead_screw" ? options.primitive.leadMm : 10);
+    parameters.leadMmPerRev = { status: "catalog", value: lead, unit: "mm/rev", label: "丝杠导程" };
+    modelBindings.push({
+      id: "primitive-lead-screw",
+      modelRef: { id: "Gouyuan.IdealLeadScrew", version: "1.0.0" },
+      mappings: [{ kind: "parameter", source: "leadMmPerRev", target: "leadMmPerRev" }],
+    });
+  } else if (options.behavior?.kind === "moving_table") {
+    parameters.massKg = { status: "catalog", value: options.behavior.massKg, unit: "kg", label: "移动总质量" };
+    modelBindings.push({
+      id: "primitive-moving-table",
+      modelRef: { id: "Modelica.Mechanics.Translational.Components.Mass", version: "4.0.0" },
+      mappings: [{ kind: "parameter", source: "massKg", target: "massKg" }],
+    });
+  } else if (options.behavior?.kind === "servo_motor") {
+    const b = options.behavior;
+    parameters.ratedPowerW = { status: "catalog", value: b.ratedPowerW, unit: "W", label: "额定功率" };
+    parameters.ratedTorqueNm = { status: "catalog", value: b.ratedTorqueNm, unit: "N.m", label: "额定转矩" };
+    parameters.ratedSpeedRpm = { status: "catalog", value: b.ratedSpeedRpm, unit: "rpm", label: "额定转速" };
+    parameters.rotorInertiaKgM2 = { status: "catalog", value: b.rotorInertiaKgM2, unit: "kg.m2", label: "转子转动惯量" };
+    if (b.motorRatedCurrentA !== undefined) {
+      parameters.motorRatedCurrentA = { status: "catalog", value: b.motorRatedCurrentA, unit: "A", label: "额定相电流" };
+    }
+    modelBindings.push({
+      id: "primitive-servo-motor",
+      modelRef: { id: "Gouyuan.RatedTorqueMotor", version: "1.0.0" },
+      mappings: Object.keys(parameters).map((key) => ({ kind: "parameter" as const, source: key, target: key })),
+    });
+  }
+
+  const label = options.title?.trim() || `${options.model}（参数化基本件）`;
+  return parseDevicePackage({
+    schemaVersion: 1,
+    manufacturer: options.manufacturer?.trim() || "基本件库",
+    model: options.model.trim(),
+    revision: options.revision?.trim() || "P1",
+    source: {
+      kind: "local",
+      url: "",
+      title: label,
+      locator: options.locator?.trim() || "参数化三维基本件",
+      excerpt: options.excerpt?.trim() || label,
+    },
+    ports: [],
+    rules: [],
+    primitive: options.primitive,
+    mechanics,
+    ...(Object.keys(parameters).length > 0 && { parameters }),
+    ...(modelBindings.length > 0 && { modelBindings }),
+  });
 }

@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { PackagePlus, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
+
+const PrimitivePartCreator = lazy(() => import("./PrimitivePartCreator"));
 import { getDeviceParts, type CompositionShape, type DeviceComposition, type DevicePart } from "@contracts/device-composition";
 import { compositionPath, createLocalLeaf, deriveDeviceComposition, nextStructureRevision } from "@contracts/device-composition-edit";
 import { packageKey, signalIdSchema, type DevicePackage } from "@contracts/twin-device";
@@ -74,6 +76,7 @@ function ShapeSelect({ value, change }: { value: CompositionShape | ""; change: 
 export function LocalLeafForm({ onCreate, submitLabel = "创建最小件", onCancel }: {
   onCreate: (part: DevicePackage) => void; submitLabel?: string; onCancel?: () => void;
 }) {
+  const [leafKind, setLeafKind] = useState<"primitive" | "bom">("primitive");
   const [identity, setIdentity] = useState({ manufacturer: "自建部件", model: "", revision: "1", note: "" });
   const [shape, setShape] = useState<CompositionShape | "">(""), [ratings, setRatings] = useState<RatingRow[]>([]);
   const [error, setError] = useState("");
@@ -85,19 +88,35 @@ export function LocalLeafForm({ onCreate, submitLabel = "创建最小件", onCan
     } catch (e) { setError(message(e)); }
   }
   return <section aria-label="新建最小件" className="min-w-0 space-y-3" onChange={() => setError("")}>
-    <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-      {([["model", "最小件型号"], ["manufacturer", "制造商或制作者"], ["revision", "最小件修订"]] as const).map(([key, caption]) =>
-        <label key={key} className="min-w-0"><span className={labelStyle}>{caption}</span><Input maxLength={160} value={identity[key]}
-          onChange={e => setIdentity({ ...identity, [key]: e.target.value })} /></label>)}
-      <ShapeSelect value={shape} change={setShape} />
+    <div role="tablist" aria-label="最小件类型" className="flex flex-wrap gap-1 rounded-md border bg-background/50 p-1 text-xs">
+      <Button type="button" size="sm" role="tab" aria-selected={leafKind === "primitive"} variant={leafKind === "primitive" ? "secondary" : "ghost"} onClick={() => setLeafKind("primitive")}>
+        参数化三维基本件（可动 · 爆炸图）
+      </Button>
+      <Button type="button" size="sm" role="tab" aria-selected={leafKind === "bom"} variant={leafKind === "bom" ? "secondary" : "ghost"} onClick={() => setLeafKind("bom")}>
+        仅清单结构最小件
+      </Button>
     </div>
-    <label className="block"><span className={labelStyle}>拆解依据或来源备注</span><Input value={identity.note}
-      placeholder="如采购图号、装配图版本或教学设定" onChange={e => setIdentity({ ...identity, note: e.target.value })} /></label>
-    <RatingFields rows={ratings} change={setRatings} />
-    <p className="text-xs text-muted-foreground">提交即把该修订声明为本工程的最小装配件。</p>
-    {error && <p role="alert" className="break-words text-sm text-destructive">{error}</p>}
-    <div className="flex flex-wrap gap-2"><Button type="button" size="sm" onClick={add}><PackagePlus />{submitLabel}</Button>
-      {onCancel && <Button type="button" size="sm" variant="ghost" onClick={onCancel}>取消新建</Button>}</div>
+    {leafKind === "primitive" ? (
+      <Suspense fallback={<p role="status" className="text-xs text-muted-foreground">正在加载参数化基本件编辑器…</p>}>
+        <PrimitivePartCreator onCreate={onCreate} onCancel={onCancel} submitLabel={submitLabel} />
+      </Suspense>
+    ) : (
+      <>
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+          {([["model", "最小件型号"], ["manufacturer", "制造商或制作者"], ["revision", "最小件修订"]] as const).map(([key, caption]) =>
+            <label key={key} className="min-w-0"><span className={labelStyle}>{caption}</span><Input maxLength={160} value={identity[key]}
+              onChange={e => setIdentity({ ...identity, [key]: e.target.value })} /></label>)}
+          <ShapeSelect value={shape} change={setShape} />
+        </div>
+        <label className="block"><span className={labelStyle}>拆解依据或来源备注</span><Input value={identity.note}
+          placeholder="如采购图号、装配图版本或教学设定" onChange={e => setIdentity({ ...identity, note: e.target.value })} /></label>
+        <RatingFields rows={ratings} change={setRatings} />
+        <p className="text-xs text-muted-foreground">提交即把该修订声明为本工程的最小装配件。</p>
+        {error && <p role="alert" className="break-words text-sm text-destructive">{error}</p>}
+        <div className="flex flex-wrap gap-2"><Button type="button" size="sm" onClick={add}><PackagePlus />{submitLabel}</Button>
+          {onCancel && <Button type="button" size="sm" variant="ghost" onClick={onCancel}>取消新建</Button>}</div>
+      </>
+    )}
   </section>;
 }
 

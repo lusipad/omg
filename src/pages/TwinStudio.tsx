@@ -454,8 +454,8 @@ export default function TwinStudio() {
     intake.previewDevice(device, true);
   }
 
-  function saveMechanism(assembly: MechanicalAssembly) {
-    save(upsertMechanicalAssembly(workspace, assembly));
+  function saveMechanism(assembly: MechanicalAssembly, revised?: TwinWorkspace) {
+    save(upsertMechanicalAssembly(revised ?? workspace, assembly));
     go({ view: "workbench", target: `mechanism:${assembly.id}` }, "", target === "mechanism-new");
   }
 

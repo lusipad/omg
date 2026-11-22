@@ -41,8 +41,17 @@ export function mechanicalSubassembly(raw: MechanicalAssembly, rootId: string): 
     }
   }
   if (!keep.has(a.output.node) || !a.output.mount) throw new Error("请先选择子树内的有效观察点，再封装该部分。");
-  return { ...a, nodes: a.nodes.filter((n) => keep.has(n.id)).map((n) => n.id === rootId ? { ...n, parent: null } : n),
-    commands: Object.fromEntries(Object.entries(a.commands).filter(([path]) => keep.has(path.split("/")[0]))) };
+  return {
+    ...a,
+    nodes: a.nodes
+      .filter((n) => keep.has(n.id))
+      .map((n) => {
+        const dropCoupling = n.coupledTo && !keep.has(n.coupledTo.path.split("/")[0]);
+        const nextNode = dropCoupling ? { id: n.id, packageKey: n.packageKey, parent: n.parent, ...(n.materialId ? { materialId: n.materialId } : {}), ...(n.label ? { label: n.label } : {}), ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}), ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}) } : n;
+        return nextNode.id === rootId ? { ...nextNode, parent: null } : nextNode;
+      }),
+    commands: Object.fromEntries(Object.entries(a.commands).filter(([path]) => keep.has(path.split("/")[0]))),
+  };
 }
 
 function inspect(ws: TwinWorkspace, a: MechanicalAssembly, rootKey?: string) {

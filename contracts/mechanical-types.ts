@@ -26,6 +26,14 @@ const pendingId = z.union([signalIdSchema, z.literal("")]);
 const connection = z.strictObject({ node: pendingId, mount: pendingId });
 const nodes = z.array(z.strictObject({
   id: signalIdSchema, packageKey: z.string().trim().max(4096), parent: connection.nullable(), materialId: z.string().trim().min(1).max(128).optional(),
+  label: z.string().trim().min(1).max(120).optional(),
+  explodeStep: z.number().int().min(0).max(16).optional(),
+  explodeVectorMm: vec3("请给出爆炸偏移的 X、Y、Z 毫米分量").optional(),
+  coupledTo: z.strictObject({
+    path: z.string().trim().min(1).max(240),
+    ratio: finite,
+    offset: finite.optional(),
+  }).optional(),
 })).min(1).max(MECHANICAL_LIMITS.nodes).refine((items) => new Set(items.map((n) => n.id)).size === items.length, "机械实例标识重复");
 
 const commands = z.unknown().superRefine((source, ctx) => {

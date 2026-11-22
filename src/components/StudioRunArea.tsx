@@ -36,7 +36,7 @@ type Props = {
   onSaveFactory: (layout: FactoryLayout, revised?: TwinWorkspace) => void;
   onSaveSystem: (system: TwinSystemAssembly, revised?: TwinWorkspace) => void;
   onOpenImport: () => void;
-  onSaveMechanism: (assembly: MechanicalAssembly) => void;
+  onSaveMechanism: (assembly: MechanicalAssembly, revised?: TwinWorkspace) => void;
   onInstallBundle: (bundle: MechanicalBundle) => void;
   onNavigate: (route: StudioRoute, message?: string, replace?: boolean) => void;
   onApplyExample: (next: TwinWorkspace, target: StudioTarget, name: string, focus?: MotorAxisLocation, contour?: string) => void;
@@ -90,7 +90,7 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
             onChange={event => onNavigate({ view: "workbench", target: event.target.value as "mechanism-new" | "assembly-new" | "factory-new" | "system-new" })}>
             <option value="system-new">机电控闭环系统（推荐主干）</option>
             <option value="assembly-new">直驱丝杠伺服轴</option>
-            <option value="mechanism-new">安装点与关节</option>
+            <option value="mechanism-new">三维基本件可动与爆炸装配</option>
             <option value="factory-new">工厂与生产线</option>
           </select>
         </label> : <Button size="sm" variant="outline" asChild><Link to={studioHref({ view: "workbench", target: factory ? "factory-new" : assembly ? "assembly-new" : "system-new" })}><Plus />新建装配</Link></Button>}
@@ -100,6 +100,7 @@ export default function StudioRunArea({ route, workspace, generation, openedProj
       <p className="text-sm">{missing ?? "当前工程还没有可装配或运行的对象。可先体验跨品牌闭环示例或新建闭环装配。"}</p>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" asChild><Link to={studioHref({ view: "workbench", exampleId: "closed-loop-feed-system" })}>体验机电控闭环与实测对标</Link></Button>
+        <Button size="sm" variant="outline" asChild><Link to={studioHref({ view: "workbench", exampleId: "composable-milo-mill" })}>体验基本件拼装三轴铣床（可动·爆炸图）</Link></Button>
         <Button size="sm" variant="secondary" asChild><Link to={studioHref({ view: "workbench", target: "system-new" })}><Plus />新建机电控闭环系统</Link></Button>
         <Button size="sm" variant="outline" asChild><Link to={studioHref({ view: "resources" })}><FolderInput />打开工程资源</Link></Button>
         <Button size="sm" variant="ghost" asChild><Link to={studioHref({ view: "examples" })}>浏览示例库</Link></Button>

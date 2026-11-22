@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, CheckCircle2, CopyPlus, Download, Pause, Play, RefreshCw, Save, ShieldAlert, Wrench } from "lucide-react";
+import { buildComposableFeedModuleTemplate, mapSystemTraceFrameToCommands } from "@contracts/articulated-kinematics";
 import {
   effectiveModelBindings,
   evaluateBindingReadiness,
@@ -34,6 +35,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { downloadBlob, downloadFile } from "@/lib/download";
 import { exportSystemTwinArchive } from "@/lib/system-twin-export";
 import { runSystemTwin } from "@/lib/system-twin-runtime";
+
+const ArticulatedAssemblyViewport = lazy(() => import("./ArticulatedAssemblyViewport"));
 
 type Props = {
   workspace: TwinWorkspace;
@@ -378,6 +381,11 @@ export default function SystemTwinBench({ workspace, system, trial = false, onTr
     }
   }
 
+  const feedVisual = useMemo(
+    () => (draft ? buildComposableFeedModuleTemplate(draft) : null),
+    [draft],
+  );
+
   if (!draft) {
     return (
       <section className="surface space-y-4 p-5" aria-label="机电控闭环系统装配">
@@ -398,6 +406,10 @@ export default function SystemTwinBench({ workspace, system, trial = false, onTr
 
   const activeFrame = trace?.frames[Math.min(frameIndex, trace.frames.length - 1)];
   const inspectAxis = trace?.axisSummaries[Math.min(selectedAxisIndex, trace.axisSummaries.length - 1)];
+  const drivenFeedCommands =
+    feedVisual && activeFrame
+      ? mapSystemTraceFrameToCommands(feedVisual.assembly, activeFrame)
+      : undefined;
   const verificationStatus = evaluateSystemVerificationStatus(primaryComparison, reverifyComparison);
 
   function runFieldCompare(role: "primary_calibration" | "independent_reverify") {
@@ -1026,6 +1038,25 @@ export default function SystemTwinBench({ workspace, system, trial = false, onTr
           </div>
 
           {inspectAxis && <AxisTracePlot trace={trace} axisId={inspectAxis.axisId} activeTimeMs={activeFrame.timeMs} overlayPoints={primaryComparison?.axisId === inspectAxis.axisId ? primaryComparison.overlayPoints : undefined} />}
+
+          {feedVisual && (
+            <details open className="rounded-md border bg-card/40 p-3">
+              <summary className="cursor-pointer text-xs font-medium text-foreground">
+                三维基本件可动机构与爆炸视图（由闭环轨迹实时驱动 · 丝杠随位移耦合旋转）
+              </summary>
+              <div className="mt-3">
+                <Suspense fallback={<p role="status" className="py-4 text-xs text-muted-foreground">正在加载三维可动视口…</p>}>
+                  <ArticulatedAssemblyViewport
+                    compact
+                    workspace={feedVisual.workspace}
+                    assembly={feedVisual.assembly}
+                    externalCommands={drivenFeedCommands}
+                    externalStatusLabel={`闭环时刻 ${activeFrame.timeMs} ms · 轴行程 ${(activeFrame.axes[draft.axes[0].id]?.positionMm ?? 0).toFixed(3)} mm`}
+                  />
+                </Suspense>
+              </div>
+            </details>
+          )}
 
           {showFieldAlign && inspectAxis && (
             <div className="space-y-3 rounded-md border bg-muted/20 p-3 text-xs">
