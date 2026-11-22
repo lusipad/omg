@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Activity,
   ArrowRight,
   Blocks,
   Camera,
   Check,
-  CheckCircle2,
   ChevronDown,
   Download,
+  Eye,
   FolderOpen,
-  Hammer,
   Layers,
+  Lock,
   Package,
   PanelRightClose,
   PanelRightOpen,
@@ -21,22 +22,39 @@ import {
   Sparkles,
   Trash2,
   Undo2,
+  Unlock,
   Wrench,
   X,
   Zap,
 } from "lucide-react";
 import { solveArticulatedAssembly } from "@contracts/articulated-kinematics";
+import {
+  analyzeMachinePhysics,
+  classifyNodeFunctionalLayer,
+  createCommissionReferenceSolution,
+  createCommissionStarter,
+  encapsulateUserModule,
+  EVOLUTION_COMMISSIONS,
+  FUNCTIONAL_LAYERS,
+  loadShowroomExhibit,
+  MODULE_BLUEPRINTS,
+  SHOWROOM_EXHIBITS,
+  simulateMachineTrial,
+  snapModuleOntoAssembly,
+  type CommissionId,
+  type CustomModuleRecord,
+  type FunctionalLayerId,
+  type ShowroomExhibitId,
+  type TrialMode,
+} from "@contracts/machine-evolution";
 import type { MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { upsertMechanicalAssembly } from "@contracts/mechanical-assembly";
 import { primitiveBoundingBoxMm, type AxisDir } from "@contracts/primitive-parts";
 import {
   buildAssemblyTreeRows,
-  computeChallengeGuide,
   convertSandboxToSystemTwin,
-  createChallengeSolution,
   createChallengeStarter,
   deleteSandboxMachineFromWorkspace,
-  evaluateChallengeProgress,
   extractSandboxBomSummary,
   findBestSnapTarget,
   listSavedSandboxMachines,
@@ -44,13 +62,11 @@ import {
   REAL_VENDOR_BOM_PRESETS,
   removeSandboxNode,
   SANDBOX_BLOCKS,
-  SANDBOX_CHALLENGES,
   sandboxBomToCsv,
   saveSandboxMachineToWorkspace,
   snapBlockOntoAssembly,
   updateSandboxNode,
   type SandboxBlockCategory,
-  type SandboxChallengeDef,
 } from "@contracts/sandbox-challenges";
 import { type StudioRoute } from "@contracts/studio-navigation";
 import { packageKey } from "@contracts/twin-device";
@@ -71,22 +87,21 @@ export interface SandboxBuilderStudioProps {
   onNavigate: (route: StudioRoute, message?: string) => void;
 }
 
-type StudioMode = "build" | "test" | "explode";
+type PrimaryPillar = "showroom" | "commissions" | "sandbox";
 type PaletteFilter = "all" | SandboxBlockCategory;
+type SandboxLeftTab = "blocks" | "manual";
 
-interface SandboxSessionState {
-  challengeId: SandboxChallengeDef["id"];
+interface MachineEditorSession {
   workspace: TwinWorkspace;
   assembly: MechanicalAssembly;
   commands: Record<string, number>;
-  visitedIds: Set<string>;
-  completedIds: Set<string>;
   dirty: boolean;
   history: Array<{ workspace: TwinWorkspace; assembly: MechanicalAssembly }>;
 }
 
-const COMPLETED_STORAGE_KEY = "gouyuan.sandbox.completed.v1";
-const CHALLENGE_IDS = new Set<string>(SANDBOX_CHALLENGES.map((c) => c.id));
+const COMPLETED_COMM_KEY = "gouyuan.evolution.completed.v1";
+const CUSTOM_MODULES_KEY = "gouyuan.custom_modules.v1";
+
 const FILTER_TABS: ReadonlyArray<{ id: PaletteFilter; label: string }> = [
   { id: "all", label: "全部" },
   { id: "frame", label: "骨架" },
@@ -95,53 +110,74 @@ const FILTER_TABS: ReadonlyArray<{ id: PaletteFilter; label: string }> = [
   { id: "sensor", label: "传感" },
 ];
 
-const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v));
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const formatNum = (v: number) => Number(v.toFixed(1)).toString();
 
-function readCompletedChallengeIds(): string[] {
+function readCompletedCommissions(): CommissionId[] {
   try {
-    const raw = window.localStorage.getItem(COMPLETED_STORAGE_KEY);
+    const raw = window.localStorage.getItem(COMPLETED_COMM_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is CommissionId => typeof x === "string") : [];
   } catch {
     return [];
   }
 }
 
-function writeCompletedChallengeIds(ids: ReadonlySet<string>): void {
+function writeCompletedCommissions(ids: ReadonlySet<CommissionId>): void {
   try {
-    window.localStorage.setItem(COMPLETED_STORAGE_KEY, JSON.stringify([...ids]));
+    window.localStorage.setItem(COMPLETED_COMM_KEY, JSON.stringify([...ids]));
   } catch {
-    // ignore storage quota / private mode
+    // ignore storage quota errors
   }
 }
 
-function resolveInitialChallenge(id?: string): SandboxChallengeDef["id"] {
-  return id && CHALLENGE_IDS.has(id) ? (id as SandboxChallengeDef["id"]) : "level-1-axis";
+function readCustomModules(): CustomModuleRecord[] {
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_MODULES_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as CustomModuleRecord[]) : [];
+  } catch {
+    return [];
+  }
 }
 
-function getPrimaryLengthMm(pkgSpec?: ReturnType<typeof primitiveBoundingBoxMm>, specShape?: string, rawSpec?: Record<string, unknown>): number | undefined {
-  if (!rawSpec || !specShape) return pkgSpec?.[0];
+function writeCustomModules(mods: readonly CustomModuleRecord[]): void {
+  try {
+    window.localStorage.setItem(CUSTOM_MODULES_KEY, JSON.stringify(mods));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+function getPrimaryLengthMm(
+  bbox?: ReturnType<typeof primitiveBoundingBoxMm>,
+  rawSpec?: Record<string, unknown>,
+): number | undefined {
+  if (!rawSpec) return bbox?.[0];
   if (typeof rawSpec.lengthMm === "number") return rawSpec.lengthMm;
   if (typeof rawSpec.railLengthMm === "number") return rawSpec.railLengthMm;
   if (typeof rawSpec.widthMm === "number") return rawSpec.widthMm;
   if (typeof rawSpec.bodyLengthMm === "number") return rawSpec.bodyLengthMm;
-  return pkgSpec?.[0];
+  return bbox?.[0];
 }
 
-function makeInitialState(id: SandboxChallengeDef["id"], completedIds: Set<string>): SandboxSessionState {
-  const starter = createChallengeStarter(id);
-  return {
-    challengeId: id,
-    workspace: starter.workspace,
-    assembly: starter.assembly,
-    commands: { ...starter.assembly.commands },
-    visitedIds: new Set<string>(),
-    completedIds,
-    dirty: false,
-    history: [],
-  };
+function mapLegacyChallengeToCommission(id?: string): CommissionId {
+  if (id === "level-2-xy-stage") return "comm-2-xy";
+  if (id === "level-3-cnc-mill") return "comm-3-mill";
+  if (id === "level-4-robot-arm") return "comm-4-omni";
+  return "comm-1-axis";
+}
+
+function makeCommissionSession(id: CommissionId): MachineEditorSession {
+  const s = createCommissionStarter(id);
+  return { workspace: s.workspace, assembly: s.assembly, commands: { ...s.assembly.commands }, dirty: false, history: [] };
+}
+
+function makeFreeSandboxSession(): MachineEditorSession {
+  const s = createChallengeStarter("free-sandbox");
+  return { workspace: s.workspace, assembly: s.assembly, commands: { ...s.assembly.commands }, dirty: false, history: [] };
 }
 
 export default function SandboxBuilderStudio({
@@ -150,214 +186,394 @@ export default function SandboxBuilderStudio({
   onSaveWorkspace,
   onNavigate,
 }: SandboxBuilderStudioProps) {
-  const [state, setState] = useState<SandboxSessionState>(() =>
-    makeInitialState(resolveInitialChallenge(initialChallengeId), new Set(readCompletedChallengeIds())),
+  const [pillar, setPillar] = useState<PrimaryPillar>(() =>
+    initialChallengeId === "free-sandbox"
+      ? "sandbox"
+      : initialChallengeId
+        ? "commissions"
+        : "showroom",
   );
-  const [mode, setMode] = useState<StudioMode>("build");
+
+  // Pillar 1: Showroom Exhibit & Destructive What-If Physics Lab
+  const [exhibitId, setExhibitId] = useState<ShowroomExhibitId>("c-frame-mill");
+  const [exhibitData, setExhibitData] = useState(() => loadShowroomExhibit("c-frame-mill"));
+  const [whatIfPayloadKg, setWhatIfPayloadKg] = useState(0);
+  const [whatIfLeadMm, setWhatIfLeadMm] = useState(8);
+  const [whatIfFeedMmS, setWhatIfFeedMmS] = useState(32);
+  const [showroomPlaying, setShowroomPlaying] = useState(true);
+  const [showroomFrameIdx, setShowroomFrameIdx] = useState(0);
+  const [activeLayerId, setActiveLayerId] = useState<FunctionalLayerId | null>(null);
+
+  // Pillar 2: Modular Evolution Commissions
+  const [commissionId, setCommissionId] = useState<CommissionId>(() => mapLegacyChallengeToCommission(initialChallengeId));
+  const [commSession, setCommSession] = useState<MachineEditorSession>(() =>
+    makeCommissionSession(mapLegacyChallengeToCommission(initialChallengeId)),
+  );
+  const [completedComms, setCompletedComms] = useState<Set<CommissionId>>(() => new Set(readCompletedCommissions()));
+  const [unlockAll, setUnlockAll] = useState(false);
+
+  // Pillar 3: Free Sandbox & Encapsulated Custom Modules
+  const [sandboxSession, setSandboxSession] = useState<MachineEditorSession>(makeFreeSandboxSession);
+  const [sandboxLeftTab, setSandboxLeftTab] = useState<SandboxLeftTab>("blocks");
+  const [customModules, setCustomModules] = useState<CustomModuleRecord[]>(readCustomModules);
+  const [encapsulateDraft, setEncapsulateDraft] = useState("");
+  const [sandboxTrialMode, setSandboxTrialMode] = useState<TrialMode>("milling-pocket");
+
+  // Trial simulation playback (shared for Commissions & Free Sandbox runs)
+  const [trialPlaying, setTrialPlaying] = useState(false);
+  const [trialFrameIdx, setTrialFrameIdx] = useState(0);
+  const [showTrialVerdict, setShowTrialVerdict] = useState(false);
+
+  // Shared 3D viewport & management UI state
+  const [xrayMode, setXrayMode] = useState(false);
+  const [explodePct, setExplodePct] = useState(0);
+  const [selectedNodeId, setSelectedNodeId] = useState("");
+  const [preferredParentId, setPreferredParentId] = useState("");
+  const [armedItem, setArmedItem] = useState<{ kind: "block" | "module" | "custom"; id: string } | null>(null);
   const [paletteFilter, setPaletteFilter] = useState<PaletteFilter>("all");
-  const [armedBlockId, setArmedBlockId] = useState<string | null>(null);
-  const [preferredParentId, setPreferredParentId] = useState<string>("");
-  const [selectedNodeId, setSelectedNodeId] = useState<string>("");
   const [hoverHint, setHoverHint] = useState("");
-  const [explodePct, setExplodePct] = useState(45);
-  const [subtreeOnly, setSubtreeOnly] = useState(false);
-  const [showLeaders, setShowLeaders] = useState(true);
-  const [showLabels, setShowLabels] = useState(true);
-  const [autoSweeping, setAutoSweeping] = useState(false);
-  const [fitToken, setFitToken] = useState(1);
   const [outlinerOpen, setOutlinerOpen] = useState(true);
   const [mobileTab, setMobileTab] = useState<"left" | "right">("left");
-  const [projectManagerOpen, setProjectManagerOpen] = useState(false);
-  const [projectTab, setProjectTab] = useState<"challenges" | "saved">("challenges");
+  const [fitToken, setFitToken] = useState(1);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [saveNameDraft, setSaveNameDraft] = useState("");
   const [saveFeedback, setSaveFeedback] = useState("");
   const [bomOpen, setBomOpen] = useState(false);
   const [bomTab, setBomTab] = useState<"bom" | "photo">("bom");
-  const [error, setError] = useState("");
   const [customWidthInput, setCustomWidthInput] = useState("");
+  const [error, setError] = useState("");
 
-  const challenge = useMemo(
-    () => SANDBOX_CHALLENGES.find((c) => c.id === state.challengeId) ?? SANDBOX_CHALLENGES[0]!,
-    [state.challengeId],
-  );
-
-  const solved = useMemo(
-    () =>
-      solveArticulatedAssembly(state.workspace, state.assembly, {
-        commandOverrides: state.commands,
-        explodeFactor: mode === "explode" ? explodePct / 100 : 0,
-        explodeSubtreeRoot: mode === "explode" && subtreeOnly && selectedNodeId ? selectedNodeId : undefined,
-      }),
-    [state.workspace, state.assembly, state.commands, mode, explodePct, subtreeOnly, selectedNodeId],
-  );
-
-  const progress = useMemo(
-    () => evaluateChallengeProgress(challenge, state.workspace, state.assembly, solved, state.visitedIds),
-    [challenge, state.workspace, state.assembly, solved, state.visitedIds],
-  );
-
-  const guide = useMemo(
-    () => computeChallengeGuide(challenge, state.workspace, state.assembly, solved, progress),
-    [challenge, state.workspace, state.assembly, solved, progress],
-  );
-
-  const treeRows = useMemo(
-    () => buildAssemblyTreeRows(state.workspace, state.assembly, solved),
-    [state.workspace, state.assembly, solved],
-  );
-
-  const bomRows = useMemo(
-    () => extractSandboxBomSummary(state.workspace, state.assembly),
-    [state.workspace, state.assembly],
-  );
-
-  const savedMachines = useMemo(() => listSavedSandboxMachines(workspace), [workspace]);
-
-  const filteredBlocks = useMemo(
-    () => (paletteFilter === "all" ? SANDBOX_BLOCKS : SANDBOX_BLOCKS.filter((b) => b.category === paletteFilter)),
-    [paletteFilter],
-  );
-
-  const stateRef = useRef(state);
-  const challengeRef = useRef(challenge);
   useEffect(() => {
-    stateRef.current = state;
-    challengeRef.current = challenge;
-  }, [state, challenge]);
+    writeCompletedCommissions(completedComms);
+  }, [completedComms]);
 
-  // Persist completed challenge badges cleanly outside render
   useEffect(() => {
-    writeCompletedChallengeIds(state.completedIds);
-  }, [state.completedIds]);
+    writeCustomModules(customModules);
+  }, [customModules]);
 
-  // Auto clear save confirmation banner
   useEffect(() => {
     if (!saveFeedback) return;
     const timer = window.setTimeout(() => setSaveFeedback(""), 2200);
     return () => window.clearTimeout(timer);
   }, [saveFeedback]);
 
-  // Escape cancels armed block placement / preferred parent
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setArmedBlockId(null);
+        setArmedItem(null);
         setPreferredParentId("");
         setHoverHint("");
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const applyCommandsAndScore = useCallback((nextCmds: Record<string, number>) => {
-    setState((prev) => {
-      const ch = SANDBOX_CHALLENGES.find((c) => c.id === prev.challengeId) ?? SANDBOX_CHALLENGES[0]!;
-      const preview = solveArticulatedAssembly(prev.workspace, prev.assembly, { commandOverrides: nextCmds });
-      const check = evaluateChallengeProgress(ch, prev.workspace, prev.assembly, preview, prev.visitedIds);
-      const nextVisited = new Set(prev.visitedIds);
-      for (const hitId of check.newlyHitIds) nextVisited.add(hitId);
-      let nextCompleted = prev.completedIds;
-      if (check.completed && !prev.completedIds.has(prev.challengeId)) {
-        nextCompleted = new Set(prev.completedIds);
-        nextCompleted.add(prev.challengeId);
-      }
-      return { ...prev, commands: nextCmds, visitedIds: nextVisited, completedIds: nextCompleted };
+  const currentCommission = useMemo(
+    () => EVOLUTION_COMMISSIONS.find((c) => c.id === commissionId) ?? EVOLUTION_COMMISSIONS[0]!,
+    [commissionId],
+  );
+  const currentExhibitDef = useMemo(
+    () => SHOWROOM_EXHIBITS.find((e) => e.id === exhibitId) ?? SHOWROOM_EXHIBITS[0]!,
+    [exhibitId],
+  );
+
+  // Active workspace & assembly for whichever pillar is active
+  const activeSession = pillar === "commissions" ? commSession : pillar === "sandbox" ? sandboxSession : {
+    workspace: exhibitData.workspace,
+    assembly: exhibitData.assembly,
+    commands: exhibitData.assembly.commands,
+    dirty: false,
+    history: [],
+  };
+
+  // Precomputed live Showroom Trial simulation (reacts live to What-If sliders!)
+  const showroomSim = useMemo(() => {
+    if (pillar !== "showroom") return null;
+    return simulateMachineTrial(exhibitData.workspace, exhibitData.assembly, currentExhibitDef.simMode, {
+      payloadMassKg: whatIfPayloadKg,
+      screwLeadOverrideMm: whatIfLeadMm,
+      feedRateMmS: whatIfFeedMmS,
     });
-  }, []);
+  }, [pillar, exhibitData, currentExhibitDef.simMode, whatIfPayloadKg, whatIfLeadMm, whatIfFeedMmS]);
 
-  // Auto demo sweep across challenge waypoints or sinusoidal joint scan
+  // Active Trial Simulation for Commissions or Sandbox when user hits "通电试机"
+  const activeBuildSim = useMemo(() => {
+    if (pillar === "showroom" || !showTrialVerdict) return null;
+    const mode = pillar === "commissions" ? currentCommission.trialMode : sandboxTrialMode;
+    return simulateMachineTrial(activeSession.workspace, activeSession.assembly, mode);
+  }, [pillar, showTrialVerdict, currentCommission.trialMode, sandboxTrialMode, activeSession.workspace, activeSession.assembly]);
+
+  // Real-time structural + electrical physics pre-check for build modes
+  const livePhysics = useMemo(() => {
+    if (showroomSim) return showroomSim.physics;
+    if (activeBuildSim) return activeBuildSim.physics;
+    return analyzeMachinePhysics(activeSession.workspace, activeSession.assembly);
+  }, [showroomSim, activeBuildSim, activeSession.workspace, activeSession.assembly]);
+
+  // Loop Showroom live machining animation
   useEffect(() => {
-    if (!autoSweeping || mode !== "test") return;
+    if (pillar !== "showroom" || !showroomPlaying || !showroomSim || showroomSim.frames.length === 0) return;
     let raf = 0;
-    const t0 = performance.now();
-    const controlsSnapshot = solveArticulatedAssembly(stateRef.current.workspace, stateRef.current.assembly).activeControls;
-    const sweep = challengeRef.current.demoSweep;
+    let lastTs = performance.now();
+    let acc = 0;
+    const total = showroomSim.frames.length;
 
     const tick = (now: number) => {
-      const elapsedSec = (now - t0) / 1000;
-      const next: Record<string, number> = {};
-
-      if (sweep && sweep.length > 0 && controlsSnapshot.every((c) => sweep.some((wp) => Object.hasOwn(wp, c.path)))) {
-        const segDur = 1.4;
-        const totalDur = sweep.length * segDur;
-        const loopT = elapsedSec % totalDur;
-        const idx = Math.floor(loopT / segDur);
-        const frac = (loopT - idx * segDur) / segDur;
-        const fromWp = idx === 0 ? stateRef.current.assembly.commands : sweep[idx - 1]!;
-        const toWp = sweep[idx]!;
-        for (const c of controlsSnapshot) {
-          const a = fromWp[c.path] ?? 0;
-          const b = toWp[c.path] ?? a;
-          next[c.path] = a + (b - a) * Math.min(1, frac * 1.15);
-        }
-      } else {
-        controlsSnapshot.forEach((ctrl, i) => {
-          const [min, max] = ctrl.joint.range;
-          if (ctrl.joint.type === "slide") {
-            const mid = (min + max) / 2;
-            const amp = (max - min) * 0.42;
-            next[ctrl.path] = mid + amp * Math.sin(elapsedSec * 1.35 + i * 1.1);
-          } else {
-            const span = Math.min(360, max - min);
-            next[ctrl.path] = clamp(Math.sin(elapsedSec * 1.1 + i * 0.9) * (span * 0.45), min, max);
-          }
-        });
+      acc += (now - lastTs) / 1000;
+      lastTs = now;
+      if (acc >= 0.05) {
+        const steps = Math.max(1, Math.floor(acc / 0.05));
+        acc = 0;
+        setShowroomFrameIdx((idx) => (idx + steps) % total);
       }
-
-      applyCommandsAndScore(next);
       raf = window.requestAnimationFrame(tick);
     };
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [autoSweeping, mode, applyCommandsAndScore]);
+  }, [pillar, showroomPlaying, showroomSim]);
 
-  function switchChallenge(nextId: SandboxChallengeDef["id"]) {
-    setAutoSweeping(false);
-    setArmedBlockId(null);
-    setPreferredParentId("");
+  // Play trial run once (holding on final milled cut so user inspects result)
+  useEffect(() => {
+    if (pillar === "showroom" || !trialPlaying || !activeBuildSim || activeBuildSim.frames.length === 0) return;
+    let raf = 0;
+    let lastTs = performance.now();
+    let acc = 0;
+    const maxIdx = activeBuildSim.frames.length - 1;
+
+    const tick = (now: number) => {
+      acc += (now - lastTs) / 1000;
+      lastTs = now;
+      if (acc >= 0.04) {
+        const step = Math.max(1, Math.floor(acc / 0.04));
+        acc = 0;
+        setTrialFrameIdx((idx) => {
+          const next = idx + step;
+          if (next >= maxIdx) {
+            setTrialPlaying(false);
+            return maxIdx;
+          }
+          return next;
+        });
+      }
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [pillar, trialPlaying, activeBuildSim]);
+
+  // Resolve current viewport commands & real 3D carved aluminum state
+  const viewportPlayback = useMemo(() => {
+    if (pillar === "showroom" && showroomSim) {
+      const idx = clamp(showroomFrameIdx, 0, Math.max(0, showroomSim.frames.length - 1));
+      const frame = showroomSim.frames[idx];
+      const stock = showroomSim.stockStates[idx] ?? null;
+      return {
+        commands: frame?.commands ?? activeSession.commands,
+        stockState: stock,
+        idealTrailMm: showroomSim.idealTrailMm,
+        actualTrailMm: showroomSim.actualTrailMm,
+        trailInWorkpieceFrame: showroomSim.trailInWorkpieceFrame,
+        showTipMarker: true,
+      };
+    }
+    if (pillar !== "showroom" && showTrialVerdict && activeBuildSim) {
+      const idx = clamp(trialFrameIdx, 0, Math.max(0, activeBuildSim.frames.length - 1));
+      const frame = activeBuildSim.frames[idx];
+      const stock = activeBuildSim.stockStates[idx] ?? null;
+      return {
+        commands: frame?.commands ?? activeSession.commands,
+        stockState: stock,
+        idealTrailMm: activeBuildSim.idealTrailMm,
+        actualTrailMm: activeBuildSim.actualTrailMm,
+        trailInWorkpieceFrame: activeBuildSim.trailInWorkpieceFrame,
+        showTipMarker: true,
+      };
+    }
+    return {
+      commands: activeSession.commands,
+      stockState: null,
+      idealTrailMm: undefined,
+      actualTrailMm: undefined,
+      trailInWorkpieceFrame: false,
+      showTipMarker: false,
+    };
+  }, [pillar, showroomSim, showroomFrameIdx, showTrialVerdict, activeBuildSim, trialFrameIdx, activeSession.commands]);
+
+  const solved = useMemo(
+    () =>
+      solveArticulatedAssembly(activeSession.workspace, activeSession.assembly, {
+        commandOverrides: viewportPlayback.commands,
+        explodeFactor: explodePct / 100,
+      }),
+    [activeSession.workspace, activeSession.assembly, viewportPlayback.commands, explodePct],
+  );
+
+  const treeRows = useMemo(
+    () => buildAssemblyTreeRows(activeSession.workspace, activeSession.assembly, solved),
+    [activeSession.workspace, activeSession.assembly, solved],
+  );
+
+  const bomRows = useMemo(
+    () => extractSandboxBomSummary(activeSession.workspace, activeSession.assembly),
+    [activeSession.workspace, activeSession.assembly],
+  );
+
+  const savedMachines = useMemo(() => listSavedSandboxMachines(workspace), [workspace]);
+
+  const unlockedSet = useMemo(() => {
+    if (unlockAll || pillar === "sandbox") {
+      return {
+        blocks: new Set(SANDBOX_BLOCKS.map((b) => b.id)),
+        modules: new Set(MODULE_BLUEPRINTS.map((m) => m.id)),
+      };
+    }
+    const blocks = new Set(currentCommission.unlockedBlockIds);
+    const modules = new Set(currentCommission.unlockedModuleIds);
+    if (completedComms.has("comm-1-axis")) {
+      modules.add("mod_feed_x");
+      modules.add("mod_feed_y");
+      blocks.add("slide_y");
+    }
+    if (completedComms.has("comm-2-xy")) {
+      modules.add("mod_feed_z");
+      modules.add("mod_xy_stage");
+      ["column_4080", "gusset_l", "slide_z", "spindle_head", "workpiece_block"].forEach((id) => blocks.add(id));
+    }
+    if (completedComms.has("comm-3-mill")) {
+      SANDBOX_BLOCKS.forEach((b) => blocks.add(b.id));
+    }
+    return { blocks, modules };
+  }, [unlockAll, pillar, currentCommission, completedComms]);
+
+  const filteredBlocks = useMemo(
+    () => (paletteFilter === "all" ? SANDBOX_BLOCKS : SANDBOX_BLOCKS.filter((b) => b.category === paletteFilter)),
+    [paletteFilter],
+  );
+
+  const setActiveEditorSession = useCallback(
+    (updater: (prev: MachineEditorSession) => MachineEditorSession) => {
+      setShowTrialVerdict(false);
+      setTrialPlaying(false);
+      if (pillar === "commissions") setCommSession(updater);
+      else if (pillar === "sandbox") setSandboxSession(updater);
+    },
+    [pillar],
+  );
+
+  function selectExhibit(nextId: ShowroomExhibitId) {
+    setExhibitId(nextId);
+    setExhibitData(loadShowroomExhibit(nextId));
+    setShowroomFrameIdx(0);
+    setShowroomPlaying(true);
+    setActiveLayerId(null);
     setSelectedNodeId("");
-    setHoverHint("");
-    setError("");
-    setMode("build");
-    setState((prev) => makeInitialState(nextId, prev.completedIds));
-    setProjectManagerOpen(false);
     setFitToken((n) => n + 1);
   }
 
-  function loadReferenceSolution(targetChallengeId?: SandboxChallengeDef["id"]) {
-    const cid = targetChallengeId ?? state.challengeId;
-    setAutoSweeping(false);
-    setArmedBlockId(null);
+  function selectCommission(nextId: CommissionId) {
+    setCommissionId(nextId);
+    setCommSession(makeCommissionSession(nextId));
+    setShowTrialVerdict(false);
+    setTrialPlaying(false);
+    setArmedItem(null);
     setPreferredParentId("");
-    setError("");
-    const ch = SANDBOX_CHALLENGES.find((c) => c.id === cid) ?? challenge;
-    const sol = createChallengeSolution(cid);
-    const preview = solveArticulatedAssembly(sol.workspace, sol.assembly);
-    const check = evaluateChallengeProgress(ch, sol.workspace, sol.assembly, preview, new Set());
-    setState((prev) => ({
-      ...prev,
-      challengeId: cid,
-      workspace: sol.workspace,
-      assembly: sol.assembly,
-      commands: { ...sol.assembly.commands },
-      visitedIds: new Set(check.newlyHitIds),
-      dirty: true,
-      history: [...prev.history.slice(-15), { workspace: prev.workspace, assembly: prev.assembly }],
-    }));
     setSelectedNodeId("");
-    setProjectManagerOpen(false);
+    setError("");
     setFitToken((n) => n + 1);
   }
 
-  function undoLast() {
-    setAutoSweeping(false);
+  function enterCommissionWithStarter(nextId: CommissionId) {
+    setPillar("commissions");
+    selectCommission(nextId);
+  }
+
+  function applyModularInsert(
+    item: { kind: "block" | "module" | "custom"; id: string },
+    parentNodeId: string,
+    parentMountId: string,
+  ) {
     setError("");
-    setState((prev) => {
+    const cur = pillar === "commissions" ? commSession : sandboxSession;
+    try {
+      if (item.kind === "block") {
+        const res = snapBlockOntoAssembly(cur.workspace, cur.assembly, item.id, parentNodeId, parentMountId);
+        setActiveEditorSession((prev) => ({
+          workspace: res.workspace,
+          assembly: res.assembly,
+          commands: { ...res.assembly.commands },
+          dirty: true,
+          history: [...prev.history.slice(-15), { workspace: prev.workspace, assembly: prev.assembly }],
+        }));
+        setSelectedNodeId(res.addedNodeId);
+      } else {
+        const modData =
+          item.kind === "module"
+            ? MODULE_BLUEPRINTS.find((m) => m.id === item.id)?.buildFn()
+            : (() => {
+                const cm = customModules.find((c) => c.id === item.id);
+                return cm ? { workspace: cm.workspace, assembly: cm.assembly } : undefined;
+              })();
+        if (!modData) throw new Error(`找不到封装模块：${item.id}`);
+        const res = snapModuleOntoAssembly(cur.workspace, cur.assembly, modData, parentNodeId, parentMountId);
+        setActiveEditorSession((prev) => ({
+          workspace: res.workspace,
+          assembly: res.assembly,
+          commands: { ...res.assembly.commands },
+          dirty: true,
+          history: [...prev.history.slice(-15), { workspace: prev.workspace, assembly: prev.assembly }],
+        }));
+        setSelectedNodeId(res.outputNodeId);
+      }
+      setArmedItem(null);
+      setPreferredParentId("");
+      setHoverHint("");
+      setCustomWidthInput("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "装配吸附失败，请检查安装面。");
+    }
+  }
+
+  function quickAttachItem(item: { kind: "block" | "module" | "custom"; id: string }, overrideParentId?: string) {
+    const cur = pillar === "commissions" ? commSession : sandboxSession;
+    const hintParent = overrideParentId ?? (preferredParentId || undefined);
+    const probeBlockId = item.kind === "block" ? item.id : "table_plate";
+    const best = findBestSnapTarget(cur.workspace, cur.assembly, probeBlockId, hintParent);
+    if (!best) {
+      setError("当前没有合适的空闲安装面，请在右栏结构树点 + 选择安装父件。");
+      return;
+    }
+    applyModularInsert(item, best.parentNodeId, best.parentMountId);
+    setHoverHint(`已吸合到「${best.parentLabel}」的 ${best.mountLabel}`);
+  }
+
+  function handleRunTrial() {
+    setError("");
+    setArmedItem(null);
+    setShowTrialVerdict(true);
+    setTrialFrameIdx(0);
+    setTrialPlaying(true);
+
+    if (pillar === "commissions") {
+      const sim = simulateMachineTrial(commSession.workspace, commSession.assembly, currentCommission.trialMode);
+      if (sim.verdict.passed) {
+        setCompletedComms((prev) => {
+          if (prev.has(commissionId)) return prev;
+          const next = new Set(prev);
+          next.add(commissionId);
+          return next;
+        });
+      }
+    }
+  }
+
+  function undoBuild() {
+    setShowTrialVerdict(false);
+    setTrialPlaying(false);
+    setActiveEditorSession((prev) => {
       const last = prev.history.at(-1);
       if (!last) return prev;
       return {
-        ...prev,
         workspace: last.workspace,
         assembly: last.assembly,
         commands: { ...last.assembly.commands },
@@ -369,93 +585,13 @@ export default function SandboxBuilderStudio({
     setPreferredParentId("");
   }
 
-  const handleSnapBlock = useCallback(
-    (parentNodeId: string, parentMountId: string) => {
-      if (!armedBlockId) return;
-      setError("");
-      try {
-        const cur = stateRef.current;
-        const res = snapBlockOntoAssembly(cur.workspace, cur.assembly, armedBlockId, parentNodeId, parentMountId);
-        const preview = solveArticulatedAssembly(res.workspace, res.assembly);
-        const check = evaluateChallengeProgress(challengeRef.current, res.workspace, res.assembly, preview, cur.visitedIds);
-        const nextVisited = new Set([...cur.visitedIds, ...check.newlyHitIds]);
-        setState((prev) => {
-          let nextCompleted = prev.completedIds;
-          if (check.completed && !prev.completedIds.has(prev.challengeId)) {
-            nextCompleted = new Set(prev.completedIds);
-            nextCompleted.add(prev.challengeId);
-          }
-          return {
-            ...prev,
-            workspace: res.workspace,
-            assembly: res.assembly,
-            commands: { ...res.assembly.commands },
-            visitedIds: nextVisited,
-            completedIds: nextCompleted,
-            dirty: true,
-            history: [...prev.history.slice(-15), { workspace: prev.workspace, assembly: prev.assembly }],
-          };
-        });
-        setSelectedNodeId(res.addedNodeId);
-        setCustomWidthInput("");
-        setArmedBlockId(null);
-        setPreferredParentId("");
-        setHoverHint("");
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "吸附连接失败，请尝试其他接口。");
-      }
-    },
-    [armedBlockId],
-  );
-
-  function quickSnapBlock(blockId: string, overrideParentId?: string) {
-    setError("");
-    const cur = stateRef.current;
-    const hintParent = overrideParentId ?? (preferredParentId || undefined);
-    const best = findBestSnapTarget(cur.workspace, cur.assembly, blockId, hintParent);
-    if (!best) {
-      setError("当前机器暂无合适空闲安装位，请在右侧「装配结构树」点 + 指定挂载零件，或拆除不需要的零件。");
-      return;
-    }
-    try {
-      const res = snapBlockOntoAssembly(cur.workspace, cur.assembly, blockId, best.parentNodeId, best.parentMountId);
-      const preview = solveArticulatedAssembly(res.workspace, res.assembly);
-      const check = evaluateChallengeProgress(challengeRef.current, res.workspace, res.assembly, preview, cur.visitedIds);
-      const nextVisited = new Set([...cur.visitedIds, ...check.newlyHitIds]);
-      setState((prev) => {
-        let nextCompleted = prev.completedIds;
-        if (check.completed && !prev.completedIds.has(prev.challengeId)) {
-          nextCompleted = new Set(prev.completedIds);
-          nextCompleted.add(prev.challengeId);
-        }
-        return {
-          ...prev,
-          workspace: res.workspace,
-          assembly: res.assembly,
-          commands: { ...res.assembly.commands },
-          visitedIds: nextVisited,
-          completedIds: nextCompleted,
-          dirty: true,
-          history: [...prev.history.slice(-15), { workspace: prev.workspace, assembly: prev.assembly }],
-        };
-      });
-      const blk = SANDBOX_BLOCKS.find((b) => b.id === blockId);
-      setSelectedNodeId(res.addedNodeId);
-      setCustomWidthInput("");
-      setArmedBlockId(null);
-      setPreferredParentId("");
-      setMode("build");
-      setHoverHint(`已自动将「${blk?.name ?? blockId}」装到「${best.parentLabel}」的 ${best.mountLabel}`);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "快捷安装失败，请尝试点 3D 发光球手动吸附。");
-    }
-  }
-
-  function mutateNode(nodeId: string, patch: Parameters<typeof updateSandboxNode>[3]) {
+  function mutateSelectedNode(nodeId: string, patch: Parameters<typeof updateSandboxNode>[3]) {
+    if (pillar === "showroom") return;
     setError("");
     try {
-      const res = updateSandboxNode(state.workspace, state.assembly, nodeId, patch);
-      setState((prev) => ({
+      const cur = activeSession;
+      const res = updateSandboxNode(cur.workspace, cur.assembly, nodeId, patch);
+      setActiveEditorSession((prev) => ({
         ...prev,
         workspace: res.workspace,
         assembly: res.assembly,
@@ -463,15 +599,16 @@ export default function SandboxBuilderStudio({
         history: [...prev.history.slice(-15), { workspace: prev.workspace, assembly: prev.assembly }],
       }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "更新积木属性失败。");
+      setError(cause instanceof Error ? cause.message : "修改零件参数失败。");
     }
   }
 
   function deleteNodeById(nodeId: string) {
+    if (pillar === "showroom") return;
     setError("");
     try {
-      const nextAsm = removeSandboxNode(state.workspace, state.assembly, nodeId);
-      setState((prev) => ({
+      const nextAsm = removeSandboxNode(activeSession.workspace, activeSession.assembly, nodeId);
+      setActiveEditorSession((prev) => ({
         ...prev,
         assembly: nextAsm,
         commands: { ...nextAsm.commands },
@@ -481,67 +618,71 @@ export default function SandboxBuilderStudio({
       if (selectedNodeId === nodeId) setSelectedNodeId("");
       if (preferredParentId === nodeId) setPreferredParentId("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "无法拆除该积木。");
+      setError(cause instanceof Error ? cause.message : "根节点不可删除。");
     }
   }
 
   function handleSaveCurrentMachine(options?: { asNewCopy?: boolean; customName?: string }) {
     setError("");
     try {
-      const res = saveSandboxMachineToWorkspace(workspace, state.workspace, state.assembly, options);
+      const res = saveSandboxMachineToWorkspace(workspace, activeSession.workspace, activeSession.assembly, options);
       onSaveWorkspace(res.workspace);
-      setState((prev) => ({
-        ...prev,
-        assembly: res.savedAssembly,
-        dirty: false,
-      }));
-      setSaveFeedback(options?.asNewCopy ? `已另存为「${res.savedAssembly.name}」` : `已保存「${res.savedAssembly.name}」`);
+      if (pillar === "commissions") {
+        setCommSession((prev) => ({ ...prev, assembly: res.savedAssembly, dirty: false }));
+      } else if (pillar === "sandbox") {
+        setSandboxSession((prev) => ({ ...prev, assembly: res.savedAssembly, dirty: false }));
+      }
+      setSaveFeedback(`已保存「${res.savedAssembly.name}」`);
       setSaveNameDraft("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "保存到本地机器库失败。");
+      setError(cause instanceof Error ? cause.message : "保存机器失败。");
     }
   }
 
-  function handleLoadSavedMachine(assemblyId: string) {
+  function handleEncapsulateAsModule() {
+    setError("");
+    try {
+      const rec = encapsulateUserModule(
+        activeSession.workspace,
+        activeSession.assembly,
+        encapsulateDraft || activeSession.assembly.name,
+      );
+      setCustomModules((prev) => [rec, ...prev.slice(0, 15)]);
+      setEncapsulateDraft("");
+      setSaveFeedback(`已封装模块「${rec.name}」`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "封装模块失败。");
+    }
+  }
+
+  function handleOpenSavedMachine(assemblyId: string) {
     setError("");
     try {
       const loaded = loadSandboxMachineFromWorkspace(workspace, assemblyId);
-      setAutoSweeping(false);
-      setArmedBlockId(null);
-      setPreferredParentId("");
-      setSelectedNodeId("");
-      setMode("build");
-      setState((prev) => ({
-        ...prev,
-        challengeId: "free-sandbox",
+      setPillar("sandbox");
+      setSandboxSession({
         workspace: loaded.workspace,
         assembly: loaded.assembly,
         commands: { ...loaded.assembly.commands },
-        visitedIds: new Set<string>(),
         dirty: false,
         history: [],
-      }));
-      setProjectManagerOpen(false);
+      });
+      setLibraryOpen(false);
+      setSelectedNodeId("");
+      setShowTrialVerdict(false);
       setFitToken((n) => n + 1);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "载入机器失败。");
     }
   }
 
-  function handleDeleteSavedMachine(assemblyId: string) {
-    setError("");
-    try {
-      const nextHost = deleteSandboxMachineFromWorkspace(workspace, assemblyId);
-      onSaveWorkspace(nextHost);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "删除机器失败。");
-    }
-  }
-
   function launchClosedLoopTwin() {
     try {
-      const { workspace: convertedWs, system } = convertSandboxToSystemTwin(state.workspace, state.assembly);
-      const merged = upsertMechanicalAssembly(convertedWs, state.assembly);
+      const { workspace: convertedWs, system } = convertSandboxToSystemTwin(
+        activeSession.workspace,
+        activeSession.assembly,
+      );
+      const merged = upsertMechanicalAssembly(convertedWs, activeSession.assembly);
       const finalWs: TwinWorkspace = {
         ...workspace,
         ...merged,
@@ -549,151 +690,179 @@ export default function SandboxBuilderStudio({
           ...workspace.packages.filter((p) => !merged.packages.some((mp) => packageKey(mp) === packageKey(p))),
           ...merged.packages,
         ],
-        systems: [
-          ...(workspace.systems ?? []).filter((s) => s.id !== system.id),
-          system,
-        ],
+        systems: [...(workspace.systems ?? []).filter((s) => s.id !== system.id), system],
       };
       onSaveWorkspace(finalWs);
       setBomOpen(false);
-      onNavigate({ view: "workbench", target: `system:${system.id}` }, `已由当前拼装生成闭环系统「${system.name}」。`);
+      onNavigate({ view: "workbench", target: `system:${system.id}` }, `已由当前设计生成闭环仿真系统「${system.name}」。`);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "转换为闭环验证工程失败。");
+      setError(cause instanceof Error ? cause.message : "转换 Modelica 闭环系统失败。");
     }
   }
 
+  const nextCommission = useMemo(() => {
+    const idx = EVOLUTION_COMMISSIONS.findIndex((c) => c.id === commissionId);
+    return idx >= 0 && idx + 1 < EVOLUTION_COMMISSIONS.length ? EVOLUTION_COMMISSIONS[idx + 1] : null;
+  }, [commissionId]);
+
   const selectedSolved = solved.nodes.find((n) => n.path === selectedNodeId);
-  const selectedRawNode = state.assembly.nodes.find((n) => n.id === selectedNodeId);
-  const selectedPkg = selectedRawNode ? state.workspace.packages.find((p) => packageKey(p) === selectedRawNode.packageKey) : undefined;
+  const selectedRawNode = activeSession.assembly.nodes.find((n) => n.id === selectedNodeId);
+  const selectedPkg = selectedRawNode
+    ? activeSession.workspace.packages.find((p) => packageKey(p) === selectedRawNode.packageKey)
+    : undefined;
   const selectedPart = selectedPkg?.mechanics?.kind === "part" ? selectedPkg.mechanics : undefined;
-  const selectedCurrentPrimaryLen = useMemo(() => {
-    if (!selectedPkg?.primitive) return undefined;
-    const bbox = primitiveBoundingBoxMm(selectedPkg.primitive);
-    return getPrimaryLengthMm(bbox, selectedPkg.primitive.shape, selectedPkg.primitive as unknown as Record<string, unknown>);
-  }, [selectedPkg]);
+  const selectedPrimaryLen = selectedPkg?.primitive
+    ? getPrimaryLengthMm(
+        primitiveBoundingBoxMm(selectedPkg.primitive),
+        selectedPkg.primitive as unknown as Record<string, unknown>,
+      )
+    : undefined;
 
-  const nextChallenge = useMemo(() => {
-    const idx = SANDBOX_CHALLENGES.findIndex((c) => c.id === state.challengeId);
-    return idx >= 0 && idx + 1 < SANDBOX_CHALLENGES.length ? SANDBOX_CHALLENGES[idx + 1] : null;
-  }, [state.challengeId]);
+  const physicsHighlight = useMemo(
+    () => ({
+      overloadedNodeIds: livePhysics.overloadedNodeIds,
+      columnDeflectionUm: livePhysics.columnDeflectionUm,
+      cuttingForceN: livePhysics.cuttingForceN,
+      thrustForceN: livePhysics.thrustForceN,
+      hasSpindle: livePhysics.hasSpindle,
+    }),
+    [livePhysics],
+  );
 
-  const isUserSavedMachine = !state.assembly.id.startsWith("sandbox-");
-  const currentProjectBadge = isUserSavedMachine ? "我的机器" : challenge.badge;
+  const activeSimResult = pillar === "showroom" ? showroomSim : activeBuildSim;
+  const verdict = activeSimResult?.verdict;
+  const causalFeed = pillar === "showroom" ? whatIfFeedMmS : 28;
+  const isInteractiveBuild = pillar !== "showroom";
+  const preferredParentNode = preferredParentId
+    ? activeSession.assembly.nodes.find((n) => n.id === preferredParentId)
+    : undefined;
 
-  const armedBlockDef = armedBlockId ? SANDBOX_BLOCKS.find((b) => b.id === armedBlockId) : undefined;
-  const preferredParentNode = preferredParentId ? state.assembly.nodes.find((n) => n.id === preferredParentId) : undefined;
-
-  const viewportBannerText = armedBlockDef
+  const viewportHudText = armedItem
     ? preferredParentNode
-      ? `已拿起「${armedBlockDef.name}」— 请点击「${preferredParentNode.label ?? preferredParentNode.id}」身上的蓝色发光球吸附`
-      : `已拿起「${armedBlockDef.name}」— 点 3D 青色发光球吸附，或直接点右侧自动吸合`
+      ? `已拿起模块 — 点击「${preferredParentNode.label ?? preferredParentNode.id}」的蓝色发光球吸附`
+      : "已拿起积木 — 点击 3D 视口青色发光球吸附（或点右侧直接吸附）"
     : hoverHint ||
-      (mode === "test" && challenge.targets.length > 0
-        ? progress.completed
-          ? `🎉 挑战通关！全部 ${challenge.targets.length} 个空间目标已点亮`
-          : `拖动左侧滑块（或点自动演练），让橙色末端触达全部目标球 (${progress.hitCount}/${challenge.targets.length})`
-        : guide.activeStep?.title ?? challenge.story);
-
-  const leftPaneVisible = mobileTab === "left";
-  const rightPaneVisible = mobileTab === "right";
+      (pillar === "showroom"
+        ? `${currentExhibitDef.badge} · ${currentExhibitDef.title} — ${currentExhibitDef.takeaway}`
+        : pillar === "commissions"
+          ? `${currentCommission.badge} · ${currentCommission.title}`
+          : `自由创造台 · ${activeSession.assembly.name}`);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-      {/* Compact Single-Row Top Bar */}
+      {/* Top Studio Header */}
       <header className="surface flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <h1 className="flex shrink-0 items-center gap-1.5 text-sm font-semibold text-foreground">
             <Blocks className="size-4 text-primary" />
-            <span>构元积木工坊</span>
+            <span>构元 · 数字机械造物台</span>
           </h1>
           <Button
             size="sm"
             variant="outline"
-            className="h-7 max-w-[15rem] gap-1.5 px-2 text-xs"
+            className="h-7 max-w-[14rem] gap-1 px-2 text-xs"
             onClick={() => {
-              setSaveNameDraft(state.assembly.name);
-              setProjectManagerOpen(true);
+              setSaveNameDraft(activeSession.assembly.name);
+              setLibraryOpen(true);
             }}
           >
             <FolderOpen className="size-3.5 shrink-0 text-primary" />
-            <span className="truncate">
-              {currentProjectBadge} · {state.assembly.name}
-            </span>
-            {state.completedIds.has(challenge.id) && (
-              <span className="shrink-0 rounded bg-emerald-500/20 px-1 text-[10px] text-emerald-300">已通</span>
-            )}
+            <span className="truncate">{activeSession.assembly.name}</span>
             <ChevronDown className="size-3 shrink-0 opacity-70" />
           </Button>
         </div>
 
-        {/* Centered 3-Mode Pill */}
-        <div role="tablist" aria-label="工坊模式切换" className="flex items-center gap-1 rounded-md border bg-background/70 p-0.5">
+        {/* 3 Cohesive Pillars */}
+        <div role="tablist" aria-label="核心工作区切换" className="flex items-center gap-1 rounded-md border bg-background/70 p-0.5">
           <Button
             size="sm"
             role="tab"
-            aria-selected={mode === "build"}
-            variant={mode === "build" ? "default" : "ghost"}
+            aria-selected={pillar === "showroom"}
+            variant={pillar === "showroom" ? "default" : "ghost"}
             className="h-7 px-2.5 text-xs"
             onClick={() => {
-              setAutoSweeping(false);
-              setMode("build");
+              setArmedItem(null);
+              setShowTrialVerdict(false);
+              setPillar("showroom");
+              setFitToken((n) => n + 1);
             }}
           >
-            <Hammer />
-            拼装积木
+            <Eye />
+            原理透视展馆
           </Button>
           <Button
             size="sm"
             role="tab"
-            aria-selected={mode === "test"}
-            variant={mode === "test" ? "default" : "ghost"}
+            aria-selected={pillar === "commissions"}
+            variant={pillar === "commissions" ? "default" : "ghost"}
             className="h-7 px-2.5 text-xs"
             onClick={() => {
-              setArmedBlockId(null);
-              setMode("test");
+              setArmedItem(null);
+              setPillar("commissions");
+              setFitToken((n) => n + 1);
             }}
           >
-            <Play />
-            试动与挑战
+            <Zap />
+            造物演进委托
+            <span className="ml-0.5 rounded bg-background/40 px-1 text-[10px]">
+              {completedComms.size}/4
+            </span>
           </Button>
           <Button
             size="sm"
             role="tab"
-            aria-selected={mode === "explode"}
-            variant={mode === "explode" ? "default" : "ghost"}
+            aria-selected={pillar === "sandbox"}
+            variant={pillar === "sandbox" ? "default" : "ghost"}
             className="h-7 px-2.5 text-xs"
             onClick={() => {
-              setAutoSweeping(false);
-              setArmedBlockId(null);
-              setMode("explode");
+              setArmedItem(null);
+              setPillar("sandbox");
+              setFitToken((n) => n + 1);
             }}
           >
-            <Layers />
-            爆炸视图
+            <Blocks />
+            自由创造与 BOM
           </Button>
         </div>
 
-        {/* Right Controls: Save, BOM, Pro Mode */}
+        {/* Global Tools: X-Ray Principle, Explode View, Real BOM, Pro Mode */}
         <div className="flex flex-wrap items-center gap-1.5">
           <Button
             size="sm"
-            variant={saveFeedback ? "default" : "outline"}
-            className="relative h-7 px-2.5 text-xs"
-            onClick={() => handleSaveCurrentMachine()}
+            variant={xrayMode ? "default" : "outline"}
+            className="h-7 px-2 text-xs"
+            onClick={() => setXrayMode((v) => !v)}
           >
-            {saveFeedback ? <Check /> : <Save />}
-            {saveFeedback || "保存"}
-            {state.dirty && !saveFeedback && (
-              <span aria-hidden="true" className="ml-0.5 size-1.5 rounded-full bg-amber-400" />
-            )}
+            <Activity className="size-3.5" />
+            {xrayMode ? "透视层：开" : "原理透视"}
           </Button>
-          <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={() => setBomOpen(true)}>
+          <Button
+            size="sm"
+            variant={explodePct > 0 ? "default" : "outline"}
+            className="h-7 px-2 text-xs"
+            onClick={() => setExplodePct((v) => (v > 0 ? 0 : 55))}
+          >
+            <Layers className="size-3.5" />
+            {explodePct > 0 ? `爆炸 ${explodePct}%` : "爆炸视图"}
+          </Button>
+          {pillar !== "showroom" && (
+            <Button
+              size="sm"
+              variant={saveFeedback ? "default" : "outline"}
+              className="h-7 px-2 text-xs"
+              onClick={() => handleSaveCurrentMachine()}
+            >
+              {saveFeedback ? <Check /> : <Save />}
+              {saveFeedback || "保存"}
+            </Button>
+          )}
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setBomOpen(true)}>
             <Package />
-            现实 BOM ({state.assembly.nodes.length}件)
+            现实 BOM (¥{livePhysics.totalCostCny})
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="secondary" className="h-7 px-2.5 text-xs">
+              <Button size="sm" variant="secondary" className="h-7 px-2 text-xs">
                 <Wrench />
                 专业工程模式
               </Button>
@@ -705,7 +874,7 @@ export default function SandboxBuilderStudio({
                 <Camera /> ① 拍照识别与设备资料库
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={launchClosedLoopTwin}>
-                <Sparkles /> 将当前积木转入闭环仿真工作台
+                <Sparkles /> 将当前机器送入 Modelica 闭环工作台
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onNavigate({ view: "workbench" })}>
                 <Wrench /> ② 进入高级装配与录波工作台
@@ -718,423 +887,690 @@ export default function SandboxBuilderStudio({
         </div>
       </header>
 
-      {/* Locked 100dvh Responsive 3-Pane Workspace (single Viewport instance) */}
+      {/* Locked 100dvh 3-Pane Workspace */}
       <div
         className={`grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden max-lg:grid-rows-[44dvh_auto_minmax(0,1fr)] ${
-          outlinerOpen ? "lg:grid-cols-[17.5rem_minmax(0,1fr)_17.5rem]" : "lg:grid-cols-[17.5rem_minmax(0,1fr)]"
+          outlinerOpen ? "lg:grid-cols-[18.5rem_minmax(0,1fr)_18rem]" : "lg:grid-cols-[18.5rem_minmax(0,1fr)]"
         }`}
       >
-        {/* Mobile/Tablet Pane Switcher (<1024px only) */}
+        {/* Mobile/Tablet Panel Switcher (<1024px only) */}
         <div className="flex shrink-0 gap-1.5 lg:hidden" role="tablist" aria-label="移动端面板切换">
           <Button
             size="sm"
             role="tab"
-            aria-selected={leftPaneVisible}
-            variant={leftPaneVisible ? "default" : "outline"}
+            aria-selected={mobileTab === "left"}
+            variant={mobileTab === "left" ? "default" : "outline"}
             className="h-8 flex-1 text-xs"
             onClick={() => setMobileTab("left")}
           >
-            🧱 积木与引导
+            {pillar === "showroom" ? "🎛️ 展品与破坏实验" : "🧱 模块化积木与试切"}
           </Button>
           <Button
             size="sm"
             role="tab"
-            aria-selected={rightPaneVisible}
-            variant={rightPaneVisible ? "default" : "outline"}
+            aria-selected={mobileTab === "right"}
+            variant={mobileTab === "right" ? "default" : "outline"}
             className="h-8 flex-1 text-xs"
             onClick={() => setMobileTab("right")}
           >
-            🗂️ 结构树与管理 ({state.assembly.nodes.length})
+            {pillar === "showroom" ? "🔍 原理分层与结构树" : `🗂️ 物理预检与结构 (${activeSession.assembly.nodes.length})`}
           </Button>
         </div>
 
-        {/* Left Pane: Dynamic Step Checklist + Mode Content */}
+        {/* ============================================================ */}
+        {/* LEFT PANE: Context-Adaptive Control Deck                     */}
+        {/* ============================================================ */}
         <aside
-          aria-label="拼装引导与积木库"
+          aria-label="左侧实验与积木面板"
           className={`surface min-h-0 flex-col gap-2 overflow-hidden p-2.5 text-xs max-lg:row-start-3 lg:col-start-1 lg:row-start-1 ${
-            leftPaneVisible ? "flex" : "hidden lg:flex"
+            mobileTab === "left" ? "flex" : "hidden lg:flex"
           }`}
         >
-          {/* Live Guided Checklist Card */}
-          <div className="shrink-0 space-y-1.5 rounded-md border bg-background/60 p-2">
-            <div className="flex items-center justify-between gap-1">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                  {challenge.badge}
-                </span>
-                <h2 className="truncate font-semibold text-foreground">{challenge.title}</h2>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                {state.history.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={undoLast}
-                    className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-                  >
-                    <Undo2 className="size-3" /> 撤销
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => switchChallenge(state.challengeId)}
-                  className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-                >
-                  <RotateCcw className="size-3" /> 重置
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              {guide.steps.map((step, idx) => {
-                const isActive = guide.activeStep?.id === step.id;
-                return (
-                  <div
-                    key={step.id}
-                    className={`rounded px-1.5 py-1 text-[11px] transition-colors ${
-                      step.done
-                        ? "text-emerald-400/90"
-                        : isActive
-                          ? "border border-primary/40 bg-primary/10 text-foreground"
-                          : "text-muted-foreground"
-                    }`}
-                  >
-                    <div className="flex items-start gap-1.5">
-                      <span className="shrink-0 font-mono text-[10px] leading-4">
-                        {step.done ? "✅" : isActive ? "🔵" : `${idx + 1}.`}
-                      </span>
-                      <span className={`min-w-0 flex-1 ${step.done ? "line-through opacity-80" : "font-medium"}`}>
-                        {step.title}
-                      </span>
-                    </div>
-                    {isActive && (
-                      <div className="mt-1 space-y-1.5 pl-4">
-                        <p className="text-[10px] leading-relaxed text-muted-foreground">{step.detail}</p>
-                        <div className="flex flex-wrap gap-1">
-                          {step.recommendedBlockId && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant={armedBlockId === step.recommendedBlockId ? "default" : "outline"}
-                                className="h-6 px-2 text-[10px]"
-                                onClick={() => {
-                                  setMode("build");
-                                  setArmedBlockId(
-                                    armedBlockId === step.recommendedBlockId ? null : step.recommendedBlockId!,
-                                  );
-                                }}
-                              >
-                                {armedBlockId === step.recommendedBlockId ? "已拿起·点3D蓝球" : "拿起去吸"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                className="h-6 px-2 text-[10px]"
-                                onClick={() => quickSnapBlock(step.recommendedBlockId!)}
-                              >
-                                <Zap className="size-3" />
-                                一步装上
-                              </Button>
-                            </>
-                          )}
-                          {step.recommendedMode === "test" && (
-                            <Button
-                              size="sm"
-                              className="h-6 px-2 text-[10px]"
-                              onClick={() => {
-                                setArmedBlockId(null);
-                                setMode("test");
-                              }}
-                            >
-                              <Play className="size-3" />
-                              去试动通关 →
-                            </Button>
-                          )}
-                          {step.recommendedMode === "explode" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-6 px-2 text-[10px]"
-                              onClick={() => {
-                                setArmedBlockId(null);
-                                setMode("explode");
-                              }}
-                            >
-                              <Layers className="size-3" />
-                              打开爆炸视图
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {state.challengeId !== "free-sandbox" && (
-              <Button size="sm" variant="secondary" className="h-7 w-full text-[11px]" onClick={() => loadReferenceSolution()}>
-                <Sparkles className="size-3.5" /> 加载完整参考成品（直接体验）
-              </Button>
-            )}
-          </div>
-
-          {mode === "build" && (
-            <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
-              {/* Compact Category Pills */}
-              <div className="flex shrink-0 items-center gap-1" role="tablist" aria-label="积木分类筛选">
-                {FILTER_TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={paletteFilter === tab.id}
-                    onClick={() => setPaletteFilter(tab.id)}
-                    className={`flex-1 rounded px-1.5 py-1 text-[11px] font-medium transition-colors ${
-                      paletteFilter === tab.id
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-background/60 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              <p className="shrink-0 text-[10px] text-muted-foreground">
-                {preferredParentNode
-                  ? `当前挂载目标：「${preferredParentNode.label ?? preferredParentNode.id}」· 点下面积木直接吸上`
-                  : "单击拿起积木（3D亮蓝球） · 双击直接自动装上"}
-              </p>
-
-              {/* 2-Column Visual Tile Grid */}
-              <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-1.5 overflow-y-auto pr-0.5">
-                {filteredBlocks.map((blk) => {
-                  const active = armedBlockId === blk.id;
-                  const isRecommended = guide.activeStep?.recommendedBlockId === blk.id;
-                  return (
-                    <button
-                      key={blk.id}
-                      type="button"
-                      title={blk.subtitle}
-                      onClick={() => {
-                        if (preferredParentId) {
-                          quickSnapBlock(blk.id, preferredParentId);
-                        } else {
-                          setArmedBlockId(active ? null : blk.id);
-                        }
-                      }}
-                      onDoubleClick={() => quickSnapBlock(blk.id)}
-                      className={`group relative flex flex-col items-center gap-1 rounded-md border p-2 text-center transition-all ${
-                        active
-                          ? "border-primary bg-primary/15 text-foreground ring-1 ring-primary"
-                          : isRecommended
-                            ? "border-amber-400/70 bg-amber-500/10 text-foreground ring-1 ring-amber-400/40"
-                            : "bg-background/50 hover:border-primary/40 hover:bg-accent/40"
-                      }`}
+          {pillar === "showroom" && (
+            <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-0.5">
+              {/* Flagship Exhibits Selector */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-foreground">旗舰整机实景展品</h2>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant={showroomPlaying ? "default" : "outline"}
+                      className="h-6 px-2 text-[10px]"
+                      onClick={() => setShowroomPlaying((p) => !p)}
                     >
-                      {isRecommended && !active && (
-                        <span className="absolute right-1 top-1 rounded bg-amber-400/20 px-1 text-[9px] font-semibold text-amber-300">
-                          推荐
-                        </span>
-                      )}
-                      {blk.defaultJoint.type !== "fixed" && (
-                        <span className="absolute left-1 top-1 rounded bg-muted px-1 text-[9px] text-primary">
-                          {blk.defaultJoint.type === "slide" ? "滑" : "转"}
-                        </span>
-                      )}
-                      <SandboxBlockIcon
-                        shape={blk.spec.shape}
-                        finish={blk.spec.finish}
-                        blockId={blk.id}
-                        className="mt-1 size-8 transition-transform group-hover:scale-105"
-                      />
-                      <span className="line-clamp-2 text-[11px] font-medium leading-tight">{blk.name}</span>
-                    </button>
-                  );
-                })}
+                      {showroomPlaying ? <Pause className="size-3" /> : <Play className="size-3" />}
+                      {showroomPlaying ? "暂停" : "运转"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5 text-[10px]"
+                      onClick={() => {
+                        setShowroomFrameIdx(0);
+                        setShowroomPlaying(true);
+                      }}
+                    >
+                      <RotateCcw className="size-3" />
+                      重切
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-1.5">
+                  {SHOWROOM_EXHIBITS.map((ex) => {
+                    const selected = ex.id === exhibitId;
+                    return (
+                      <button
+                        key={ex.id}
+                        type="button"
+                        onClick={() => selectExhibit(ex.id)}
+                        className={`rounded-md border p-2 text-left transition-colors ${
+                          selected
+                            ? "border-primary bg-primary/15 text-foreground ring-1 ring-primary"
+                            : "bg-background/50 hover:border-primary/40 hover:bg-accent/40"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-semibold">{ex.title}</span>
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-primary">{ex.badge}</span>
+                        </div>
+                        <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{ex.subtitle}</p>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+
+              {/* Destructive Physics Lab Sliders */}
+              <div className="space-y-2 rounded-md border bg-background/60 p-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-foreground">动手“破坏实验”看物理规律</span>
+                  <button
+                    type="button"
+                    className="text-[10px] text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      setWhatIfPayloadKg(0);
+                      setWhatIfLeadMm(8);
+                      setWhatIfFeedMmS(32);
+                      setExplodePct(0);
+                      setActiveLayerId(null);
+                    }}
+                  >
+                    恢复标准
+                  </button>
+                </div>
+
+                <label className="block space-y-0.5">
+                  <div className="flex justify-between text-[11px]">
+                    <span>工件附加配重（看惯量过冲）</span>
+                    <span className="mono text-primary">+{whatIfPayloadKg} kg</span>
+                  </div>
+                  <input
+                    type="range"
+                    aria-label="工件附加配重"
+                    min={0}
+                    max={45}
+                    step={1}
+                    value={whatIfPayloadKg}
+                    className="h-3.5 w-full accent-primary"
+                    onChange={(e) => setWhatIfPayloadKg(Number(e.currentTarget.value))}
+                  />
+                </label>
+
+                <label className="block space-y-0.5">
+                  <div className="flex justify-between text-[11px]">
+                    <span>丝杠导程 p（机械杠杆比）</span>
+                    <span className="mono text-primary">{whatIfLeadMm} mm/rev</span>
+                  </div>
+                  <input
+                    type="range"
+                    aria-label="丝杠导程"
+                    min={4}
+                    max={24}
+                    step={2}
+                    value={whatIfLeadMm}
+                    className="h-3.5 w-full accent-primary"
+                    onChange={(e) => setWhatIfLeadMm(Number(e.currentTarget.value))}
+                  />
+                </label>
+
+                <label className="block space-y-0.5">
+                  <div className="flex justify-between text-[11px]">
+                    <span>切削进给速度（看让刀变形）</span>
+                    <span className="mono text-primary">{whatIfFeedMmS} mm/s</span>
+                  </div>
+                  <input
+                    type="range"
+                    aria-label="切削进给速度"
+                    min={10}
+                    max={120}
+                    step={2}
+                    value={whatIfFeedMmS}
+                    className="h-3.5 w-full accent-primary"
+                    onChange={(e) => setWhatIfFeedMmS(Number(e.currentTarget.value))}
+                  />
+                </label>
+
+                <label className="block space-y-0.5">
+                  <div className="flex justify-between text-[11px]">
+                    <span>分层三维爆炸展开</span>
+                    <span className="mono text-primary">{explodePct}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    aria-label="分层爆炸展开"
+                    min={0}
+                    max={100}
+                    step={2}
+                    value={explodePct}
+                    className="h-3.5 w-full accent-primary"
+                    onChange={(e) => setExplodePct(Number(e.currentTarget.value))}
+                  />
+                </label>
+
+                {/* One-click Contrast Experiment Buttons */}
+                <div className="grid grid-cols-1 gap-1 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 justify-start text-[10px]"
+                    onClick={() => {
+                      if (exhibitId === "articulated-arm") selectExhibit("c-frame-mill");
+                      setWhatIfPayloadKg(38);
+                      setWhatIfLeadMm(10);
+                      setWhatIfFeedMmS(74);
+                      setXrayMode(true);
+                    }}
+                  >
+                    ⚡ 实验 A：5倍超重负载 → 看拐角明显失圆
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 justify-start text-[10px]"
+                    onClick={() => {
+                      if (exhibitId === "articulated-arm") selectExhibit("c-frame-mill");
+                      setWhatIfPayloadKg(14);
+                      setWhatIfLeadMm(24);
+                      setWhatIfFeedMmS(88);
+                      setXrayMode(true);
+                    }}
+                  >
+                    ⚡ 实验 B：大导程 24 mm → 看电机红灯过载报警
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 justify-start text-[10px]"
+                    onClick={() => {
+                      const target = exhibitId === "gantry-mill" ? "c-frame-mill" : "gantry-mill";
+                      selectExhibit(target);
+                      setWhatIfPayloadKg(6);
+                      setWhatIfLeadMm(8);
+                      setWhatIfFeedMmS(76);
+                      setXrayMode(true);
+                    }}
+                  >
+                    ⚡ 实验 C：一键切换 C型单柱 vs 双柱龙门对比让刀
+                  </Button>
+                </div>
+              </div>
+
+              <Button
+                size="sm"
+                className="mt-auto h-8 w-full text-xs"
+                onClick={() => enterCommissionWithStarter("comm-1-axis")}
+              >
+                看懂原理了？去「造物演进委托」亲手搭一台
+                <ArrowRight />
+              </Button>
             </div>
           )}
 
-          {mode === "test" && (
-            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-0.5">
-              {challenge.targets.length > 0 && (
-                <div className="space-y-1.5 rounded-md border bg-background/60 p-2">
-                  <p className="font-semibold text-foreground">
-                    过关进度（{progress.hitCount}/{challenge.targets.length}）
-                  </p>
-                  {progress.structuralChecks.map((chk) => (
-                    <div key={chk.label} className="flex items-center gap-1.5 text-[11px]">
-                      <CheckCircle2
-                        className={`size-3.5 shrink-0 ${chk.passed ? "text-emerald-500" : "text-muted-foreground/40"}`}
-                      />
-                      <span className={chk.passed ? "text-foreground" : "text-muted-foreground"}>{chk.label}</span>
-                    </div>
-                  ))}
-                  {progress.worldTargets.map((t) => (
-                    <div key={t.id} className="flex items-center gap-1.5 text-[11px]">
-                      <CheckCircle2 className={`size-3.5 shrink-0 ${t.hit ? "text-emerald-500" : "text-amber-400"}`} />
-                      <span className={t.hit ? "text-emerald-400 line-through" : "text-foreground"}>{t.label}</span>
-                    </div>
-                  ))}
-                  {progress.completed && (
-                    <div className="space-y-2 rounded border border-emerald-500/40 bg-emerald-500/10 p-2">
-                      <p className="font-medium text-emerald-300">挑战成功！已验证空间可达性</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {nextChallenge && (
-                          <Button size="sm" className="h-7 text-xs" onClick={() => switchChallenge(nextChallenge.id)}>
-                            {nextChallenge.badge} <ArrowRight />
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setBomOpen(true)}>
-                          生成 BOM & 物理闭环
-                        </Button>
+          {pillar === "commissions" && (
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+              {/* Commission Selector & Unlock Toggle */}
+              <div className="shrink-0 space-y-1.5 rounded-md border bg-background/60 p-2">
+                <div className="flex items-center justify-between gap-1">
+                  <div className="grid flex-1 grid-cols-4 gap-1">
+                    {EVOLUTION_COMMISSIONS.map((c, idx) => {
+                      const active = c.id === commissionId;
+                      const done = completedComms.has(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => selectCommission(c.id)}
+                          className={`rounded border px-1 py-1 text-[10px] font-medium transition-colors ${
+                            active
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : done
+                                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                                : "bg-background/50 text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {done ? "✅" : `${idx + 1}.`} {c.badge.replace("委托", "阶")}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    title="临时全解锁所有组件与模组"
+                    onClick={() => setUnlockAll((u) => !u)}
+                    className={`inline-flex shrink-0 items-center gap-0.5 rounded border px-1.5 py-1 text-[10px] ${
+                      unlockAll ? "border-amber-400/60 bg-amber-500/15 text-amber-200" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {unlockAll ? <Unlock className="size-3" /> : <Lock className="size-3" />}
+                    全解锁
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-1">
+                  <h2 className="truncate font-semibold text-foreground">{currentCommission.title}</h2>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {commSession.history.length > 0 && (
+                      <button type="button" onClick={undoBuild} className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground">
+                        <Undo2 className="size-3" /> 撤销
+                      </button>
+                    )}
+                    <button type="button" onClick={() => selectCommission(commissionId)} className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground">
+                      <RotateCcw className="size-3" /> 重置
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">{currentCommission.clientBrief}</p>
+
+                <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" className="h-7 flex-1 text-xs" onClick={handleRunTrial}>
+                    <Zap />
+                    {currentCommission.trialButtonLabel}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-7 px-2 text-[10px]"
+                    onClick={() => {
+                      const sol = createCommissionReferenceSolution(commissionId);
+                      setCommSession({
+                        workspace: sol.workspace,
+                        assembly: sol.assembly,
+                        commands: { ...sol.assembly.commands },
+                        dirty: true,
+                        history: [...commSession.history.slice(-15), { workspace: commSession.workspace, assembly: commSession.assembly }],
+                      });
+                      setShowTrialVerdict(false);
+                      setFitToken((n) => n + 1);
+                    }}
+                  >
+                    载入参考样机
+                  </Button>
+                </div>
+              </div>
+
+              {/* Trial Cut / Physics Verdict Card */}
+              {showTrialVerdict && verdict && (
+                <div
+                  className={`shrink-0 space-y-1.5 rounded-md border p-2 ${
+                    verdict.passed ? "border-emerald-500/50 bg-emerald-500/10" : "border-destructive/50 bg-destructive/10"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`font-semibold ${verdict.passed ? "text-emerald-300" : "text-red-300"}`}>
+                      {verdict.passed ? `验收通过 · ${verdict.grade} 级` : "试机未达标"}
+                    </span>
+                    <span className="mono text-[10px] text-muted-foreground">
+                      {livePhysics.hasSpindle
+                        ? `误差 ±${verdict.maxContourErrorMm}mm · 让刀 ${verdict.deflectionUm}μm`
+                        : `扭矩负荷 ${verdict.peakTorquePct.toFixed(0)}% · 成本 ¥${verdict.costCny}`}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-medium text-foreground">{verdict.headline}</p>
+                  <div className="space-y-0.5">
+                    {verdict.checks.map((ck) => (
+                      <div key={ck.label} className="flex items-center justify-between gap-1 text-[10px]">
+                        <span className={ck.passed ? "text-emerald-300" : "text-red-300"}>
+                          {ck.passed ? "✅" : "❌"} {ck.label}
+                        </span>
+                        <span className="mono text-muted-foreground">{ck.valueText}</span>
                       </div>
-                    </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] leading-snug text-muted-foreground">{verdict.diagnosis}</p>
+                  {verdict.passed && nextCommission && (
+                    <Button
+                      size="sm"
+                      className="h-6 w-full text-[11px]"
+                      onClick={() => enterCommissionWithStarter(nextCommission.id)}
+                    >
+                      领受下一委托：{nextCommission.title} <ArrowRight />
+                    </Button>
                   )}
                 </div>
               )}
 
-              <div className="flex items-center justify-between gap-1.5">
-                <Button
-                  size="sm"
-                  className="h-7 flex-1 text-xs"
-                  variant={autoSweeping ? "default" : "outline"}
-                  disabled={solved.activeControls.length === 0}
-                  onClick={() => setAutoSweeping((v) => !v)}
-                >
-                  {autoSweeping ? <Pause /> : <Play />}
-                  {autoSweeping ? "暂停演示" : "自动演练轨迹"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    setAutoSweeping(false);
-                    const zeros: Record<string, number> = {};
-                    for (const c of solved.activeControls) zeros[c.path] = clamp(0, c.joint.range[0], c.joint.range[1]);
-                    applyCommandsAndScore(zeros);
-                  }}
-                >
-                  回零
-                </Button>
+              {/* Scrollable Modules + Primitives Palette */}
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
+                {/* Turing-Complete style Unlocked Macro Modules */}
+                <div className="space-y-1">
+                  <p className="font-semibold text-foreground">📦 已封装高阶模组（点击一键吸合）</p>
+                  <div className="grid gap-1">
+                    {MODULE_BLUEPRINTS.map((mod) => {
+                      const unlocked = unlockedSet.modules.has(mod.id);
+                      const isArmed = armedItem?.kind === "module" && armedItem.id === mod.id;
+                      const reqComm = EVOLUTION_COMMISSIONS.find((c) => c.id === mod.unlockedBy);
+                      return (
+                        <button
+                          key={mod.id}
+                          type="button"
+                          disabled={!unlocked}
+                          title={mod.subtitle}
+                          onClick={() => {
+                            if (preferredParentId) quickAttachItem({ kind: "module", id: mod.id }, preferredParentId);
+                            else setArmedItem(isArmed ? null : { kind: "module", id: mod.id });
+                          }}
+                          onDoubleClick={() => unlocked && quickAttachItem({ kind: "module", id: mod.id })}
+                          className={`flex items-center justify-between gap-1.5 rounded border px-2 py-1.5 text-left transition-colors ${
+                            !unlocked
+                              ? "cursor-not-allowed border-border/40 bg-background/20 opacity-50"
+                              : isArmed
+                                ? "border-primary bg-primary/15 ring-1 ring-primary"
+                                : "border-sky-500/35 bg-sky-500/10 hover:border-sky-400"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate font-medium text-foreground">{mod.name}</div>
+                            <div className="truncate text-[10px] text-muted-foreground">
+                              {unlocked ? "单击选3D蓝球 · 双击直装" : `完成【${reqComm?.badge ?? "前序"}】自动解锁封装`}
+                            </div>
+                          </div>
+                          {unlocked ? (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                quickAttachItem({ kind: "module", id: mod.id });
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.stopPropagation();
+                                  quickAttachItem({ kind: "module", id: mod.id });
+                                }
+                              }}
+                              className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/30"
+                            >
+                              装上
+                            </span>
+                          ) : (
+                            <Lock className="size-3.5 shrink-0 text-muted-foreground" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Base Primitives */}
+                <div className="space-y-1">
+                  <p className="font-semibold text-foreground">基础物理零件</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {SANDBOX_BLOCKS.map((blk) => {
+                      const unlocked = unlockedSet.blocks.has(blk.id);
+                      const isArmed = armedItem?.kind === "block" && armedItem.id === blk.id;
+                      return (
+                        <button
+                          key={blk.id}
+                          type="button"
+                          disabled={!unlocked}
+                          title={unlocked ? `${blk.name}：${blk.subtitle}（双击直装）` : "尚未在本阶段解锁"}
+                          onClick={() => {
+                            if (preferredParentId) quickAttachItem({ kind: "block", id: blk.id }, preferredParentId);
+                            else setArmedItem(isArmed ? null : { kind: "block", id: blk.id });
+                          }}
+                          onDoubleClick={() => unlocked && quickAttachItem({ kind: "block", id: blk.id })}
+                          className={`relative flex flex-col items-center gap-1 rounded-md border p-2 text-center transition-all ${
+                            !unlocked
+                              ? "cursor-not-allowed opacity-40"
+                              : isArmed
+                                ? "border-primary bg-primary/15 ring-1 ring-primary"
+                                : "bg-background/50 hover:border-primary/40 hover:bg-accent/40"
+                          }`}
+                        >
+                          {!unlocked && <Lock className="absolute right-1 top-1 size-3 text-muted-foreground" />}
+                          {unlocked && blk.defaultJoint.type !== "fixed" && (
+                            <span className="absolute left-1 top-1 rounded bg-muted px-1 text-[9px] text-primary">
+                              {blk.defaultJoint.type === "slide" ? "滑" : "转"}
+                            </span>
+                          )}
+                          <SandboxBlockIcon shape={blk.spec.shape} finish={blk.spec.finish} blockId={blk.id} className="size-7" />
+                          <span className="line-clamp-2 text-[10px] font-medium leading-tight">{blk.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {pillar === "sandbox" && (
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+              {/* Top Encapsulate + Run Physical Trial Bar */}
+              <div className="shrink-0 space-y-1.5 rounded-md border bg-background/60 p-2">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="font-semibold text-foreground">自由创造 & 模块封装</span>
+                  <div className="flex gap-1.5">
+                    {sandboxSession.history.length > 0 && (
+                      <button type="button" onClick={undoBuild} className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground">
+                        <Undo2 className="size-3" /> 撤销
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSandboxSession(makeFreeSandboxSession());
+                        setSelectedNodeId("");
+                        setShowTrialVerdict(false);
+                        setFitToken((n) => n + 1);
+                      }}
+                      className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      <RotateCcw className="size-3" /> 清空
+                    </button>
+                  </div>
+                </div>
+
+                {/* Encapsulate as reusable Turing-style block */}
+                <div className="flex gap-1">
+                  <Input
+                    className="h-7 min-w-0 flex-1 text-[11px]"
+                    aria-label="封装模块名称"
+                    placeholder="为当前机器命名封装为新积木…"
+                    value={encapsulateDraft}
+                    onChange={(e) => setEncapsulateDraft(e.target.value)}
+                  />
+                  <Button size="sm" variant="secondary" className="h-7 shrink-0 px-2 text-[10px]" onClick={handleEncapsulateAsModule}>
+                    📦 封装模块
+                  </Button>
+                </div>
+
+                {/* Physical Trial Mode Selector & Launch */}
+                <div className="flex gap-1">
+                  <select
+                    aria-label="选择物理试机工况"
+                    className="h-7 flex-1 rounded border bg-background px-1.5 text-[11px]"
+                    value={sandboxTrialMode}
+                    onChange={(e) => {
+                      setSandboxTrialMode(e.target.value as TrialMode);
+                      setShowTrialVerdict(false);
+                    }}
+                  >
+                    <option value="milling-pocket">试切校友毛坯圆槽 (三轴铣)</option>
+                    <option value="xy-circle">画 Ø56 mm 圆弧插补 (双轴)</option>
+                    <option value="step-axis">单轴阶跃到位响应</option>
+                    <option value="arm-orbit">多自由度机械臂空间包络</option>
+                  </select>
+                  <Button size="sm" className="h-7 shrink-0 px-2 text-[11px]" onClick={handleRunTrial}>
+                    <Zap /> 通电试机
+                  </Button>
+                </div>
+
+                <div role="tablist" className="flex gap-1 pt-0.5">
+                  <Button
+                    size="sm"
+                    variant={sandboxLeftTab === "blocks" ? "default" : "ghost"}
+                    className="h-6 flex-1 text-[11px]"
+                    onClick={() => setSandboxLeftTab("blocks")}
+                  >
+                    🧱 积木与模组箱
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={sandboxLeftTab === "manual" ? "default" : "ghost"}
+                    className="h-6 flex-1 text-[11px]"
+                    onClick={() => setSandboxLeftTab("manual")}
+                  >
+                    🎛️ 手动摇动关节 ({solved.activeControls.length})
+                  </Button>
+                </div>
               </div>
 
-              {solved.activeControls.length === 0 ? (
-                <p className="rounded border bg-background/50 p-2.5 text-muted-foreground">
-                  当前拼装全部为刚性连接。切回「拼装积木」加上直线滑台/旋转关节，或在右栏把零件设为可动关节。
-                </p>
+              {showTrialVerdict && verdict && (
+                <div
+                  className={`shrink-0 space-y-1 rounded border p-2 text-[11px] ${
+                    verdict.passed ? "border-emerald-500/40 bg-emerald-500/10" : "border-amber-500/40 bg-amber-500/10"
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-semibold">
+                    <span>{verdict.passed ? `试机评级 ${verdict.grade}` : "物理校核提醒"}</span>
+                    <span className="mono text-[10px]">
+                      误差 ±{verdict.maxContourErrorMm}mm · 扭矩 {verdict.peakTorquePct}%
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">{verdict.diagnosis}</p>
+                </div>
+              )}
+
+              {sandboxLeftTab === "blocks" ? (
+                <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
+                  <div className="flex shrink-0 gap-1" role="tablist">
+                    {FILTER_TABS.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={paletteFilter === t.id}
+                        onClick={() => setPaletteFilter(t.id)}
+                        className={`flex-1 rounded px-1 py-0.5 text-[10px] font-medium ${
+                          paletteFilter === t.id ? "bg-primary text-primary-foreground" : "bg-background/50 text-muted-foreground"
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
+                    {/* Custom & Builtin Modules */}
+                    {(customModules.length > 0 || paletteFilter === "all") && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-sky-300">已封装可复用模块（双击直装）</p>
+                        {customModules.map((cm) => (
+                          <button
+                            key={cm.id}
+                            type="button"
+                            onClick={() => setArmedItem({ kind: "custom", id: cm.id })}
+                            onDoubleClick={() => quickAttachItem({ kind: "custom", id: cm.id })}
+                            className="flex w-full items-center justify-between rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-left text-[11px] hover:border-emerald-400"
+                          >
+                            <span className="truncate font-medium">{cm.name}</span>
+                            <span className="text-[10px] text-emerald-300">{cm.nodeCount}件</span>
+                          </button>
+                        ))}
+                        {MODULE_BLUEPRINTS.map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setArmedItem({ kind: "module", id: m.id })}
+                            onDoubleClick={() => quickAttachItem({ kind: "module", id: m.id })}
+                            className="flex w-full items-center justify-between rounded border border-sky-500/35 bg-sky-500/10 px-2 py-1 text-left text-[11px] hover:border-sky-400"
+                          >
+                            <span className="truncate font-medium">{m.name}</span>
+                            <span className="text-[10px] text-sky-300">总成</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {filteredBlocks.map((blk) => {
+                        const isArmed = armedItem?.kind === "block" && armedItem.id === blk.id;
+                        return (
+                          <button
+                            key={blk.id}
+                            type="button"
+                            title={blk.subtitle}
+                            onClick={() => {
+                              if (preferredParentId) quickAttachItem({ kind: "block", id: blk.id }, preferredParentId);
+                              else setArmedItem(isArmed ? null : { kind: "block", id: blk.id });
+                            }}
+                            onDoubleClick={() => quickAttachItem({ kind: "block", id: blk.id })}
+                            className={`relative flex flex-col items-center gap-1 rounded-md border p-2 text-center ${
+                              isArmed
+                                ? "border-primary bg-primary/15 ring-1 ring-primary"
+                                : "bg-background/50 hover:border-primary/40 hover:bg-accent/40"
+                            }`}
+                          >
+                            {blk.defaultJoint.type !== "fixed" && (
+                              <span className="absolute left-1 top-1 rounded bg-muted px-1 text-[9px] text-primary">
+                                {blk.defaultJoint.type === "slide" ? "滑" : "转"}
+                              </span>
+                            )}
+                            <SandboxBlockIcon shape={blk.spec.shape} finish={blk.spec.finish} blockId={blk.id} className="size-7" />
+                            <span className="line-clamp-2 text-[10px] font-medium leading-tight">{blk.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               ) : (
-                <div className="space-y-2">
-                  {solved.activeControls.map((ctrl) => {
-                    const unit = ctrl.joint.type === "slide" ? "mm" : "°";
-                    return (
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
+                  {solved.activeControls.length === 0 ? (
+                    <p className="rounded border bg-background/50 p-2.5 text-muted-foreground">
+                      暂无可动关节。添加导轨/回转关节或双击左栏零件设成 slide / hinge。
+                    </p>
+                  ) : (
+                    solved.activeControls.map((ctrl) => (
                       <label key={ctrl.path} className="block space-y-1 rounded border bg-background/60 p-2">
-                        <div className="flex items-center justify-between">
+                        <div className="flex justify-between">
                           <span className="truncate font-medium">{ctrl.label}</span>
                           <span className="mono text-primary">
-                            {formatNum(ctrl.value)} {unit}
+                            {formatNum(ctrl.value)} {ctrl.joint.type === "slide" ? "mm" : "°"}
                           </span>
                         </div>
                         <input
                           type="range"
-                          aria-label={`关节 ${ctrl.label}`}
                           min={ctrl.joint.range[0]}
                           max={ctrl.joint.range[1]}
                           step={ctrl.joint.type === "slide" ? 0.5 : 1}
                           value={ctrl.value}
                           className="h-4 w-full accent-primary"
                           onChange={(e) => {
-                            setAutoSweeping(false);
-                            applyCommandsAndScore({ ...state.commands, [ctrl.path]: Number(e.currentTarget.value) });
+                            setShowTrialVerdict(false);
+                            setTrialPlaying(false);
+                            setActiveEditorSession((prev) => ({
+                              ...prev,
+                              commands: { ...prev.commands, [ctrl.path]: Number(e.currentTarget.value) },
+                            }));
                           }}
                         />
                       </label>
-                    );
-                  })}
-                </div>
-              )}
-
-              {solved.coupledControls.length > 0 && (
-                <div className="space-y-1 border-t pt-2">
-                  <p className="font-medium text-muted-foreground">丝杠联动旋转（自动跟随）：</p>
-                  {solved.coupledControls.map((c) => (
-                    <div key={c.path} className="flex justify-between text-[11px]">
-                      <span className="truncate text-muted-foreground">{c.label}</span>
-                      <span className="mono">{formatNum(c.value)}°</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {mode === "explode" && (
-            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-0.5">
-              <div className="space-y-2 rounded-md border bg-background/60 p-2.5">
-                <label className="block space-y-1.5">
-                  <div className="flex items-center justify-between font-medium">
-                    <span>整机拆解展开</span>
-                    <span className="mono text-primary">{explodePct}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    aria-label="爆炸视图展开比例"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={explodePct}
-                    className="h-4 w-full accent-primary"
-                    onChange={(e) => setExplodePct(Number(e.currentTarget.value))}
-                  />
-                </label>
-                <div className="grid grid-cols-3 gap-1">
-                  <Button size="sm" variant={explodePct === 0 ? "secondary" : "ghost"} onClick={() => setExplodePct(0)}>
-                    收拢
-                  </Button>
-                  <Button size="sm" variant={explodePct === 45 ? "secondary" : "ghost"} onClick={() => setExplodePct(45)}>
-                    45%
-                  </Button>
-                  <Button size="sm" variant={explodePct === 100 ? "secondary" : "ghost"} onClick={() => setExplodePct(100)}>
-                    100%
-                  </Button>
-                </div>
-                <label className="flex items-center gap-2 pt-1">
-                  <input type="checkbox" checked={showLeaders} onChange={(e) => setShowLeaders(e.target.checked)} />
-                  <span>显示拆装引导虚线</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} />
-                  <span>显示零件浮动铭牌</span>
-                </label>
-                {selectedNodeId && (
-                  <label className="flex items-center gap-2 text-primary">
-                    <input type="checkbox" checked={subtreeOnly} onChange={(e) => setSubtreeOnly(e.target.checked)} />
-                    <span>仅炸开「{selectedSolved?.label ?? selectedNodeId}」分支</span>
-                  </label>
-                )}
-              </div>
-
-              {solved.activeControls.length > 0 && (
-                <div className="space-y-2 border-t pt-2">
-                  <p className="font-medium text-muted-foreground">边爆炸边试动关节：</p>
-                  {solved.activeControls.map((ctrl) => (
-                    <label key={ctrl.path} className="block space-y-1 rounded border bg-background/60 p-2">
-                      <div className="flex justify-between">
-                        <span className="truncate">{ctrl.label}</span>
-                        <span className="mono">{formatNum(ctrl.value)}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={ctrl.joint.range[0]}
-                        max={ctrl.joint.range[1]}
-                        step={ctrl.joint.type === "slide" ? 0.5 : 1}
-                        value={ctrl.value}
-                        className="h-4 w-full accent-primary"
-                        onChange={(e) => applyCommandsAndScore({ ...state.commands, [ctrl.path]: Number(e.currentTarget.value) })}
-                      />
-                    </label>
-                  ))}
+                    ))
+                  )}
                 </div>
               )}
             </div>
@@ -1147,22 +1583,24 @@ export default function SandboxBuilderStudio({
           )}
         </aside>
 
-        {/* Center 3D Viewport */}
+        {/* ============================================================ */}
+        {/* CENTER PANE: 3D Physical Showroom & Sandbox Viewport         */}
+        {/* ============================================================ */}
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-lg:row-start-1 lg:col-start-2 lg:row-start-1">
+          {/* Top Floating Banner */}
           <div className="pointer-events-none absolute inset-x-2.5 top-2.5 z-10 flex items-start justify-between gap-2">
-            <div className="pointer-events-auto flex max-w-xl flex-wrap items-center gap-1.5 rounded-full border border-primary/30 bg-[#101c1a]/90 px-3 py-1 text-xs text-foreground shadow-md backdrop-blur">
-              <span>{viewportBannerText}</span>
-              {armedBlockId && (
+            <div className="pointer-events-auto flex max-w-2xl flex-wrap items-center gap-1.5 rounded-full border border-primary/30 bg-[#101c1a]/92 px-3 py-1 text-xs text-foreground shadow-md backdrop-blur">
+              <span>{viewportHudText}</span>
+              {armedItem && isInteractiveBuild && (
                 <>
-                  <Button size="sm" className="h-5 px-2 text-[10px]" onClick={() => quickSnapBlock(armedBlockId)}>
-                    <Zap className="size-3" />
-                    自动吸到推荐位
+                  <Button size="sm" className="h-5 px-2 text-[10px]" onClick={() => quickAttachItem(armedItem)}>
+                    <Zap className="size-3" /> 自动吸上
                   </Button>
                   <button
                     type="button"
-                    className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
                     onClick={() => {
-                      setArmedBlockId(null);
+                      setArmedItem(null);
                       setPreferredParentId("");
                       setHoverHint("");
                     }}
@@ -1175,197 +1613,315 @@ export default function SandboxBuilderStudio({
 
             <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
               <Button size="sm" variant="secondary" className="h-7 px-2 text-xs shadow-md" onClick={() => setFitToken((n) => n + 1)}>
-                <RotateCcw />
-                居中视角
+                <RotateCcw /> 居中视角
               </Button>
               <Button
                 size="sm"
                 variant="secondary"
                 className="hidden h-7 px-2 text-xs shadow-md lg:inline-flex"
-                aria-label={outlinerOpen ? "收起右侧装配结构树" : "展开右侧装配结构树"}
+                aria-label={outlinerOpen ? "收起右侧透视与结构栏" : "展开右侧透视与结构栏"}
                 onClick={() => setOutlinerOpen((v) => !v)}
               >
                 {outlinerOpen ? <PanelRightClose /> : <PanelRightOpen />}
-                <span className="hidden xl:inline">{outlinerOpen ? "收起结构树" : "结构树"}</span>
               </Button>
             </div>
           </div>
 
           <SandboxViewport3D
-            workspace={state.workspace}
-            assembly={state.assembly}
-            mode={mode}
-            armedBlockId={armedBlockId}
+            workspace={activeSession.workspace}
+            assembly={activeSession.assembly}
+            mode={explodePct > 0 ? "explode" : isInteractiveBuild ? "build" : "test"}
+            armedBlockId={armedItem?.kind === "block" ? armedItem.id : armedItem ? "table_plate" : null}
             selectedNodeId={selectedNodeId}
             preferredParentId={preferredParentId}
-            commands={state.commands}
+            commands={viewportPlayback.commands}
             explodePct={explodePct}
-            subtreeOnly={subtreeOnly}
-            showLeaders={showLeaders}
-            showLabels={showLabels}
-            worldTargets={progress.worldTargets}
+            subtreeOnly={false}
+            showLeaders={explodePct > 0}
+            showLabels={explodePct > 0 || Boolean(selectedNodeId)}
+            worldTargets={[]}
             fitRequestToken={fitToken}
             onSelectNode={(id) => {
               setSelectedNodeId(id);
               setCustomWidthInput("");
             }}
-            onSnapBlock={handleSnapBlock}
+            onSnapBlock={(parentNodeId, parentMountId) => {
+              if (armedItem) applyModularInsert(armedItem, parentNodeId, parentMountId);
+            }}
             onHoverSnapChange={setHoverHint}
+            stockState={viewportPlayback.stockState}
+            xrayMode={xrayMode}
+            activeLayerId={pillar === "showroom" ? activeLayerId : null}
+            physicsHighlight={physicsHighlight}
+            idealTrailMm={viewportPlayback.idealTrailMm}
+            actualTrailMm={viewportPlayback.actualTrailMm}
+            trailInWorkpieceFrame={viewportPlayback.trailInWorkpieceFrame}
+            showTipMarker={viewportPlayback.showTipMarker}
           />
-        </main>
 
-        {/* Right Pane: Persistent Assembly Outliner Tree & Selected Part Inspector */}
-        <aside
-          aria-label="装配结构树与零件管理"
-          className={`surface min-h-0 flex-col overflow-hidden p-2.5 text-xs max-lg:row-start-3 lg:col-start-3 lg:row-start-1 ${
-            rightPaneVisible ? "flex" : outlinerOpen ? "hidden lg:flex" : "hidden"
-          }`}
-        >
-          {/* Section A: Hierarchy Outliner Tree */}
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between gap-1 border-b pb-1.5">
-              <h2 className="font-semibold text-foreground">装配结构树 ({state.assembly.nodes.length}件)</h2>
-              <span className="text-[10px] text-muted-foreground">点 + 挂载 · 点行选中</span>
-            </div>
-
-            {preferredParentNode && (
-              <div className="mt-1.5 flex shrink-0 items-center justify-between gap-1 rounded border border-sky-400/50 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-200">
-                <span className="truncate">正挂载到「{preferredParentNode.label ?? preferredParentNode.id}」</span>
-                <button
-                  type="button"
-                  className="shrink-0 underline hover:text-white"
-                  onClick={() => setPreferredParentId("")}
-                >
-                  清除
-                </button>
+          {/* Bottom Floating Live Causal Physics HUD */}
+          <div className="pointer-events-none absolute inset-x-2.5 bottom-9 z-10 hidden justify-center sm:flex">
+            <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[#0b1412]/90 px-3 py-1.5 text-[11px] shadow-lg backdrop-blur">
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">进给指令</span>
+                <span className="mono font-medium text-sky-300">{causalFeed} mm/s</span>
               </div>
-            )}
-
-            <div className="mt-1.5 min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">
-              {treeRows.map((row) => {
-                const isSel = selectedNodeId === row.id;
-                const isAttachTarget = preferredParentId === row.id;
-                return (
-                  <div
-                    key={row.id}
-                    className={`flex items-center gap-1 rounded border px-1.5 py-1 transition-colors ${
-                      isSel
-                        ? "border-primary bg-primary/15 text-foreground"
-                        : isAttachTarget
-                          ? "border-sky-400/60 bg-sky-500/10 text-foreground"
-                          : "border-transparent bg-background/40 hover:border-border hover:bg-accent/40"
-                    }`}
-                    style={{ paddingLeft: `${6 + Math.min(row.depth, 5) * 10}px` }}
-                  >
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                      onClick={() => {
-                        setSelectedNodeId(row.id);
-                        setCustomWidthInput("");
-                      }}
-                    >
-                      <SandboxBlockIcon shape={row.shape} finish={row.finish} className="size-4 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1">
-                          <span className="truncate font-medium">{row.label}</span>
-                          {row.isOutputTip && (
-                            <span className="shrink-0 rounded bg-orange-500/20 px-1 text-[9px] text-orange-300">末端</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
-                          <span>{row.jointSummary}</span>
-                          {!row.isRoot && <span>· {row.mountLabel}</span>}
-                        </div>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      aria-label={`在 ${row.label} 下挂载新积木`}
-                      title="在此零件上挂载新积木"
-                      className="shrink-0 rounded p-1 text-muted-foreground hover:bg-primary/20 hover:text-primary"
-                      onClick={() => {
-                        setPreferredParentId(row.id);
-                        setSelectedNodeId(row.id);
-                        setMode("build");
-                        setMobileTab("left");
-                      }}
-                    >
-                      <Plus className="size-3.5" />
-                    </button>
-                    {!row.isRoot && (
-                      <button
-                        type="button"
-                        aria-label={`拆除 ${row.label}`}
-                        title="拆除该积木及其子零件"
-                        className="shrink-0 rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
-                        onClick={() => deleteNodeById(row.id)}
-                      >
-                        <Trash2 className="size-3" />
-                      </button>
-                    )}
+              <span className="text-muted-foreground/40">→</span>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">电机扭矩负荷</span>
+                <span className={`mono font-semibold ${livePhysics.peakTorquePct > 100 ? "text-red-400" : "text-emerald-300"}`}>
+                  {livePhysics.peakTorquePct.toFixed(0)}%
+                </span>
+              </div>
+              <span className="text-muted-foreground/40">→</span>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">惯量比</span>
+                <span className={`mono font-medium ${livePhysics.maxInertiaRatio > 8 ? "text-amber-300" : "text-foreground"}`}>
+                  {livePhysics.maxInertiaRatio}:1
+                </span>
+              </div>
+              {livePhysics.hasSpindle && (
+                <>
+                  <span className="text-muted-foreground/40">→</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground">立柱让刀 δ</span>
+                    <span className={`mono font-medium ${livePhysics.columnDeflectionUm > 48 ? "text-red-400" : "text-emerald-300"}`}>
+                      {livePhysics.columnDeflectionUm} μm
+                    </span>
                   </div>
-                );
-              })}
+                </>
+              )}
+              {verdict && (
+                <>
+                  <span className="text-muted-foreground/40">→</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground">{livePhysics.hasSpindle ? "实切误差" : "跟随精度"}</span>
+                    <span className={`mono font-semibold ${verdict.passed ? "text-emerald-300" : "text-amber-300"}`}>
+                      ±{verdict.maxContourErrorMm} mm ({verdict.grade})
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
+        </main>
 
-          {/* Section B: Contextual Selected Node Inspector or Management Quick-Card */}
-          <div className="mt-2 max-h-[52%] shrink-0 space-y-2 overflow-y-auto border-t pt-2">
-            {selectedSolved && selectedRawNode ? (
-              <>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="truncate font-semibold text-primary">编辑 · {selectedSolved.label}</span>
-                  <button
-                    type="button"
-                    aria-label="取消选中零件"
-                    className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-                    onClick={() => setSelectedNodeId("")}
-                  >
-                    <X className="size-3.5" />
-                  </button>
+        {/* ============================================================ */}
+        {/* RIGHT PANE: Layer Dissection (Showroom) OR Outliner & Physics*/}
+        {/* ============================================================ */}
+        <aside
+          aria-label="右栏原理透视与结构管理"
+          className={`surface min-h-0 flex-col overflow-hidden p-2.5 text-xs max-lg:row-start-3 lg:col-start-3 lg:row-start-1 ${
+            mobileTab === "right" ? "flex" : outlinerOpen ? "hidden lg:flex" : "hidden"
+          }`}
+        >
+          {pillar === "showroom" && (
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+              <div className="shrink-0 space-y-1.5">
+                <div className="flex items-center justify-between border-b pb-1">
+                  <h2 className="font-semibold text-foreground">四层功能解剖透视</h2>
+                  {activeLayerId && (
+                    <button type="button" className="text-[10px] text-primary underline" onClick={() => setActiveLayerId(null)}>
+                      显示全机
+                    </button>
+                  )}
                 </div>
 
-                <label className="block space-y-1">
-                  <span className="field-label">零件名称</span>
-                  <Input
-                    className="h-7 text-xs"
-                    defaultValue={selectedSolved.label}
-                    key={`name-${selectedRawNode.id}-${selectedRawNode.packageKey}`}
-                    onBlur={(e) => {
-                      const next = e.target.value.trim();
-                      if (next && next !== selectedSolved.label) mutateNode(selectedRawNode.id, { label: next });
-                    }}
-                  />
-                </label>
+                {FUNCTIONAL_LAYERS.map((layer) => {
+                  const active = activeLayerId === layer.id;
+                  const count = solved.nodes.filter((n) => classifyNodeFunctionalLayer(n.pkg) === layer.id).length;
+                  return (
+                    <button
+                      key={layer.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveLayerId(active ? null : layer.id);
+                        setXrayMode(true);
+                      }}
+                      className={`w-full rounded-md border p-2 text-left transition-colors ${
+                        active ? "border-primary bg-primary/15 text-foreground ring-1 ring-primary" : "bg-background/50 hover:border-primary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-semibold">{layer.name}</span>
+                        <span className="rounded bg-muted px-1 py-0.5 text-[9px] text-primary">{count}件</span>
+                      </div>
+                      <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{layer.roleSummary}</p>
+                      <p className="mono mt-1 text-[10px] text-sky-300">{layer.formulaText}</p>
+                    </button>
+                  );
+                })}
+              </div>
 
-                {selectedPkg?.primitive && (
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="field-label">主长度 / 宽 (mm)</span>
-                      {selectedCurrentPrimaryLen !== undefined && (
-                        <span className="mono text-[10px] text-muted-foreground">当前 {formatNum(selectedCurrentPrimaryLen)} mm</span>
-                      )}
+              {livePhysics.warnings.length > 0 && (
+                <div className="shrink-0 space-y-1 rounded border border-red-400/50 bg-red-500/10 p-2 text-[10px] text-red-200">
+                  {livePhysics.warnings.map((w) => (
+                    <p key={w}>⚠️ {w}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t pt-2">
+                <p className="shrink-0 text-[11px] font-medium text-muted-foreground">
+                  整机零件拓扑 ({activeSession.assembly.nodes.length}件) · 点击零件定位
+                </p>
+                <div className="mt-1 min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-0.5">
+                  {treeRows.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setSelectedNodeId(r.id)}
+                      className={`flex w-full items-center justify-between rounded px-1.5 py-1 text-left text-[11px] ${
+                        selectedNodeId === r.id ? "bg-primary/20 text-foreground" : "hover:bg-accent/40 text-muted-foreground"
+                      }`}
+                      style={{ paddingLeft: `${6 + Math.min(r.depth, 4) * 10}px` }}
+                    >
+                      <span className="truncate">{r.label}</span>
+                      <span className="shrink-0 text-[9px]">{r.jointSummary}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {pillar !== "showroom" && (
+            <>
+              {/* Live Pre-Check Physics Meter Strip */}
+              <div className="mb-2 shrink-0 space-y-1 rounded-md border bg-background/60 p-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-foreground">实时力学与结构预检</span>
+                  <span className="mono text-[10px] text-primary">¥{livePhysics.totalCostCny}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1 text-center text-[10px]">
+                  <div className="rounded bg-background/80 p-1">
+                    <div className="text-muted-foreground">峰值扭矩</div>
+                    <div className={`mono font-semibold ${livePhysics.peakTorquePct > 100 ? "text-red-400" : "text-emerald-300"}`}>
+                      {livePhysics.peakTorquePct.toFixed(0)}%
                     </div>
+                  </div>
+                  <div className="rounded bg-background/80 p-1">
+                    <div className="text-muted-foreground">让刀变形</div>
+                    <div
+                      className={`mono font-semibold ${
+                        !livePhysics.hasSpindle
+                          ? "text-muted-foreground"
+                          : livePhysics.columnDeflectionUm > 48
+                            ? "text-amber-300"
+                            : "text-emerald-300"
+                      }`}
+                    >
+                      {livePhysics.hasSpindle ? `${livePhysics.columnDeflectionUm}μm` : "无主轴"}
+                    </div>
+                  </div>
+                  <div className="rounded bg-background/80 p-1">
+                    <div className="text-muted-foreground">总质量</div>
+                    <div className="mono font-semibold text-foreground">{livePhysics.totalMassKg}kg</div>
+                  </div>
+                </div>
+                {livePhysics.warnings[0] && (
+                  <p className="text-[10px] leading-snug text-amber-300">⚠️ {livePhysics.warnings[0]}</p>
+                )}
+              </div>
+
+              {/* Assembly Hierarchy Outliner Tree */}
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="flex shrink-0 items-center justify-between gap-1 border-b pb-1">
+                  <h2 className="font-semibold text-foreground">装配结构树 ({activeSession.assembly.nodes.length}件)</h2>
+                  <span className="text-[10px] text-muted-foreground">点 + 挂载子件</span>
+                </div>
+
+                <div className="mt-1.5 min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">
+                  {treeRows.map((row) => {
+                    const isSel = selectedNodeId === row.id;
+                    return (
+                      <div
+                        key={row.id}
+                        className={`flex items-center gap-1 rounded border px-1.5 py-1 transition-colors ${
+                          isSel
+                            ? "border-primary bg-primary/15 text-foreground"
+                            : preferredParentId === row.id
+                              ? "border-sky-400/60 bg-sky-500/10"
+                              : "border-transparent bg-background/40 hover:border-border"
+                        }`}
+                        style={{ paddingLeft: `${6 + Math.min(row.depth, 5) * 10}px` }}
+                      >
+                        <button
+                          type="button"
+                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                          onClick={() => {
+                            setSelectedNodeId(row.id);
+                            setCustomWidthInput("");
+                          }}
+                        >
+                          <SandboxBlockIcon shape={row.shape} finish={row.finish} className="size-4 shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1">
+                              <span className="truncate font-medium">{row.label}</span>
+                              {row.isOutputTip && (
+                                <span className="shrink-0 rounded bg-orange-500/20 px-1 text-[9px] text-orange-300">末端</span>
+                              )}
+                            </div>
+                            <div className="text-[9px] text-muted-foreground">
+                              {row.jointSummary}
+                              {!row.isRoot ? ` · ${row.mountLabel}` : ""}
+                            </div>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`在 ${row.label} 下挂载新零件`}
+                          title="指定将下一个积木装到这个零件上"
+                          className="shrink-0 rounded p-1 text-muted-foreground hover:bg-primary/20 hover:text-primary"
+                          onClick={() => {
+                            setPreferredParentId(row.id);
+                            setSelectedNodeId(row.id);
+                            setMobileTab("left");
+                          }}
+                        >
+                          <Plus className="size-3.5" />
+                        </button>
+                        {!row.isRoot && (
+                          <button
+                            type="button"
+                            aria-label={`拆除 ${row.label}`}
+                            className="shrink-0 rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                            onClick={() => deleteNodeById(row.id)}
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Selected Part Tweaker */}
+              {selectedSolved && selectedRawNode && (
+                <div className="mt-2 max-h-[50%] shrink-0 space-y-2 overflow-y-auto border-t pt-2">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="truncate font-semibold text-primary">调整 · {selectedSolved.label}</span>
+                    <button type="button" aria-label="关闭零件编辑" onClick={() => setSelectedNodeId("")}>
+                      <X className="size-3.5 text-muted-foreground hover:text-foreground" />
+                    </button>
+                  </div>
+
+                  {selectedPkg?.primitive && (
                     <div className="flex items-center gap-1">
                       <Button
                         size="sm"
                         variant="outline"
                         className="h-7 px-1.5 text-[10px]"
-                        disabled={(selectedCurrentPrimaryLen ?? 40) <= 30}
-                        onClick={() => {
-                          if (selectedCurrentPrimaryLen) {
-                            mutateNode(selectedRawNode.id, { primaryLengthMm: Math.max(15, selectedCurrentPrimaryLen - 20) });
-                          }
-                        }}
+                        disabled={(selectedPrimaryLen ?? 40) <= 30}
+                        onClick={() => selectedPrimaryLen && mutateSelectedNode(selectedRawNode.id, { primaryLengthMm: Math.max(15, selectedPrimaryLen - 20) })}
                       >
                         -20
                       </Button>
                       <Input
                         type="number"
                         className="h-7 min-w-0 flex-1 text-xs"
-                        placeholder={selectedCurrentPrimaryLen ? String(selectedCurrentPrimaryLen) : "输入毫米"}
+                        placeholder={selectedPrimaryLen ? `${selectedPrimaryLen}mm` : "毫米"}
                         value={customWidthInput}
                         onChange={(e) => setCustomWidthInput(e.target.value)}
                       />
@@ -1375,7 +1931,7 @@ export default function SandboxBuilderStudio({
                         className="h-7 px-2 text-[10px]"
                         onClick={() => {
                           const v = Number(customWidthInput);
-                          if (v > 0) mutateNode(selectedRawNode.id, { primaryLengthMm: v });
+                          if (v > 0) mutateSelectedNode(selectedRawNode.id, { primaryLengthMm: v });
                         }}
                       >
                         改
@@ -1384,268 +1940,144 @@ export default function SandboxBuilderStudio({
                         size="sm"
                         variant="outline"
                         className="h-7 px-1.5 text-[10px]"
-                        onClick={() => {
-                          if (selectedCurrentPrimaryLen) {
-                            mutateNode(selectedRawNode.id, { primaryLengthMm: selectedCurrentPrimaryLen + 20 });
-                          }
-                        }}
+                        onClick={() => selectedPrimaryLen && mutateSelectedNode(selectedRawNode.id, { primaryLengthMm: selectedPrimaryLen + 20 })}
                       >
                         +20
                       </Button>
                     </div>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap gap-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 flex-1 text-[11px]"
-                    onClick={() => mutateNode(selectedRawNode.id, { rotateZ90: true })}
-                  >
-                    绕 Z 转 90°
-                  </Button>
-                  {selectedPkg?.primitive && "axis" in selectedPkg.primitive && (
-                    <select
-                      aria-label="切换延伸轴"
-                      className="h-7 rounded border bg-background px-1.5 text-[11px]"
-                      value={selectedPkg.primitive.axis}
-                      onChange={(e) => mutateNode(selectedRawNode.id, { axis: e.target.value as AxisDir })}
-                    >
-                      <option value="x">沿 X</option>
-                      <option value="y">沿 Y</option>
-                      <option value="z">沿 Z</option>
-                    </select>
                   )}
-                </div>
 
-                {selectedPart && (
-                  <label className="block space-y-1">
-                    <span className="field-label">运动连接方式</span>
+                  <div className="flex flex-wrap gap-1">
+                    <Button size="sm" variant="outline" className="h-7 flex-1 text-[11px]" onClick={() => mutateSelectedNode(selectedRawNode.id, { rotateZ90: true })}>
+                      绕 Z 转 90°
+                    </Button>
+                    {selectedPkg?.primitive && "axis" in selectedPkg.primitive && (
+                      <select
+                        aria-label="切换方向轴"
+                        className="h-7 rounded border bg-background px-1.5 text-[11px]"
+                        value={selectedPkg.primitive.axis}
+                        onChange={(e) => mutateSelectedNode(selectedRawNode.id, { axis: e.target.value as AxisDir })}
+                      >
+                        <option value="x">沿 X</option>
+                        <option value="y">沿 Y</option>
+                        <option value="z">沿 Z</option>
+                      </select>
+                    )}
+                  </div>
+
+                  {selectedPart && (
                     <select
-                      aria-label="运动连接方式"
+                      aria-label="运动连接副类型"
                       className="h-7 w-full rounded border bg-background px-1.5 text-[11px]"
                       value={selectedPart.joint.type}
                       onChange={(e) =>
-                        mutateNode(selectedRawNode.id, { jointType: e.target.value as "fixed" | "slide" | "hinge" })
+                        mutateSelectedNode(selectedRawNode.id, { jointType: e.target.value as "fixed" | "slide" | "hinge" })
                       }
                     >
                       <option value="fixed">fixed（刚性固定）</option>
-                      <option value="slide">slide（直线滑动 ±120mm）</option>
-                      <option value="hinge">hinge（旋转角度 ±180°）</option>
+                      <option value="slide">slide（直线滑动）</option>
+                      <option value="hinge">hinge（旋转关节）</option>
                     </select>
-                  </label>
-                )}
+                  )}
 
-                <label className="block space-y-1">
-                  <span className="field-label">替换为真实品牌型号</span>
                   <select
-                    aria-label="换用真实品牌型号"
+                    aria-label="更换为真实厂商零件型号"
                     className="h-7 w-full rounded border bg-background px-1.5 text-[11px]"
                     value=""
-                    onChange={(e) => {
-                      if (e.target.value) mutateNode(selectedRawNode.id, { vendorPresetId: e.target.value });
-                    }}
+                    onChange={(e) => e.target.value && mutateSelectedNode(selectedRawNode.id, { vendorPresetId: e.target.value })}
                   >
-                    <option value="">
-                      {selectedPkg?.manufacturer} · {selectedPkg?.model}
-                    </option>
+                    <option value="">换现实品牌：{selectedPkg?.manufacturer} · {selectedPkg?.model}</option>
                     {REAL_VENDOR_BOM_PRESETS.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        换为 {v.label}
-                      </option>
+                      <option key={v.id} value={v.id}>换为 {v.label}</option>
                     ))}
                   </select>
-                </label>
 
-                {selectedRawNode.parent !== null && (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="h-7 w-full text-[11px]"
-                    onClick={() => deleteNodeById(selectedRawNode.id)}
-                  >
-                    <Trash2 />
-                    拆除该积木及下级子件
-                  </Button>
-                )}
-              </>
-            ) : (
-              <div className="space-y-2 rounded border bg-background/50 p-2 text-[11px] text-muted-foreground">
-                <p className="leading-relaxed">
-                  点击上方结构树或 3D 视口中的任意零件，即可调整尺寸、旋转方向、设成可动关节，或换用松下/汇川真实型号。
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  <Button size="sm" variant="outline" className="h-7 flex-1 text-[11px]" onClick={() => handleSaveCurrentMachine()}>
-                    <Save /> 保存当前作品
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-7 flex-1 text-[11px]"
-                    onClick={() => {
-                      setProjectTab("saved");
-                      setSaveNameDraft(state.assembly.name);
-                      setProjectManagerOpen(true);
-                    }}
-                  >
-                    <FolderOpen /> 我的机器库 ({savedMachines.length})
-                  </Button>
+                  {selectedRawNode.parent !== null && (
+                    <Button size="sm" variant="destructive" className="h-7 w-full text-[11px]" onClick={() => deleteNodeById(selectedRawNode.id)}>
+                      <Trash2 /> 拆掉此积木及下级子件
+                    </Button>
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </>
+          )}
         </aside>
       </div>
 
-      {/* Challenge & Saved Machines Manager Dialog */}
-      <Dialog open={projectManagerOpen} onOpenChange={setProjectManagerOpen}>
-        <DialogContent className="max-h-[88dvh] overflow-y-auto sm:max-w-2xl">
+      {/* Saved Machines Library & Quick Exhibit Loader Dialog */}
+      <Dialog open={libraryOpen} onOpenChange={setLibraryOpen}>
+        <DialogContent className="max-h-[86dvh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>关卡挑战与我的机器作品库</DialogTitle>
+            <DialogTitle>我的机器作品库与展馆样机</DialogTitle>
             <DialogDescription>
-              在这里切换闯关关卡、加载标准可动机器成品，或将你创造的新机器保存、复制与管理到本机工程库。
+              把你设计的构型保存到本机浏览器的工程库中，随时继续改造、封装成模块或推入 Modelica 闭环深度校验。
             </DialogDescription>
           </DialogHeader>
 
-          <div role="tablist" className="flex gap-1 border-b pb-2">
-            <Button
-              size="sm"
-              variant={projectTab === "challenges" ? "secondary" : "ghost"}
-              onClick={() => setProjectTab("challenges")}
-            >
-              🏆 渐进闯关 ({state.completedIds.size}/4 已通关)
-            </Button>
-            <Button
-              size="sm"
-              variant={projectTab === "saved" ? "secondary" : "ghost"}
-              onClick={() => setProjectTab("saved")}
-            >
-              <FolderOpen /> 我的机器库 ({savedMachines.length} 件)
-            </Button>
-          </div>
-
-          {projectTab === "challenges" ? (
-            <div className="grid gap-2 text-xs">
-              {SANDBOX_CHALLENGES.map((c) => {
-                const isCurrent = c.id === state.challengeId && !isUserSavedMachine;
-                const isDone = state.completedIds.has(c.id);
-                return (
-                  <div
-                    key={c.id}
-                    className={`rounded-md border p-3 ${isCurrent ? "border-primary bg-primary/10" : "bg-background/60"}`}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                          {c.badge}
-                        </span>
-                        <span className="font-semibold text-foreground">{c.title}</span>
-                        {isDone && (
-                          <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] text-emerald-300">
-                            ✅ 已通关
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Button size="sm" variant={isCurrent ? "default" : "outline"} onClick={() => switchChallenge(c.id)}>
-                          {isCurrent ? "重置本关" : "开始拼装"}
-                        </Button>
-                        {c.id !== "free-sandbox" && (
-                          <Button size="sm" variant="secondary" onClick={() => loadReferenceSolution(c.id)}>
-                            看完整参考成品
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                    <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{c.story}</p>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="space-y-3 text-xs">
-              <div className="space-y-2 rounded-md border bg-background/60 p-3">
-                <p className="font-medium text-foreground">保存当前工坊中的机器设计</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    className="h-8 min-w-44 flex-1 text-xs"
-                    aria-label="保存的机器名称"
-                    placeholder="给你的机器取个名字（如：四轴桁架机械手）"
-                    value={saveNameDraft}
-                    onChange={(e) => setSaveNameDraft(e.target.value)}
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() => handleSaveCurrentMachine({ customName: saveNameDraft })}
-                  >
-                    <Save /> 保存当前
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleSaveCurrentMachine({ asNewCopy: true, customName: saveNameDraft })}
-                  >
-                    另存为新作品
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => switchChallenge("free-sandbox")}>
-                    + 新建空白构型
-                  </Button>
-                </div>
+          <div className="space-y-3 text-xs">
+            {pillar !== "showroom" && (
+              <div className="flex flex-wrap items-center gap-2 rounded border bg-background/60 p-2.5">
+                <Input
+                  className="h-8 min-w-44 flex-1 text-xs"
+                  aria-label="保存的机器名称"
+                  value={saveNameDraft}
+                  onChange={(e) => setSaveNameDraft(e.target.value)}
+                  placeholder="填写作品名称（如：双立柱高刚性铣床）"
+                />
+                <Button size="sm" onClick={() => handleSaveCurrentMachine({ customName: saveNameDraft })}>
+                  <Save /> 保存当前
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleSaveCurrentMachine({ asNewCopy: true, customName: saveNameDraft })}>
+                  另存副本
+                </Button>
               </div>
+            )}
 
+            <div className="space-y-1.5">
+              <p className="font-semibold text-foreground">已保存的机器工程（{savedMachines.length}件）</p>
               {savedMachines.length === 0 ? (
-                <div className="rounded-md border border-dashed p-6 text-center text-muted-foreground">
-                  还没有保存过的机器作品。拼出构型后点击上方「保存当前」即可长期留存在浏览器本地工程中，并同步用于 BOM 采购和 Modelica 仿真。
-                </div>
+                <p className="rounded border border-dashed p-4 text-center text-muted-foreground">
+                  暂无保存作品。在「⚡ 造物演进委托」或「🧱 自由创造」拼装后点击「保存」即可收录在此。
+                </p>
               ) : (
-                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                  {savedMachines.map((m) => (
-                    <div
-                      key={m.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background/60 p-2.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-foreground">{m.name}</p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {m.nodes.length} 个积木零件 · {Object.keys(m.commands).length} 个可控关节
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Button size="sm" variant="default" onClick={() => handleLoadSavedMachine(m.id)}>
-                          打开编辑
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label={`删除机器 ${m.name}`}
-                          onClick={() => handleDeleteSavedMachine(m.id)}
-                        >
-                          <Trash2 className="size-3.5 text-destructive" />
-                        </Button>
-                      </div>
+                savedMachines.map((m) => (
+                  <div key={m.id} className="flex items-center justify-between gap-2 rounded border bg-background/60 p-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-foreground">{m.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{m.nodes.length} 个零件 · {Object.keys(m.commands).length} 个可动自由度</p>
                     </div>
-                  ))}
-                </div>
+                    <div className="flex gap-1">
+                      <Button size="sm" onClick={() => handleOpenSavedMachine(m.id)}>打开编辑</Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`删除 ${m.name}`}
+                        onClick={() => onSaveWorkspace(deleteSandboxMachineFromWorkspace(workspace, m.id))}
+                      >
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
-          )}
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* On-Demand Hardware BOM + Photo Intake + Closed-Loop Dialog */}
+      {/* Hardware BOM + Photo Intake + Modelica Closed-Loop Dialog */}
       <Dialog open={bomOpen} onOpenChange={setBomOpen}>
         <DialogContent className="max-h-[88dvh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>当前拼装清单（BOM）与现实设备落地</DialogTitle>
+            <DialogTitle>现实采购 BOM 清单（预估总价 ¥{livePhysics.totalCostCny} · 整机 {livePhysics.totalMassKg} kg）</DialogTitle>
             <DialogDescription>
-              先从数学基本件创造构型，随时在此一步替换为汇川/松下/台达/PMI/THK 真实型号，或直接转入 Modelica 闭环动态校验。
+              先从数学力学构型完成验证，再在此将电机/丝杠/开关切换为汇川、松下、台达、PMI、THK、欧姆龙真实型号或导出采购 CSV。
             </DialogDescription>
           </DialogHeader>
 
           <div role="tablist" className="flex gap-1 border-b pb-2">
             <Button size="sm" variant={bomTab === "bom" ? "secondary" : "ghost"} onClick={() => setBomTab("bom")}>
-              <Package /> BOM 清单与闭环转发 ({bomRows.length} 类)
+              <Package /> BOM 与真实型号替换 ({bomRows.length}类)
             </Button>
             <Button size="sm" variant={bomTab === "photo" ? "secondary" : "ghost"} onClick={() => setBomTab("photo")}>
               <Camera /> 拍照识别实物铭牌入库
@@ -1659,10 +2091,10 @@ export default function SandboxBuilderStudio({
                   <thead className="border-b bg-muted/40 text-[11px] text-muted-foreground">
                     <tr>
                       <th className="p-2">品牌 / 型号</th>
-                      <th className="p-2">积木类别</th>
+                      <th className="p-2">类别</th>
                       <th className="p-2">包络尺寸</th>
                       <th className="p-2 text-right">用量</th>
-                      <th className="p-2">状态 / 换真实件</th>
+                      <th className="p-2">真实件映射 / 状态</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -1676,7 +2108,7 @@ export default function SandboxBuilderStudio({
                         <td className="mono p-2 text-[11px]">{row.dimensionsText}</td>
                         <td className="mono p-2 text-right">×{row.quantity}</td>
                         <td className="p-2">
-                          {row.suggestedPresetCategory ? (
+                          {row.suggestedPresetCategory && pillar !== "showroom" ? (
                             <select
                               aria-label={`替换 ${row.model} 为真实厂商件`}
                               className="h-7 max-w-44 rounded border bg-background px-1.5 text-[11px]"
@@ -1684,29 +2116,17 @@ export default function SandboxBuilderStudio({
                               onChange={(e) => {
                                 const presetId = e.target.value;
                                 const firstNodeId = row.nodeIds[0];
-                                if (presetId && firstNodeId) {
-                                  const res = updateSandboxNode(state.workspace, state.assembly, firstNodeId, {
-                                    vendorPresetId: presetId,
-                                  });
-                                  setState((prev) => ({
-                                    ...prev,
-                                    workspace: res.workspace,
-                                    assembly: res.assembly,
-                                    dirty: true,
-                                  }));
-                                }
+                                if (presetId && firstNodeId) mutateSelectedNode(firstNodeId, { vendorPresetId: presetId });
                               }}
                             >
-                              <option value="">{row.hasRealBehavior ? "已带物理模型 · 可换" : "选真实型号…"}</option>
+                              <option value="">{row.hasRealBehavior ? "已绑定物理型号 · 可换" : "选真实品牌…"}</option>
                               {REAL_VENDOR_BOM_PRESETS.filter((p) => p.category === row.suggestedPresetCategory).map((v) => (
-                                <option key={v.id} value={v.id}>
-                                  {v.label}
-                                </option>
+                                <option key={v.id} value={v.id}>{v.label}</option>
                               ))}
                             </select>
                           ) : (
                             <span className={row.hasRealBehavior ? "text-emerald-400" : "text-muted-foreground"}>
-                              {row.hasRealBehavior ? "带质量/行为绑定" : "标准结构件"}
+                              {row.hasRealBehavior ? "带质量/惯量行为" : "标准结构基本件"}
                             </span>
                           )}
                         </td>
@@ -1720,14 +2140,12 @@ export default function SandboxBuilderStudio({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => downloadBlob(sandboxBomToCsv(bomRows), `${state.assembly.name}-bom.csv`, "text/csv;charset=utf-8")}
+                  onClick={() => downloadBlob(sandboxBomToCsv(bomRows), `${activeSession.assembly.name}-bom.csv`, "text/csv;charset=utf-8")}
                 >
-                  <Download />
-                  导出采购 BOM CSV
+                  <Download /> 导出采购 BOM CSV
                 </Button>
                 <Button size="sm" onClick={launchClosedLoopTwin}>
-                  <Sparkles />
-                  一键送入 Modelica 闭环深度校验 →
+                  <Sparkles /> 送入底层 Modelica 闭环深度校核 →
                 </Button>
               </div>
             </div>

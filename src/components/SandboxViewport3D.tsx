@@ -6,7 +6,12 @@ import {
   solveArticulatedAssembly,
   type ArticulatedSolveResult,
 } from "@contracts/articulated-kinematics";
+import {
+  classifyNodeFunctionalLayer,
+  type FunctionalLayerId,
+} from "@contracts/machine-evolution";
 import type { MechanicalAssembly } from "@contracts/mechanical-assembly";
+import { MILO_STOCK, type MiloStockState } from "@contracts/milo-stock";
 import { primitiveBoundingBoxMm } from "@contracts/primitive-parts";
 import {
   SANDBOX_BLOCKS,
@@ -15,6 +20,7 @@ import {
 } from "@contracts/sandbox-challenges";
 import { buildPrimitivePartPackage, packageKey } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { createMiloStockMesh } from "./milo-stock-geometry";
 import { createPrimitivePartGroup, disposeGroupResources } from "./primitive-part-mesh";
 
 export interface SandboxViewport3DProps {
@@ -34,6 +40,21 @@ export interface SandboxViewport3DProps {
   onSelectNode: (nodeId: string) => void;
   onSnapBlock: (parentNodeId: string, parentMountId: string) => void;
   onHoverSnapChange?: (label: string) => void;
+  // Enhanced showroom & trial simulation overlays
+  stockState?: MiloStockState | null;
+  xrayMode?: boolean;
+  activeLayerId?: FunctionalLayerId | null;
+  physicsHighlight?: {
+    readonly overloadedNodeIds: readonly string[];
+    readonly columnDeflectionUm: number;
+    readonly cuttingForceN: number;
+    readonly thrustForceN: number;
+    readonly hasSpindle?: boolean;
+  };
+  idealTrailMm?: readonly (readonly [number, number, number])[];
+  actualTrailMm?: readonly (readonly [number, number, number])[];
+  trailInWorkpieceFrame?: boolean;
+  showTipMarker?: boolean;
 }
 
 const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v));
@@ -83,6 +104,14 @@ export default function SandboxViewport3D({
   onSelectNode,
   onSnapBlock,
   onHoverSnapChange,
+  stockState,
+  xrayMode = false,
+  activeLayerId = null,
+  physicsHighlight,
+  idealTrailMm,
+  actualTrailMm,
+  trailInWorkpieceFrame = false,
+  showTipMarker = false,
 }: SandboxViewport3DProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneCtxRef = useRef<{
@@ -94,6 +123,10 @@ export default function SandboxViewport3D({
     snapGroup: THREE.Group;
     targetsGroup: THREE.Group;
     ghostGroup: THREE.Group;
+    stockAnchorGroup: THREE.Group;
+    stockMeshCtrl: ReturnType<typeof createMiloStockMesh>;
+    trailsGroup: THREE.Group;
+    xrayGroup: THREE.Group;
     nodeObjects: Map<string, THREE.Group>;
     snapMeshes: Array<{
       mesh: THREE.Mesh;
@@ -108,6 +141,7 @@ export default function SandboxViewport3D({
     labelsOverlay: HTMLDivElement;
     targetsOverlay: HTMLDivElement;
     tipBadgeEl: HTMLDivElement;
+    xrayBadgeEl: HTMLDivElement;
     labelEls: Map<string, HTMLButtonElement>;
     targetBadgeEls: Map<string, HTMLDivElement>;
     lastAutoFitKey: string;
@@ -137,6 +171,11 @@ export default function SandboxViewport3D({
   const showLabelsRef = useRef(showLabels);
   const explodePctRef = useRef(effectiveExplodePct);
   const worldTargetsRef = useRef(worldTargets);
+  const stockStateRef = useRef(stockState);
+  const xrayModeRef = useRef(xrayMode);
+  const physicsRef = useRef(physicsHighlight);
+  const trailInWorkpieceRef = useRef(trailInWorkpieceFrame);
+  const showTipMarkerRef = useRef(showTipMarker);
   const onSelectRef = useRef(onSelectNode);
   const onSnapRef = useRef(onSnapBlock);
   const onHoverRef = useRef(onHoverSnapChange);
@@ -151,6 +190,11 @@ export default function SandboxViewport3D({
     showLabelsRef.current = showLabels;
     explodePctRef.current = effectiveExplodePct;
     worldTargetsRef.current = worldTargets;
+    stockStateRef.current = stockState;
+    xrayModeRef.current = xrayMode;
+    physicsRef.current = physicsHighlight;
+    trailInWorkpieceRef.current = trailInWorkpieceFrame;
+    showTipMarkerRef.current = showTipMarker;
     onSelectRef.current = onSelectNode;
     onSnapRef.current = onSnapBlock;
     onHoverRef.current = onHoverSnapChange;
@@ -164,6 +208,11 @@ export default function SandboxViewport3D({
     showLabels,
     effectiveExplodePct,
     worldTargets,
+    stockState,
+    xrayMode,
+    physicsHighlight,
+    trailInWorkpieceFrame,
+    showTipMarker,
     onSelectNode,
     onSnapBlock,
     onHoverSnapChange,
@@ -174,18 +223,60 @@ export default function SandboxViewport3D({
     if (!ctx) return;
     const current = solvedRef.current;
 
+    let wpNode: (typeof current.nodes)[number] | undefined;
     for (const node of current.nodes) {
       const grp = ctx.nodeObjects.get(node.path);
       if (!grp) continue;
+      grp.visible = true;
       grp.matrixAutoUpdate = false;
       grp.matrix.copy(node.explodedMatrix);
       grp.matrixWorldNeedsUpdate = true;
+
+      const isWp =
+        node.pkg?.primitive?.finish === "workpiece_alloy" ||
+        node.id.toLowerCase().includes("workpiece") ||
+        node.label.includes("毛坯");
+      if (isWp) wpNode = node;
     }
+
+    // Real 3D milled voxel aluminum stock aligned flush onto the workpiece node
+    const curStock = stockStateRef.current;
+    if (curStock && wpNode) {
+      const wpGrp = ctx.nodeObjects.get(wpNode.path);
+      if (wpGrp) wpGrp.visible = false;
+      const wpDims = wpNode.pkg?.primitive ? primitiveBoundingBoxMm(wpNode.pkg.primitive) : ([110, 90, 26] as const);
+      ctx.stockAnchorGroup.visible = true;
+      ctx.stockAnchorGroup.matrixAutoUpdate = false;
+      ctx.stockAnchorGroup.matrix.copy(wpNode.explodedMatrix);
+      ctx.stockAnchorGroup.matrixWorldNeedsUpdate = true;
+      ctx.stockMeshCtrl.mesh.scale.set(
+        wpDims[0] / MILO_STOCK.widthMm,
+        wpDims[1] / MILO_STOCK.heightMm,
+        wpDims[2] / MILO_STOCK.thicknessMm,
+      );
+      ctx.stockMeshCtrl.mesh.position.set(-wpDims[0] / 2, -wpDims[1] / 2, wpDims[2] / 2);
+      ctx.stockMeshCtrl.update(curStock);
+    } else {
+      ctx.stockAnchorGroup.visible = false;
+    }
+
+    // Align planned/actual trajectory ribbon to moving workpiece top if machining
+    ctx.trailsGroup.matrixAutoUpdate = false;
+    if (trailInWorkpieceRef.current && wpNode) {
+      const wpDims = wpNode.pkg?.primitive ? primitiveBoundingBoxMm(wpNode.pkg.primitive) : ([110, 90, 26] as const);
+      ctx.trailsGroup.matrix
+        .copy(wpNode.explodedMatrix)
+        .multiply(new THREE.Matrix4().makeTranslation(0, 0, wpDims[2] / 2));
+    } else {
+      ctx.trailsGroup.matrix.identity();
+    }
+    ctx.trailsGroup.matrixWorldNeedsUpdate = true;
 
     const obs = current.explodedObservationPointMm;
     ctx.tcpMarker.position.set(obs[0], obs[1], obs[2]);
     ctx.tcpMarker.visible =
-      current.nodes.length > 0 && (worldTargetsRef.current.length > 0 || modeRef.current === "test");
+      current.nodes.length > 0 &&
+      (showTipMarkerRef.current || worldTargetsRef.current.length > 0 || modeRef.current === "test");
 
     // Leader lines during explosion
     const linePts: THREE.Vector3[] = [];
@@ -202,6 +293,48 @@ export default function SandboxViewport3D({
     ctx.leaderLinesObj.computeLineDistances();
     ctx.leaderLinesObj.visible = linePts.length > 0;
 
+    // Live 3D X-Ray force vectors (motor thrust -> ball screw -> tool cutting reaction)
+    disposeGroupResources(ctx.xrayGroup);
+    ctx.xrayGroup.clear();
+    if (xrayModeRef.current && current.nodes.length > 0) {
+      const ph = physicsRef.current;
+      const cutN = ph?.cuttingForceN ?? 28;
+      const cutLen = clamp(32 + cutN * 0.45, 36, 115);
+      const cutColor = (ph?.columnDeflectionUm ?? 0) > 48 ? 0xef4444 : 0xf59e0b;
+      const cutArrow = new THREE.ArrowHelper(
+        new THREE.Vector3(0.75, -0.45, 0.48).normalize(),
+        new THREE.Vector3(obs[0], obs[1], obs[2]),
+        cutLen,
+        cutColor,
+        16,
+        9,
+      );
+      ctx.xrayGroup.add(cutArrow);
+
+      for (const node of current.nodes) {
+        const spec = node.pkg?.primitive;
+        if (!spec) continue;
+        if (spec.shape === "servo_motor_body" && "axis" in spec) {
+          const dir =
+            spec.axis === "x"
+              ? new THREE.Vector3(1, 0, 0)
+              : spec.axis === "y"
+                ? new THREE.Vector3(0, 1, 0)
+                : new THREE.Vector3(0, 0, 1);
+          const isOver = ph?.overloadedNodeIds.includes(node.id) ?? false;
+          const mArrow = new THREE.ArrowHelper(
+            dir,
+            new THREE.Vector3(node.explodedPosMm[0], node.explodedPosMm[1], node.explodedPosMm[2]),
+            52,
+            isOver ? 0xef4444 : 0x38bdf8,
+            13,
+            7.5,
+          );
+          ctx.xrayGroup.add(mArrow);
+        }
+      }
+    }
+
     ctx.paint();
   }, []);
 
@@ -216,7 +349,7 @@ export default function SandboxViewport3D({
       renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     } catch {
       container.innerHTML =
-        '<div class="grid h-full place-items-center p-6 text-center text-xs text-muted-foreground">当前浏览器或无头环境暂不支持 WebGL 3D 渲染，可通过左侧控制面板操作积木与挑战进度。</div>';
+        '<div class="grid h-full place-items-center p-6 text-center text-xs text-muted-foreground">当前浏览器或无头环境暂不支持 WebGL 3D 渲染，可通过左侧控制面板操作积木与物理仿真。</div>';
       return;
     }
 
@@ -235,7 +368,7 @@ export default function SandboxViewport3D({
     canvas.className = "block h-full w-full touch-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary";
     canvas.tabIndex = 0;
     canvas.setAttribute("role", "img");
-    canvas.setAttribute("aria-label", "三维积木拼装与挑战视口");
+    canvas.setAttribute("aria-label", "三维积木拼装与物理透视视口");
 
     const labelsOverlay = document.createElement("div");
     labelsOverlay.className = "pointer-events-none absolute inset-0 overflow-hidden";
@@ -247,8 +380,12 @@ export default function SandboxViewport3D({
     tipBadgeEl.className =
       "pointer-events-none absolute hidden whitespace-nowrap rounded-full border border-orange-400/60 bg-[#1a1310]/90 px-2 py-0.5 text-[10px] font-medium text-orange-200 shadow";
 
+    const xrayBadgeEl = document.createElement("div");
+    xrayBadgeEl.className =
+      "pointer-events-none absolute hidden whitespace-nowrap rounded-full border border-red-400/70 bg-[#2a0c0c]/95 px-2.5 py-0.5 text-[10px] font-semibold text-red-200 shadow-lg";
+
     container.innerHTML = "";
-    container.append(canvas, labelsOverlay, targetsOverlay, tipBadgeEl);
+    container.append(canvas, labelsOverlay, targetsOverlay, tipBadgeEl, xrayBadgeEl);
 
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = false;
@@ -275,8 +412,14 @@ export default function SandboxViewport3D({
     const snapGroup = new THREE.Group();
     const targetsGroup = new THREE.Group();
     const ghostGroup = new THREE.Group();
+    const stockAnchorGroup = new THREE.Group();
+    const stockMeshCtrl = createMiloStockMesh();
+    stockAnchorGroup.add(stockMeshCtrl.mesh);
+    stockAnchorGroup.visible = false;
+    const trailsGroup = new THREE.Group();
+    const xrayGroup = new THREE.Group();
     ghostGroup.visible = false;
-    scene.add(partsGroup, snapGroup, targetsGroup, ghostGroup);
+    scene.add(partsGroup, stockAnchorGroup, trailsGroup, xrayGroup, snapGroup, targetsGroup, ghostGroup);
 
     const leaderMat = new THREE.LineDashedMaterial({
       color: 0x5eead4,
@@ -376,6 +519,36 @@ export default function SandboxViewport3D({
           tipBadgeEl.style.left = `${tx}px`;
           tipBadgeEl.style.top = `${ty}px`;
         }
+      }
+
+      const ph = physicsRef.current;
+      const overloadId = ph?.overloadedNodeIds[0];
+      const overNode = overloadId
+        ? solvedRef.current.nodes.find((n) => n.id === overloadId || n.path === overloadId)
+        : undefined;
+      if (overNode) {
+        projected.set(overNode.explodedPosMm[0], overNode.explodedPosMm[1], overNode.explodedPosMm[2] + 28).project(camera);
+        if (projected.z <= 1 && projected.z >= -1) {
+          xrayBadgeEl.textContent = `⚠️ 电机扭矩过载 (${overNode.label})`;
+          xrayBadgeEl.style.display = "block";
+          xrayBadgeEl.style.left = `${clamp(((projected.x + 1) * w) / 2 - 70, 6, Math.max(6, w - 180))}px`;
+          xrayBadgeEl.style.top = `${clamp(((1 - projected.y) * h) / 2 - 22, 6, Math.max(6, h - 28))}px`;
+        } else {
+          xrayBadgeEl.style.display = "none";
+        }
+      } else if (xrayModeRef.current && ph?.hasSpindle && ph.columnDeflectionUm > 48) {
+        const obsPt = solvedRef.current.explodedObservationPointMm;
+        projected.set(obsPt[0], obsPt[1], obsPt[2] + 34).project(camera);
+        if (projected.z <= 1 && projected.z >= -1) {
+          xrayBadgeEl.textContent = `⚠️ 悬臂让刀 ${ph.columnDeflectionUm} μm`;
+          xrayBadgeEl.style.display = "block";
+          xrayBadgeEl.style.left = `${clamp(((projected.x + 1) * w) / 2 - 60, 6, Math.max(6, w - 160))}px`;
+          xrayBadgeEl.style.top = `${clamp(((1 - projected.y) * h) / 2 - 24, 6, Math.max(6, h - 28))}px`;
+        } else {
+          xrayBadgeEl.style.display = "none";
+        }
+      } else {
+        xrayBadgeEl.style.display = "none";
       }
 
       for (const t of worldTargetsRef.current) {
@@ -590,6 +763,10 @@ export default function SandboxViewport3D({
       snapGroup,
       targetsGroup,
       ghostGroup,
+      stockAnchorGroup,
+      stockMeshCtrl,
+      trailsGroup,
+      xrayGroup,
       nodeObjects,
       snapMeshes,
       leaderLinesObj,
@@ -597,6 +774,7 @@ export default function SandboxViewport3D({
       labelsOverlay,
       targetsOverlay,
       tipBadgeEl,
+      xrayBadgeEl,
       labelEls,
       targetBadgeEls,
       lastAutoFitKey: "",
@@ -619,6 +797,9 @@ export default function SandboxViewport3D({
       disposeGroupResources(snapGroup);
       disposeGroupResources(targetsGroup);
       disposeGroupResources(ghostGroup);
+      disposeGroupResources(trailsGroup);
+      disposeGroupResources(xrayGroup);
+      stockMeshCtrl.dispose();
       leaderLinesObj.geometry.dispose();
       leaderMat.dispose();
       tcpMarker.geometry.dispose();
@@ -628,20 +809,23 @@ export default function SandboxViewport3D({
       labelsOverlay.innerHTML = "";
       targetsOverlay.innerHTML = "";
       tipBadgeEl.remove();
+      xrayBadgeEl.remove();
       canvas.remove();
       renderer.dispose();
       renderer.forceContextLoss();
     };
   }, []);
 
-  // Rebuild meshes when topology / selected highlight / package specs change
+  // Rebuild meshes when topology / selection / X-ray / layer isolation / overload state changes
   const packagesMap = useMemo(
     () => new Map(workspace.packages.map((p) => [packageKey(p), p])),
     [workspace.packages],
   );
+  const overloadedKey = physicsHighlight?.overloadedNodeIds.join(",") ?? "";
   const structureSig = useMemo(
-    () => `${assembly.id}::${solved.nodes.map((n) => `${n.path}:${n.packageKey}`).join("|")}::sel=${selectedNodeId}`,
-    [assembly.id, solved.nodes, selectedNodeId],
+    () =>
+      `${assembly.id}::${solved.nodes.map((n) => `${n.path}:${n.packageKey}`).join("|")}::sel=${selectedNodeId}::xray=${xrayMode ? 1 : 0}::layer=${activeLayerId ?? ""}::over=${overloadedKey}`,
+    [assembly.id, solved.nodes, selectedNodeId, xrayMode, activeLayerId, overloadedKey],
   );
 
   useEffect(() => {
@@ -654,10 +838,37 @@ export default function SandboxViewport3D({
     ctx.labelsOverlay.innerHTML = "";
     ctx.labelEls.clear();
 
+    const overloadedSet = new Set(overloadedKey ? overloadedKey.split(",") : []);
+
     for (const node of solvedRef.current.nodes) {
       const pkg = node.pkg ?? packagesMap.get(node.packageKey);
       const isSel = selectedNodeId === node.path;
+      const layer = classifyNodeFunctionalLayer(pkg);
+      const isOverloaded = overloadedSet.has(node.path) || overloadedSet.has(node.id);
+      const isDimmedByLayer = Boolean(activeLayerId && activeLayerId !== layer && !isSel);
+      const makeXrayGhost = Boolean(isDimmedByLayer || (xrayMode && layer === "skeleton" && !isSel && !isOverloaded));
+
       const partGroup = createPrimitivePartGroup(pkg, { selected: isSel });
+      if (makeXrayGhost || isOverloaded || (xrayMode && !isSel && (layer === "transmission" || layer === "actuator"))) {
+        partGroup.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+            if (makeXrayGhost) {
+              child.material.transparent = true;
+              child.material.opacity = isDimmedByLayer ? 0.14 : 0.22;
+              child.material.depthWrite = false;
+              child.castShadow = false;
+            }
+            if (isOverloaded) {
+              child.material.emissive.setHex(0xdc2626);
+              child.material.emissiveIntensity = 0.88;
+            } else if (!makeXrayGhost && xrayMode && (layer === "transmission" || layer === "actuator")) {
+              child.material.emissive.setHex(layer === "transmission" ? 0x0284c7 : 0x059669);
+              child.material.emissiveIntensity = 0.36;
+            }
+          }
+        });
+      }
+
       partGroup.userData.nodePath = node.path;
       partGroup.traverse((child) => {
         child.userData.nodePath = node.path;
@@ -684,7 +895,54 @@ export default function SandboxViewport3D({
       ctx.lastAutoFitKey = assembly.id;
       ctx.fitCamera();
     }
-  }, [structureSig, assembly.id, packagesMap, selectedNodeId, applyPosesAndPaint]);
+  }, [structureSig, assembly.id, packagesMap, selectedNodeId, xrayMode, activeLayerId, overloadedKey, applyPosesAndPaint]);
+
+  // Rebuild planned vs actual 3D trajectory ribbons
+  useEffect(() => {
+    const ctx = sceneCtxRef.current;
+    if (!ctx) return;
+
+    disposeGroupResources(ctx.trailsGroup);
+    ctx.trailsGroup.clear();
+
+    if (idealTrailMm && idealTrailMm.length >= 2) {
+      const pts = idealTrailMm.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const line = new THREE.Line(
+        geo,
+        new THREE.LineDashedMaterial({
+          color: 0x38bdf8,
+          dashSize: 3.5,
+          gapSize: 2.2,
+          transparent: true,
+          opacity: 0.72,
+          depthTest: false,
+        }),
+      );
+      line.computeLineDistances();
+      line.renderOrder = 2;
+      ctx.trailsGroup.add(line);
+    }
+
+    if (actualTrailMm && actualTrailMm.length >= 2) {
+      const pts = actualTrailMm.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const hasWarn = Boolean(overloadedKey) || (physicsHighlight?.columnDeflectionUm ?? 0) > 48;
+      const line = new THREE.Line(
+        geo,
+        new THREE.LineBasicMaterial({
+          color: hasWarn ? 0xf97316 : 0x34d399,
+          transparent: true,
+          opacity: 0.94,
+          depthTest: false,
+        }),
+      );
+      line.renderOrder = 3;
+      ctx.trailsGroup.add(line);
+    }
+
+    ctx.paint();
+  }, [idealTrailMm, actualTrailMm, overloadedKey, physicsHighlight?.columnDeflectionUm]);
 
   // Rebuild ghost hologram when armedBlockId changes
   useEffect(() => {
@@ -851,10 +1109,22 @@ export default function SandboxViewport3D({
     sceneCtxRef.current?.fitCamera();
   }, [fitRequestToken]);
 
-  // Update 60fps pose + leader lines
+  // Update 60fps pose + stock cutting mesh + X-Ray arrows + leader lines
   useEffect(() => {
     applyPosesAndPaint();
-  }, [solved, showLeaders, showLabels, effectiveExplodePct, selectedNodeId, applyPosesAndPaint]);
+  }, [
+    solved,
+    stockState,
+    xrayMode,
+    physicsHighlight,
+    trailInWorkpieceFrame,
+    showTipMarker,
+    showLeaders,
+    showLabels,
+    effectiveExplodePct,
+    selectedNodeId,
+    applyPosesAndPaint,
+  ]);
 
   return (
     <div className="relative h-full min-h-[16rem] w-full overflow-hidden rounded-lg border bg-[#0f1716]">
