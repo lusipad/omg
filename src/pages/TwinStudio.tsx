@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { nanoid } from "nanoid";
-import { ArrowLeft, ChevronDown, CircuitBoard, Download, FilePlus2, FolderOpen, Github, LayoutGrid, Package, Upload, Workflow } from "lucide-react";
+import { ArrowLeft, Blocks, ChevronDown, CircuitBoard, Download, FilePlus2, FolderOpen, Github, LayoutGrid, Package, Upload, Workflow } from "lucide-react";
 import { IS_PAGES } from "@/const";
 import { hasFeedRole, hasServoRole } from "@contracts/device-model-binding";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
@@ -32,6 +32,7 @@ const storageKey = "gouyuan.twin.workspace.v1";
 const openedProjectKey = storageKey + ".opened";
 const ImportCenter = lazy(() => import("@/components/ImportCenter"));
 const StudioExamples = lazy(() => import("@/components/StudioExamples"));
+const SandboxBuilderStudio = lazy(() => import("@/components/SandboxBuilderStudio"));
 const destinations = [
   { route: { view: "resources" }, label: "① 设备与资料", icon: Package },
   { route: { view: "workbench" }, label: "② 装配与仿真", icon: Workflow },
@@ -59,7 +60,9 @@ function readLocalWorkspace() {
 export default function TwinStudio() {
   const [session, setSession] = useState(readLocalWorkspace);
   const location = useLocation(), navigate = useNavigate();
-  const route = readStudioRoute(location.search, location.hash);
+  const rawRoute = readStudioRoute(location.search, location.hash);
+  const showSandbox = rawRoute.view === "sandbox" || (!location.search && !location.hash);
+  const route: StudioRoute = showSandbox && rawRoute.view !== "sandbox" ? { view: "sandbox" } : rawRoute;
   const authoring = route.view === "resources" && route.section === "author";
   const browsingResources = route.view === "resources" && !authoring;
   const [showPairSource, setShowPairSource] = useState(false);
@@ -466,11 +469,11 @@ export default function TwinStudio() {
 
   return (
     <ImportStartContext.Provider value={intake.events}><CncProgramImportContext.Provider value={setCncReceiver}><div className="min-h-screen bg-background">
-      <header className="border-b bg-card/65">
+      {!showSandbox && <header className="border-b bg-card/65">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 sm:px-8 lg:gap-x-8">
           <div className="flex shrink-0 items-center gap-2">
             <CircuitBoard className="size-6 text-primary" strokeWidth={1.7} /><span className="text-base font-semibold tracking-wide">构元</span>
-            <span className="sr-only text-sm text-muted-foreground min-[430px]:not-sr-only min-[430px]:ml-1 min-[430px]:border-l min-[430px]:pl-3">设备仿真工作台</span>
+            <span className="sr-only text-sm text-muted-foreground min-[430px]:not-sr-only min-[430px]:ml-1 min-[430px]:border-l min-[430px]:pl-3">专业工程模式</span>
           </div>
           <nav aria-label="工作台主导航" className="order-last flex w-full min-w-0 items-center gap-0.5 lg:order-none lg:w-auto lg:gap-1">
             {destinations.map(({ route: destination, label, icon: Icon }) => <Link key={destination.view} to={studioHref(destination.view === "workbench" && remembered ? { view: "workbench", target: remembered } : destination)}
@@ -480,9 +483,12 @@ export default function TwinStudio() {
             </Link>)}
           </nav>
           <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" variant="secondary" asChild>
+              <Link to={studioHref({ view: "sandbox" })}><Blocks />返回积木工坊</Link>
+            </Button>
             {!browsingResources && <Button size="sm" variant="outline" onClick={() => importInput.current?.click()}><Upload />导入文件</Button>}
             <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button size="sm" variant="secondary"><FolderOpen />工程文件<ChevronDown /></Button></DropdownMenuTrigger>
+              <DropdownMenuTrigger asChild><Button size="sm" variant="outline"><FolderOpen />工程文件<ChevronDown /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>{session.warning ? "当前会话的工程" : "当前工程 · 本机保存"}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -501,8 +507,18 @@ export default function TwinStudio() {
             }} />
           </div>
         </div>
-      </header>
-      <main className="page-enter mx-auto max-w-[1440px] space-y-4 px-4 pb-12 pt-5 sm:px-8 sm:pt-7">
+      </header>}
+      <main className={showSandbox ? "page-enter mx-auto max-w-[1600px] px-3 py-3 sm:px-5 sm:py-4" : "page-enter mx-auto max-w-[1440px] space-y-4 px-4 pb-12 pt-5 sm:px-8 sm:pt-7"}>
+        {showSandbox && (
+          <Suspense fallback={<p role="status" className="p-6 text-sm text-muted-foreground">正在加载构元积木工坊…</p>}>
+            <SandboxBuilderStudio
+              workspace={workspace}
+              initialChallengeId={route.view === "sandbox" ? route.level : undefined}
+              onSaveWorkspace={save}
+              onNavigate={go}
+            />
+          </Suspense>
+        )}
         {session.warning && <div role="alert" className="mt-4 rounded-md border border-amber-400/30 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
           {session.warning}
           {session.damaged && session.raw !== null && <Button className="ml-2" variant="outline" size="sm" onClick={() => downloadBlob(session.raw!, "构元_原始存档.txt", "text/plain;charset=utf-8")}>下载原存档</Button>}

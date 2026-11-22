@@ -165,7 +165,6 @@ export function solveArticulatedAssembly(
     graftMountId: string | null,
     depthOffset: number,
   ): { outputPath: string; outputMount: string } | undefined {
-    const byId = new Map(def.nodes.map((n) => [n.id, n]));
     const ordered: MechanicalAssembly["nodes"] = [];
     const visited = new Set<string>();
     const enqueue = (node: MechanicalAssembly["nodes"][number]) => {
@@ -249,12 +248,11 @@ export function solveArticulatedAssembly(
       };
       expandedList.push(entry);
       rawByPath.set(path, entry);
-      if (byId.has(node.id)) localOutputRef.set(node.id, { path, mount: part.outputs[0]?.id ?? "out" });
     }
 
     const outTarget = localOutputRef.get(def.output.node);
     const outPath = outTarget?.path ?? (prefix ? `${prefix}/${def.output.node}` : def.output.node);
-    return { outputPath: outPath, outputMount: def.output.mount };
+    return { outputPath: outPath, outputMount: outTarget?.mount ?? def.output.mount };
   }
 
   const rootOutput = expandLevel(assembly, "", null, null, 0);

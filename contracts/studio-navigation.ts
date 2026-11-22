@@ -79,6 +79,7 @@ export type MotorAxisLocation = { resourceId: string; axisId: string };
 export type StudioTarget = "wiring" | "servo" | "so101" | "milo" | "incoming" | "assembly-new" | "mechanism-new" | "factory-new" | "system-new"
   | `model:${string}` | `assembly:${string}` | `mechanism:${string}` | `factory:${string}` | `system:${string}`;
 export type StudioRoute =
+  | { view: "sandbox"; level?: string }
   | { view: "resources"; section?: StudioResourceSection; source?: string; motorPart?: string }
   | { view: "examples" }
   | ({ view: "workbench" } & (
@@ -126,6 +127,10 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
     if (/^model:[a-f0-9]{64}$/.test(target)) return { view, target: `model:${target.slice(6)}` };
     return { view, unavailableTarget: target };
   }
+  if (view === "sandbox") {
+    const level = signalIdSchema.safeParse(params.get("level"));
+    return { view: "sandbox", ...(level.success && { level: level.data }) };
+  }
   if (view === "examples") return { view };
   if (view === "library") return { view: "resources", section: "author" };
   if (view === "simulation") return { view: "workbench", target: "wiring" };
@@ -149,6 +154,7 @@ export function readStudioRoute(search: string | URLSearchParams, hash = ""): St
 
 export function studioHref(route: StudioRoute, hash = ""): string {
   const params = new URLSearchParams({ view: route.view });
+  if (route.view === "sandbox" && route.level) params.set("level", route.level);
   if (route.view === "resources" && route.section) params.set("section", route.section);
   if (route.view === "resources" && route.source) params.set("source", route.source);
   if (route.view === "resources" && route.section === "author" && route.motorPart) params.set("motorPart", route.motorPart);
