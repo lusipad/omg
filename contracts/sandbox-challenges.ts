@@ -5,8 +5,8 @@ import {
   type ArticulatedSolveResult,
 } from "./articulated-kinematics";
 import { hasFeedRole, hasServoRole } from "./device-model-binding";
-import { parseMechanicalAssembly, type MechanicalAssembly, type MechanicalFrame, type MechanicalPart } from "./mechanical-assembly";
-import { PRIMITIVE_SHAPE_LABELS, primitiveBoundingBoxMm, type AxisDir, type PrimitivePartSpec } from "./primitive-parts";
+import { parseMechanicalAssembly, upsertMechanicalAssembly, type MechanicalAssembly, type MechanicalFrame, type MechanicalPart } from "./mechanical-assembly";
+import { PRIMITIVE_SHAPE_LABELS, primitiveBoundingBoxMm, type AxisDir, type PrimitiveFinish, type PrimitivePartSpec } from "./primitive-parts";
 import { upsertTwinSystem, type TwinSystemAssembly } from "./system-twin";
 import { buildPrimitivePartPackage, packageKey, parseDevicePackage, type DeviceModelBinding, type DevicePackage, type DeviceParameterEntry } from "./twin-device";
 import { emptyWorkspace, installPackage, parseWorkspace, type TwinWorkspace } from "./twin-simulation";
@@ -450,12 +450,29 @@ export function snapBlockOntoAssembly(
     ...(coupledTo ? { coupledTo } : {}),
   };
 
-  // Promote output tip to functional endpoints (tool_tip / gripper / movable stage)
+  // Promote output tip to functional endpoints (tool_tip / gripper / extended arm or table tip)
+  const parentPkg = ws.packages.find((p) => packageKey(p) === parentNode.packageKey);
+  const parentIsSlide = parentPkg?.mechanics?.kind === "part" && parentPkg.mechanics.joint.type === "slide";
+  const outputAlreadyEndEffector =
+    assembly.output.mount === "tool_tip" || assembly.output.node.startsWith("gripper_tip");
+  const isExtendableTip =
+    blockId === "rotary_z" ||
+    blockId === "rotary_y" ||
+    blockId === "arm_link" ||
+    blockId === "column_4080";
+
   let nextOutput = assembly.output;
   if (effectiveSpec.shape === "spindle_cutter") {
     nextOutput = { node: addedNodeId, mount: "tool_tip" };
   } else if (blockId === "gripper_tip" || block.defaultJoint.type === "slide") {
     nextOutput = { node: addedNodeId, mount: effectiveSpec.shape === "linear_rail_block" ? "carriage_top" : "top" };
+  } else if (
+    !outputAlreadyEndEffector &&
+    ((blockId === "table_plate" && (parentIsSlide || parentNodeId === assembly.output.node)) ||
+      (blockId === "workpiece_block" && parentNodeId === assembly.output.node) ||
+      (isExtendableTip && parentNodeId === assembly.output.node))
+  ) {
+    nextOutput = { node: addedNodeId, mount: "top" };
   } else if (assembly.output.node === assembly.nodes[0]?.id) {
     nextOutput = { node: addedNodeId, mount: "top" };
   }
@@ -1492,4 +1509,458 @@ export function convertSandboxToSystemTwin(
   };
 
   return { workspace: upsertTwinSystem(nextWs, system), system };
+}
+
+// ==========================================
+// 新手引导、自动推荐吸附、结构树与机器库管理
+// ==========================================
+
+export const SANDBOX_MOUNT_LABELS: Record<string, string> = {
+  top: "顶面 (top)",
+  bottom: "底面 (bottom)",
+  pos_x: "右侧面 (+X)",
+  neg_x: "左侧面 (-X)",
+  pos_y: "后面 (+Y)",
+  neg_y: "前面 (-Y)",
+  carriage_top: "滑块承载面",
+  carriage_front: "滑块正面",
+  column_seat: "立柱安装位",
+  z_rail_mount: "立柱 Z 轨位",
+  spindle_clamp: "主轴安装环",
+  arm_mount: "臂连接面",
+  shaft_tip: "电机出轴端",
+  tool_tip: "刀尖端",
+  nut_mount: "丝母套位",
+  far_end: "末端轴承位",
+  leg_b_face: "直角支撑面",
+  center: "中心点",
+};
+
+export function labelForSandboxMount(mountId: string): string {
+  return SANDBOX_MOUNT_LABELS[mountId] ?? mountId;
+}
+
+export interface BestSnapTarget {
+  readonly parentNodeId: string;
+  readonly parentMountId: string;
+  readonly parentLabel: string;
+  readonly mountLabel: string;
+}
+
+/** 为指定积木自动寻找场景中最合理的空闲安装点，支持单击直装或双击快捷吸附 */
+export function findBestSnapTarget(
+  ws: TwinWorkspace,
+  assembly: MechanicalAssembly,
+  blockId: string,
+  preferredParentId?: string,
+): BestSnapTarget | null {
+  if (assembly.nodes.length === 0) return null;
+  const occupied = new Set(
+    assembly.nodes.filter((n) => n.parent).map((n) => `${n.parent!.node}::${n.parent!.mount}`),
+  );
+  const pkgByKey = new Map(ws.packages.map((p) => [packageKey(p), p]));
+  const nodeById = new Map(assembly.nodes.map((n) => [n.id, n]));
+
+  const isFrameMountedAccessory =
+    blockId === "limit_switch" || blockId === "servo_motor" || blockId === "ball_screw" || blockId === "gusset_l";
+
+  const candidateIdsRaw: string[] = [];
+  if (preferredParentId && nodeById.has(preferredParentId)) candidateIdsRaw.push(preferredParentId);
+  if (isFrameMountedAccessory) {
+    if (assembly.nodes[0]) candidateIdsRaw.push(assembly.nodes[0].id);
+    if (nodeById.has(assembly.output.node)) candidateIdsRaw.push(assembly.output.node);
+    for (const n of assembly.nodes) candidateIdsRaw.push(n.id);
+  } else {
+    if (nodeById.has(assembly.output.node)) candidateIdsRaw.push(assembly.output.node);
+    for (let i = assembly.nodes.length - 1; i >= 0; i--) {
+      candidateIdsRaw.push(assembly.nodes[i]!.id);
+    }
+  }
+  const candidateIds = [...new Set(candidateIdsRaw)];
+
+  const preferredMounts: readonly string[] = isFrameMountedAccessory
+    ? ["neg_y", "pos_x", "neg_x", "pos_y", "motor_mount", "bearing_mount", "top", "bottom"]
+    : blockId === "spindle_head"
+      ? ["carriage_front", "neg_y", "spindle_clamp", "carriage_top", "top", "bottom"]
+      : blockId === "column_4080"
+        ? ["column_seat", "pos_y", "top", "neg_y", "pos_x", "neg_x"]
+        : ["carriage_top", "top", "arm_mount", "pos_y", "neg_y", "pos_x", "neg_x"];
+
+  for (const parentId of candidateIds) {
+    const parentNode = nodeById.get(parentId);
+    if (!parentNode) continue;
+    const pkg = pkgByKey.get(parentNode.packageKey);
+    if (pkg?.mechanics?.kind !== "part") continue;
+    const outputs = pkg.mechanics.outputs.filter(
+      (out) =>
+        out.id !== "pos_z" &&
+        out.id !== "neg_z" &&
+        !(out.id === "center" && pkg.mechanics!.kind === "part" && pkg.mechanics!.outputs.length > 1) &&
+        !occupied.has(`${parentId}::${out.id}`),
+    );
+    if (outputs.length === 0) continue;
+
+    for (const mountId of preferredMounts) {
+      if (outputs.some((o) => o.id === mountId)) {
+        return {
+          parentNodeId: parentId,
+          parentMountId: mountId,
+          parentLabel: parentNode.label ?? parentNode.id,
+          mountLabel: labelForSandboxMount(mountId),
+        };
+      }
+    }
+    const fallbackMount = outputs[0]!.id;
+    return {
+      parentNodeId: parentId,
+      parentMountId: fallbackMount,
+      parentLabel: parentNode.label ?? parentNode.id,
+      mountLabel: labelForSandboxMount(fallbackMount),
+    };
+  }
+
+  return null;
+}
+
+export interface GuidedChallengeStep {
+  readonly id: string;
+  readonly title: string;
+  readonly detail: string;
+  readonly done: boolean;
+  readonly recommendedBlockId?: string;
+  readonly recommendedMode?: "build" | "test" | "explode";
+}
+
+export function computeChallengeGuide(
+  challenge: SandboxChallengeDef,
+  ws: TwinWorkspace,
+  assembly: MechanicalAssembly,
+  solved: ArticulatedSolveResult,
+  progress: { readonly completed: boolean },
+): {
+  readonly steps: readonly GuidedChallengeStep[];
+  readonly activeStep: GuidedChallengeStep | null;
+  readonly completedSteps: number;
+} {
+  const pkgByKey = new Map(ws.packages.map((p) => [packageKey(p), p]));
+  const joints = solved.nodes.map((n) => n.joint);
+  const slideX = joints.some((j) => j.type === "slide" && Math.abs(j.axis[0]) > 0.5);
+  const slideY = joints.some((j) => j.type === "slide" && Math.abs(j.axis[1]) > 0.5);
+  const slideZ = joints.some((j) => j.type === "slide" && Math.abs(j.axis[2]) > 0.5);
+  const hasAnySlide = slideX || slideY || slideZ;
+  const hasYawZ = joints.some((j) => j.type === "hinge" && Math.abs(j.axis[2]) > 0.5);
+  const hingeCount = joints.filter(
+    (j) => j.type === "hinge" && !solved.coupledControls.some((c) => c.joint === j),
+  ).length;
+  const hasPlate = solved.nodes.some((n) => pkgByKey.get(n.packageKey)?.primitive?.shape === "plate");
+  const hasTube = solved.nodes.some((n) => pkgByKey.get(n.packageKey)?.primitive?.shape === "tube");
+  const hasSpindle = solved.nodes.some((n) => pkgByKey.get(n.packageKey)?.primitive?.shape === "spindle_cutter");
+  const hasGripper = solved.nodes.some(
+    (n) => n.id.startsWith("gripper_tip") || pkgByKey.get(n.packageKey)?.primitive?.finish === "spindle_red",
+  );
+  const hasSensorOrMotor = solved.nodes.some((n) => {
+    const pkg = pkgByKey.get(n.packageKey);
+    return (
+      n.id.includes("sensor") ||
+      n.id.includes("limit") ||
+      n.label.includes("限位") ||
+      pkg?.primitive?.finish === "sensor_amber" ||
+      pkg?.primitive?.shape === "servo_motor_body" ||
+      hasServoRole(pkg, "motor")
+    );
+  });
+
+  let steps: GuidedChallengeStep[];
+  if (challenge.id === "level-1-axis") {
+    steps = [
+      {
+        id: "l1-slide",
+        title: "吸上「X 轴直线导轨滑台」",
+        detail: "在 2080 主梁顶面装入可以左右移动 ±120 mm 的滑台副。",
+        done: hasAnySlide,
+        recommendedBlockId: "slide_x",
+      },
+      {
+        id: "l1-plate",
+        title: "装上「带孔铝合金工作台板」",
+        detail: "将工作台板叠放在滑块上面，构成载物端面。",
+        done: hasPlate,
+        recommendedBlockId: "table_plate",
+      },
+      {
+        id: "l1-sensor",
+        title: "挂载「限位接近开关」",
+        detail: "在主梁侧面加装 24V 限位传感器，建立机电保护。",
+        done: hasSensorOrMotor,
+        recommendedBlockId: "limit_switch",
+      },
+      {
+        id: "l1-test",
+        title: "切入「试动与挑战」，推至 +100 mm 靶点",
+        detail: "拖动关节滑块让工作台中心点亮橙色发光球，即可通关。",
+        done: progress.completed,
+        recommendedMode: "test",
+      },
+    ];
+  } else if (challenge.id === "level-2-xy-stage") {
+    steps = [
+      {
+        id: "l2-x",
+        title: "正交叠拼「X 轴直线导轨滑台」",
+        detail: "场景已预置 Y 轴滑台，再向滑块顶面吸附 X 轴滑台组成十字台。",
+        done: slideX,
+        recommendedBlockId: "slide_x",
+      },
+      {
+        id: "l2-plate",
+        title: "装上「带孔铝合金工作台板」",
+        detail: "为十字滑台提供 X/Y 复合承载工作面。",
+        done: hasPlate,
+        recommendedBlockId: "table_plate",
+      },
+      {
+        id: "l2-test",
+        title: "切入「试动与挑战」，扫过 4 个平面角点",
+        detail: "同时推拉 X / Y 滑块（或点击自动演练），依次点亮 4 颗靶球。",
+        done: progress.completed,
+        recommendedMode: "test",
+      },
+    ];
+  } else if (challenge.id === "level-3-cnc-mill") {
+    const missingAxisBlock = !slideY ? "slide_y" : !slideX ? "slide_x" : "slide_z";
+    steps = [
+      {
+        id: "l3-xyz",
+        title: "齐备 X / Y / Z 三轴直线进给",
+        detail: "可自由逐步拼装 X/Y/Z 导轨，也可直接点上方「看成品」加载 23 件标准铣床。",
+        done: slideX && slideY && slideZ,
+        recommendedBlockId: missingAxisBlock,
+      },
+      {
+        id: "l3-spindle",
+        title: "安装「电主轴与立铣刀」",
+        detail: "将高速铣削主轴挂到 Z 轴滑板，使刀尖作为输出观察点。",
+        done: hasSpindle,
+        recommendedBlockId: "spindle_head",
+      },
+      {
+        id: "l3-test",
+        title: "切入「试动与挑战」，完成 4 点平面切削",
+        detail: "下降 Z 轴贴近毛坯表面，并走位覆盖全部 4 个刀路目标。",
+        done: progress.completed,
+        recommendedMode: "test",
+      },
+    ];
+  } else if (challenge.id === "level-4-robot-arm") {
+    steps = [
+      {
+        id: "l4-yaw",
+        title: "加装「水平回转关节 (Z 轴)」",
+        detail: "在底座盘顶部安装 360° 回转腰座。",
+        done: hasYawZ,
+        recommendedBlockId: "rotary_z",
+      },
+      {
+        id: "l4-arm",
+        title: "串联「俯仰摆臂关节」与「刚性臂杆」",
+        detail: "建议顺序：俯仰关节 → 臂杆 → 俯仰关节 → 臂杆，拼出至少 2 个自由度。",
+        done: hingeCount >= 2 && hasTube,
+        recommendedBlockId: hingeCount < 2 ? "rotary_y" : "arm_link",
+      },
+      {
+        id: "l4-tip",
+        title: "装「末端抓手」并试动触碰 3 颗空中球",
+        detail: "封顶末端执行器后切入「试动与挑战」转动关节完成空间可达验证。",
+        done: progress.completed,
+        ...(hasGripper ? { recommendedMode: "test" as const } : { recommendedBlockId: "gripper_tip" }),
+      },
+    ];
+  } else {
+    steps = [
+      {
+        id: "free-add",
+        title: "从积木箱任选部件拼装（单击选点 / 双击直装）",
+        detail: "像搭积木一样自由设计还未存在的新构型，也可在右侧结构树点 + 挂在任意零件下。",
+        done: assembly.nodes.length >= 2,
+        recommendedBlockId: "slide_x",
+      },
+      {
+        id: "free-joint",
+        title: "加入可动关节或右栏改零件尺寸 / 运动属性",
+        detail: "为你的新机器加入滑台、旋转副或滚珠丝杠联动。",
+        done: solved.activeControls.length >= 1,
+        recommendedBlockId: "rotary_z",
+      },
+      {
+        id: "free-manage",
+        title: "点顶部「保存」管理我的机器，或看「爆炸视图 / BOM」",
+        detail: "随时把作品存入本地工程库，并替换为汇川/松下/THK 真实型号进入物理仿真。",
+        done: false,
+        recommendedMode: "explode",
+      },
+    ];
+  }
+
+  const completedSteps = steps.filter((s) => s.done).length;
+  const activeStep = steps.find((s) => !s.done) ?? null;
+  return { steps, activeStep, completedSteps };
+}
+
+export interface SandboxTreeRow {
+  readonly id: string;
+  readonly label: string;
+  readonly parentId: string | null;
+  readonly depth: number;
+  readonly childCount: number;
+  readonly shape: PrimitivePartSpec["shape"] | "custom";
+  readonly finish?: PrimitiveFinish;
+  readonly jointType: "fixed" | "slide" | "hinge";
+  readonly jointSummary: string;
+  readonly isCoupled: boolean;
+  readonly isRoot: boolean;
+  readonly isOutputTip: boolean;
+  readonly mountLabel: string;
+  readonly manufacturer: string;
+  readonly model: string;
+}
+
+/** 按父子拓扑展开深度优先列表，用于右侧装配结构树与快捷增删管理 */
+export function buildAssemblyTreeRows(
+  ws: TwinWorkspace,
+  assembly: MechanicalAssembly,
+  solved: ArticulatedSolveResult,
+): SandboxTreeRow[] {
+  const pkgByKey = new Map(ws.packages.map((p) => [packageKey(p), p]));
+  const solvedByPath = new Map(solved.nodes.map((n) => [n.path, n]));
+  const childrenMap = new Map<string | null, MechanicalAssembly["nodes"][number][]>();
+
+  for (const node of assembly.nodes) {
+    const pid = node.parent?.node ?? null;
+    const list = childrenMap.get(pid);
+    if (list) list.push(node);
+    else childrenMap.set(pid, [node]);
+  }
+
+  const rows: SandboxTreeRow[] = [];
+  const visited = new Set<string>();
+
+  function visit(node: MechanicalAssembly["nodes"][number], depth: number) {
+    if (visited.has(node.id)) return;
+    visited.add(node.id);
+    const pkg = pkgByKey.get(node.packageKey);
+    const solvedNode = solvedByPath.get(node.id);
+    const joint = solvedNode?.joint ?? (pkg?.mechanics?.kind === "part" ? pkg.mechanics.joint : { type: "fixed" as const });
+    const isCoupled = Boolean(node.coupledTo);
+    let jointSummary = "刚性固定";
+    if (isCoupled) jointSummary = "随动耦合";
+    else if (joint.type === "slide") {
+      const ax = Math.abs(joint.axis[0]) > 0.5 ? "X" : Math.abs(joint.axis[1]) > 0.5 ? "Y" : "Z";
+      jointSummary = `${ax} 滑动`;
+    } else if (joint.type === "hinge") {
+      const ax = Math.abs(joint.axis[0]) > 0.5 ? "X" : Math.abs(joint.axis[1]) > 0.5 ? "Y" : "Z";
+      jointSummary = `绕 ${ax} 旋转`;
+    }
+
+    const kids = childrenMap.get(node.id) ?? [];
+    rows.push({
+      id: node.id,
+      label: node.label ?? pkg?.model ?? node.id,
+      parentId: node.parent?.node ?? null,
+      depth,
+      childCount: kids.length,
+      shape: pkg?.primitive?.shape ?? "custom",
+      finish: pkg?.primitive?.finish,
+      jointType: joint.type,
+      jointSummary,
+      isCoupled,
+      isRoot: node.parent === null,
+      isOutputTip: assembly.output.node === node.id,
+      mountLabel: node.parent ? labelForSandboxMount(node.parent.mount) : "地面基座",
+      manufacturer: pkg?.manufacturer ?? "构元积木",
+      model: pkg?.model ?? node.id,
+    });
+
+    for (const child of kids) visit(child, depth + 1);
+  }
+
+  for (const root of childrenMap.get(null) ?? []) visit(root, 0);
+  for (const orphan of assembly.nodes) {
+    if (!visited.has(orphan.id)) visit(orphan, 0);
+  }
+
+  return rows;
+}
+
+export function listSavedSandboxMachines(hostWs: TwinWorkspace): readonly MechanicalAssembly[] {
+  return hostWs.mechanisms ?? [];
+}
+
+/** 将当前积木机器及所依赖零件包持久化保存到宿主工作区 (`workspace.mechanisms`) */
+export function saveSandboxMachineToWorkspace(
+  hostWs: TwinWorkspace,
+  sandboxWs: TwinWorkspace,
+  assembly: MechanicalAssembly,
+  options?: { asNewCopy?: boolean; customName?: string },
+): { workspace: TwinWorkspace; savedAssembly: MechanicalAssembly } {
+  const existing = hostWs.mechanisms ?? [];
+  const usedIds = new Set(existing.map((m) => m.id));
+  const needsFreshId = Boolean(options?.asNewCopy) || assembly.id.startsWith("sandbox-");
+
+  let targetId = assembly.id;
+  if (needsFreshId) {
+    let idx = 1;
+    while (usedIds.has(`my-machine-${idx}`)) idx++;
+    targetId = `my-machine-${idx}`;
+  }
+
+  const baseName = options?.customName?.trim() || assembly.name;
+  const targetName =
+    options?.asNewCopy && !options?.customName?.trim() ? `${baseName} (副本)` : baseName;
+
+  const savedAssembly = parseMechanicalAssembly({
+    ...assembly,
+    id: targetId,
+    name: targetName,
+  });
+
+  const referencedKeys = new Set(savedAssembly.nodes.map((n) => n.packageKey));
+  const sourcePkgMap = new Map(sandboxWs.packages.map((p) => [packageKey(p), p]));
+  let nextHost = parseWorkspace(hostWs);
+
+  for (const key of referencedKeys) {
+    if (nextHost.packages.some((p) => packageKey(p) === key)) continue;
+    const pkg = sourcePkgMap.get(key);
+    if (pkg) nextHost = installPackage(nextHost, pkg);
+  }
+
+  nextHost = upsertMechanicalAssembly(nextHost, savedAssembly);
+  return { workspace: nextHost, savedAssembly };
+}
+
+/** 从宿主工作区载入指定机器装配及其依赖零件包，准备在积木工坊编辑 */
+export function loadSandboxMachineFromWorkspace(
+  hostWs: TwinWorkspace,
+  assemblyId: string,
+): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
+  const target = (hostWs.mechanisms ?? []).find((m) => m.id === assemblyId);
+  if (!target) throw new Error(`在机器库中找不到「${assemblyId}」。`);
+  const neededKeys = new Set(target.nodes.map((n) => n.packageKey));
+  let sandboxWs = emptyWorkspace();
+  for (const pkg of hostWs.packages) {
+    if (neededKeys.has(packageKey(pkg))) sandboxWs = installPackage(sandboxWs, pkg);
+  }
+  const cloned = parseMechanicalAssembly(target);
+  sandboxWs = { ...sandboxWs, mechanisms: [cloned] };
+  return { workspace: sandboxWs, assembly: cloned };
+}
+
+export function deleteSandboxMachineFromWorkspace(
+  hostWs: TwinWorkspace,
+  assemblyId: string,
+): TwinWorkspace {
+  const current = hostWs.mechanisms ?? [];
+  return {
+    ...hostWs,
+    mechanisms: current.filter((m) => m.id !== assemblyId),
+  };
 }

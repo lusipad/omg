@@ -468,7 +468,7 @@ export default function TwinStudio() {
   }
 
   return (
-    <ImportStartContext.Provider value={intake.events}><CncProgramImportContext.Provider value={setCncReceiver}><div className="min-h-screen bg-background">
+    <ImportStartContext.Provider value={intake.events}><CncProgramImportContext.Provider value={setCncReceiver}><div className={showSandbox ? "flex h-[100dvh] flex-col overflow-hidden bg-background" : "min-h-screen bg-background"}>
       {!showSandbox && <header className="border-b bg-card/65">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 sm:px-8 lg:gap-x-8">
           <div className="flex shrink-0 items-center gap-2">
@@ -508,7 +508,7 @@ export default function TwinStudio() {
           </div>
         </div>
       </header>}
-      <main className={showSandbox ? "page-enter mx-auto max-w-[1600px] px-3 py-3 sm:px-5 sm:py-4" : "page-enter mx-auto max-w-[1440px] space-y-4 px-4 pb-12 pt-5 sm:px-8 sm:pt-7"}>
+      <main className={showSandbox ? "page-enter flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-2.5" : "page-enter mx-auto max-w-[1440px] space-y-4 px-4 pb-12 pt-5 sm:px-8 sm:pt-7"}>
         {showSandbox && (
           <Suspense fallback={<p role="status" className="p-6 text-sm text-muted-foreground">正在加载构元积木工坊…</p>}>
             <SandboxBuilderStudio

@@ -8,7 +8,11 @@ import {
 } from "@contracts/articulated-kinematics";
 import type { MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { primitiveBoundingBoxMm } from "@contracts/primitive-parts";
-import { SANDBOX_BLOCKS, type WorldTargetStatus } from "@contracts/sandbox-challenges";
+import {
+  SANDBOX_BLOCKS,
+  SANDBOX_MOUNT_LABELS,
+  type WorldTargetStatus,
+} from "@contracts/sandbox-challenges";
 import { buildPrimitivePartPackage, packageKey } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { createPrimitivePartGroup, disposeGroupResources } from "./primitive-part-mesh";
@@ -19,6 +23,7 @@ export interface SandboxViewport3DProps {
   mode: "build" | "test" | "explode";
   armedBlockId: string | null;
   selectedNodeId: string;
+  preferredParentId?: string;
   commands: Record<string, number>;
   explodePct: number;
   subtreeOnly: boolean;
@@ -30,24 +35,6 @@ export interface SandboxViewport3DProps {
   onSnapBlock: (parentNodeId: string, parentMountId: string) => void;
   onHoverSnapChange?: (label: string) => void;
 }
-
-const MOUNT_LABELS: Record<string, string> = {
-  top: "顶面 (top)",
-  bottom: "底面 (bottom)",
-  pos_x: "右侧面 (+X)",
-  neg_x: "左侧面 (-X)",
-  pos_y: "后面 (+Y)",
-  neg_y: "前面 (-Y)",
-  carriage_top: "滑块承载面",
-  carriage_front: "滑块正面",
-  column_seat: "立柱安装位",
-  z_rail_mount: "立柱Z轨位",
-  spindle_clamp: "主轴安装环",
-  arm_mount: "臂连接面",
-  shaft_tip: "电机出轴端",
-  tool_tip: "刀尖端",
-  center: "中心点",
-};
 
 const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v));
 
@@ -85,6 +72,7 @@ export default function SandboxViewport3D({
   mode,
   armedBlockId,
   selectedNodeId,
+  preferredParentId,
   commands,
   explodePct,
   subtreeOnly,
@@ -107,11 +95,22 @@ export default function SandboxViewport3D({
     targetsGroup: THREE.Group;
     ghostGroup: THREE.Group;
     nodeObjects: Map<string, THREE.Group>;
-    snapMeshes: Array<{ mesh: THREE.Mesh; parentNodeId: string; mountId: string; parentLabel: string; mountMatrixWorld: THREE.Matrix4 }>;
+    snapMeshes: Array<{
+      mesh: THREE.Mesh;
+      parentNodeId: string;
+      mountId: string;
+      parentLabel: string;
+      mountMatrixWorld: THREE.Matrix4;
+      isPreferred: boolean;
+    }>;
     leaderLinesObj: THREE.LineSegments;
     tcpMarker: THREE.Mesh;
     labelsOverlay: HTMLDivElement;
+    targetsOverlay: HTMLDivElement;
+    tipBadgeEl: HTMLDivElement;
     labelEls: Map<string, HTMLButtonElement>;
+    targetBadgeEls: Map<string, HTMLDivElement>;
+    lastAutoFitKey: string;
     paint: () => void;
     fitCamera: () => void;
   } | null>(null);
@@ -133,9 +132,11 @@ export default function SandboxViewport3D({
   const modeRef = useRef(mode);
   const armedBlockRef = useRef(armedBlockId);
   const selectedIdRef = useRef(selectedNodeId);
+  const preferredParentRef = useRef(preferredParentId ?? "");
   const showLeadersRef = useRef(showLeaders);
   const showLabelsRef = useRef(showLabels);
   const explodePctRef = useRef(effectiveExplodePct);
+  const worldTargetsRef = useRef(worldTargets);
   const onSelectRef = useRef(onSelectNode);
   const onSnapRef = useRef(onSnapBlock);
   const onHoverRef = useRef(onHoverSnapChange);
@@ -145,9 +146,11 @@ export default function SandboxViewport3D({
     modeRef.current = mode;
     armedBlockRef.current = armedBlockId;
     selectedIdRef.current = selectedNodeId;
+    preferredParentRef.current = preferredParentId ?? "";
     showLeadersRef.current = showLeaders;
     showLabelsRef.current = showLabels;
     explodePctRef.current = effectiveExplodePct;
+    worldTargetsRef.current = worldTargets;
     onSelectRef.current = onSelectNode;
     onSnapRef.current = onSnapBlock;
     onHoverRef.current = onHoverSnapChange;
@@ -156,9 +159,11 @@ export default function SandboxViewport3D({
     mode,
     armedBlockId,
     selectedNodeId,
+    preferredParentId,
     showLeaders,
     showLabels,
     effectiveExplodePct,
+    worldTargets,
     onSelectNode,
     onSnapBlock,
     onHoverSnapChange,
@@ -179,7 +184,8 @@ export default function SandboxViewport3D({
 
     const obs = current.explodedObservationPointMm;
     ctx.tcpMarker.position.set(obs[0], obs[1], obs[2]);
-    ctx.tcpMarker.visible = current.nodes.length > 0;
+    ctx.tcpMarker.visible =
+      current.nodes.length > 0 && (worldTargetsRef.current.length > 0 || modeRef.current === "test");
 
     // Leader lines during explosion
     const linePts: THREE.Vector3[] = [];
@@ -234,8 +240,15 @@ export default function SandboxViewport3D({
     const labelsOverlay = document.createElement("div");
     labelsOverlay.className = "pointer-events-none absolute inset-0 overflow-hidden";
 
+    const targetsOverlay = document.createElement("div");
+    targetsOverlay.className = "pointer-events-none absolute inset-0 overflow-hidden";
+
+    const tipBadgeEl = document.createElement("div");
+    tipBadgeEl.className =
+      "pointer-events-none absolute hidden whitespace-nowrap rounded-full border border-orange-400/60 bg-[#1a1310]/90 px-2 py-0.5 text-[10px] font-medium text-orange-200 shadow";
+
     container.innerHTML = "";
-    container.append(canvas, labelsOverlay);
+    container.append(canvas, labelsOverlay, targetsOverlay, tipBadgeEl);
 
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = false;
@@ -283,12 +296,14 @@ export default function SandboxViewport3D({
 
     const nodeObjects = new Map<string, THREE.Group>();
     const labelEls = new Map<string, HTMLButtonElement>();
+    const targetBadgeEls = new Map<string, HTMLDivElement>();
     const snapMeshes: Array<{
       mesh: THREE.Mesh;
       parentNodeId: string;
       mountId: string;
       parentLabel: string;
       mountMatrixWorld: THREE.Matrix4;
+      isPreferred: boolean;
     }> = [];
 
     const projected = new THREE.Vector3();
@@ -343,19 +358,71 @@ export default function SandboxViewport3D({
         btn.style.left = `${x}px`;
         btn.style.top = `${y}px`;
       }
+
+      if (!tcpMarker.visible) {
+        tipBadgeEl.style.display = "none";
+      } else {
+        projected.copy(tcpMarker.position).project(camera);
+        if (projected.z > 1 || projected.z < -1) {
+          tipBadgeEl.style.display = "none";
+        } else {
+          const hasSpindle = solvedRef.current.nodes.some(
+            (n) => n.id.includes("spindle") || n.label.includes("主轴"),
+          );
+          tipBadgeEl.textContent = hasSpindle ? "● 刀尖点" : "● 当前末端点";
+          tipBadgeEl.style.display = "block";
+          const tx = clamp(((projected.x + 1) * w) / 2 + 10, 6, Math.max(6, w - 96));
+          const ty = clamp(((1 - projected.y) * h) / 2 + 6, 6, Math.max(6, h - 26));
+          tipBadgeEl.style.left = `${tx}px`;
+          tipBadgeEl.style.top = `${ty}px`;
+        }
+      }
+
+      for (const t of worldTargetsRef.current) {
+        const badge = targetBadgeEls.get(t.id);
+        if (!badge) continue;
+        projected.set(t.worldPosMm[0], t.worldPosMm[1], t.worldPosMm[2] + t.radiusMm + 8).project(camera);
+        if (projected.z > 1 || projected.z < -1) {
+          badge.style.display = "none";
+          continue;
+        }
+        badge.style.display = "block";
+        const bw = badge.offsetWidth || 104;
+        const bh = badge.offsetHeight || 20;
+        const bx = clamp(((projected.x + 1) * w) / 2 - bw / 2, 6, Math.max(6, w - bw - 6));
+        const by = clamp(((1 - projected.y) * h) / 2 - bh, 6, Math.max(6, h - bh - 6));
+        badge.style.left = `${bx}px`;
+        badge.style.top = `${by}px`;
+      }
     }
 
     function fitCamera() {
+      partsGroup.updateMatrixWorld(true);
       const box = new THREE.Box3();
-      for (const node of solvedRef.current.nodes) {
-        box.expandByPoint(new THREE.Vector3(node.explodedPosMm[0], node.explodedPosMm[1], node.explodedPosMm[2]));
+      if (partsGroup.children.length > 0) {
+        try {
+          box.setFromObject(partsGroup);
+        } catch {
+          box.makeEmpty();
+        }
+      }
+      if (box.isEmpty()) {
+        for (const node of solvedRef.current.nodes) {
+          box.expandByPoint(new THREE.Vector3(node.explodedPosMm[0], node.explodedPosMm[1], node.explodedPosMm[2]));
+        }
+      }
+      for (const t of worldTargetsRef.current) {
+        const [x, y, z] = t.worldPosMm;
+        const r = t.radiusMm;
+        box.expandByPoint(new THREE.Vector3(x - r, y - r, z - r));
+        box.expandByPoint(new THREE.Vector3(x + r, y + r, z + r));
       }
       if (box.isEmpty()) return;
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
-      const span = Math.max(size.x, size.y, size.z, 260);
+      const span = Math.max(size.x, size.y, size.z, 220);
       controls.target.copy(center);
-      camera.position.set(center.x + span * 1.15, center.y - span * 1.35, center.z + span * 0.9);
+      camera.position.set(center.x + span * 0.95, center.y - span * 1.35, center.z + span * 0.85);
       camera.updateProjectionMatrix();
       controls.update();
       paint();
@@ -371,7 +438,16 @@ export default function SandboxViewport3D({
       paint();
     }
 
-    const observer = new ResizeObserver(resize);
+    let resizeRaf = 0;
+    const scheduleResize = () => {
+      if (resizeRaf) window.cancelAnimationFrame(resizeRaf);
+      resizeRaf = window.requestAnimationFrame(() => {
+        resizeRaf = 0;
+        resize();
+      });
+    };
+
+    const observer = new ResizeObserver(scheduleResize);
     observer.observe(container);
     controls.addEventListener("change", paint);
 
@@ -379,6 +455,7 @@ export default function SandboxViewport3D({
     const pointer = new THREE.Vector2();
     let downPt: { x: number; y: number } | null = null;
     let hoveredSnap: (typeof snapMeshes)[number] | null = null;
+    let lastPartHover = "";
 
     const toNdc = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
@@ -388,12 +465,22 @@ export default function SandboxViewport3D({
       );
     };
 
-    const resetSnapHover = () => {
-      if (hoveredSnap) {
-        const mat = hoveredSnap.mesh.material as THREE.MeshStandardMaterial;
+    const styleSnapResting = (snap: (typeof snapMeshes)[number]) => {
+      const mat = snap.mesh.material as THREE.MeshStandardMaterial;
+      if (snap.isPreferred) {
+        mat.color.setHex(0x38bdf8);
+        mat.emissive.setHex(0x0284c7);
+        snap.mesh.scale.setScalar(1.22);
+      } else {
         mat.color.setHex(0x2dd4bf);
         mat.emissive.setHex(0x0d9488);
-        hoveredSnap.mesh.scale.setScalar(1);
+        snap.mesh.scale.setScalar(1);
+      }
+    };
+
+    const resetSnapHover = () => {
+      if (hoveredSnap) {
+        styleSnapResting(hoveredSnap);
         hoveredSnap = null;
       }
       if (ghostGroup.visible) {
@@ -405,9 +492,23 @@ export default function SandboxViewport3D({
 
     const onPointerMove = (e: PointerEvent) => {
       if (modeRef.current !== "build" || !armedBlockRef.current || snapMeshes.length === 0) {
-        resetSnapHover();
+        if (hoveredSnap || ghostGroup.visible) resetSnapHover();
+        if (!armedBlockRef.current) {
+          toNdc(e);
+          raycaster.setFromCamera(pointer, camera);
+          const partHits = raycaster.intersectObjects([...nodeObjects.values()], true);
+          let obj: THREE.Object3D | null = partHits[0]?.object ?? null;
+          while (obj && !obj.userData.nodePath) obj = obj.parent;
+          const hoveredPath = obj?.userData.nodePath ? String(obj.userData.nodePath) : "";
+          if (hoveredPath !== lastPartHover) {
+            lastPartHover = hoveredPath;
+            const node = hoveredPath ? solvedRef.current.nodes.find((n) => n.path === hoveredPath) : undefined;
+            onHoverRef.current?.(node ? `部件「${node.label}」· 点击选中编辑尺寸或拆装` : "");
+          }
+        }
         return;
       }
+      lastPartHover = "";
       toNdc(e);
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(snapMeshes.map((s) => s.mesh), false);
@@ -415,12 +516,7 @@ export default function SandboxViewport3D({
       const matched = hitMesh ? snapMeshes.find((s) => s.mesh === hitMesh) ?? null : null;
 
       if (matched === hoveredSnap) return;
-      if (hoveredSnap) {
-        const prevMat = hoveredSnap.mesh.material as THREE.MeshStandardMaterial;
-        prevMat.color.setHex(0x2dd4bf);
-        prevMat.emissive.setHex(0x0d9488);
-        hoveredSnap.mesh.scale.setScalar(1);
-      }
+      if (hoveredSnap) styleSnapResting(hoveredSnap);
       hoveredSnap = matched;
       if (!matched) {
         ghostGroup.visible = false;
@@ -432,7 +528,7 @@ export default function SandboxViewport3D({
       const mat = matched.mesh.material as THREE.MeshStandardMaterial;
       mat.color.setHex(0xfacc15);
       mat.emissive.setHex(0xca8a04);
-      matched.mesh.scale.setScalar(1.38);
+      matched.mesh.scale.setScalar(1.42);
 
       const armedDef = SANDBOX_BLOCKS.find((b) => b.id === armedBlockRef.current);
       if (armedDef) {
@@ -445,7 +541,7 @@ export default function SandboxViewport3D({
         ghostGroup.matrixWorldNeedsUpdate = true;
         ghostGroup.visible = true;
       }
-      const mountCaption = MOUNT_LABELS[matched.mountId] ?? matched.mountId;
+      const mountCaption = SANDBOX_MOUNT_LABELS[matched.mountId] ?? matched.mountId;
       onHoverRef.current?.(`点击吸附到「${matched.parentLabel}」的 ${mountCaption}`);
       paint();
     };
@@ -499,7 +595,11 @@ export default function SandboxViewport3D({
       leaderLinesObj,
       tcpMarker,
       labelsOverlay,
+      targetsOverlay,
+      tipBadgeEl,
       labelEls,
+      targetBadgeEls,
+      lastAutoFitKey: "",
       paint,
       fitCamera,
     };
@@ -508,6 +608,7 @@ export default function SandboxViewport3D({
 
     return () => {
       sceneCtxRef.current = null;
+      if (resizeRaf) window.cancelAnimationFrame(resizeRaf);
       observer.disconnect();
       controls.removeEventListener("change", paint);
       controls.dispose();
@@ -525,6 +626,8 @@ export default function SandboxViewport3D({
       grid.geometry.dispose();
       (grid.material as THREE.Material).dispose();
       labelsOverlay.innerHTML = "";
+      targetsOverlay.innerHTML = "";
+      tipBadgeEl.remove();
       canvas.remove();
       renderer.dispose();
       renderer.forceContextLoss();
@@ -576,7 +679,12 @@ export default function SandboxViewport3D({
     }
 
     applyPosesAndPaint();
-  }, [structureSig, packagesMap, selectedNodeId, applyPosesAndPaint]);
+
+    if (ctx.lastAutoFitKey !== assembly.id) {
+      ctx.lastAutoFitKey = assembly.id;
+      ctx.fitCamera();
+    }
+  }, [structureSig, assembly.id, packagesMap, selectedNodeId, applyPosesAndPaint]);
 
   // Rebuild ghost hologram when armedBlockId changes
   useEffect(() => {
@@ -613,7 +721,7 @@ export default function SandboxViewport3D({
     ctx.ghostGroup.add(ghost);
   }, [armedBlockId]);
 
-  // Rebuild interactive snap spheres when build mode + armedBlockId + nodes update
+  // Rebuild interactive snap spheres when build mode + armedBlockId + preferredParentId + nodes update
   useEffect(() => {
     const ctx = sceneCtxRef.current;
     if (!ctx) return;
@@ -638,6 +746,7 @@ export default function SandboxViewport3D({
     for (const node of solved.nodes) {
       const pkg = node.pkg ?? packagesMap.get(node.packageKey);
       if (pkg?.mechanics?.kind !== "part") continue;
+      const isPreferred = Boolean(preferredParentId && node.id === preferredParentId);
       for (const out of pkg.mechanics.outputs) {
         if (out.id === "center" && pkg.mechanics.outputs.length > 1) continue;
         if (out.id === "pos_z" || out.id === "neg_z") continue; // already covered by top/bottom
@@ -646,21 +755,22 @@ export default function SandboxViewport3D({
         const mountWorld = node.explodedMatrix.clone().multiply(frameToMatrixMm(out));
         const pos = new THREE.Vector3().setFromMatrixPosition(mountWorld);
         const snapMat = new THREE.MeshStandardMaterial({
-          color: 0x2dd4bf,
-          emissive: 0x0d9488,
-          emissiveIntensity: 0.75,
+          color: isPreferred ? 0x38bdf8 : 0x2dd4bf,
+          emissive: isPreferred ? 0x0284c7 : 0x0d9488,
+          emissiveIntensity: isPreferred ? 0.95 : 0.75,
           transparent: true,
-          opacity: 0.9,
+          opacity: 0.92,
         });
         const orb = new THREE.Mesh(sphereGeo.clone(), snapMat);
         orb.position.copy(pos);
+        if (isPreferred) orb.scale.setScalar(1.22);
         ctx.snapGroup.add(orb);
 
         const ringMat = new THREE.MeshBasicMaterial({
-          color: 0x5eead4,
+          color: isPreferred ? 0x7dd3fc : 0x5eead4,
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.45,
+          opacity: isPreferred ? 0.65 : 0.45,
         });
         const ring = new THREE.Mesh(haloGeo.clone(), ringMat);
         orb.add(ring);
@@ -671,6 +781,7 @@ export default function SandboxViewport3D({
           mountId: out.id,
           parentLabel: node.label,
           mountMatrixWorld: mountWorld,
+          isPreferred,
         });
       }
     }
@@ -678,15 +789,17 @@ export default function SandboxViewport3D({
     sphereGeo.dispose();
     haloGeo.dispose();
     ctx.paint();
-  }, [mode, armedBlockId, solved, assembly.nodes, packagesMap]);
+  }, [mode, armedBlockId, preferredParentId, solved, assembly.nodes, packagesMap]);
 
-  // Rebuild challenge target spheres
+  // Rebuild challenge target spheres and overlaid target labels
   useEffect(() => {
     const ctx = sceneCtxRef.current;
     if (!ctx) return;
 
     disposeGroupResources(ctx.targetsGroup);
     ctx.targetsGroup.clear();
+    ctx.targetsOverlay.innerHTML = "";
+    ctx.targetBadgeEls.clear();
 
     for (const t of worldTargets) {
       const group = new THREE.Group();
@@ -717,6 +830,16 @@ export default function SandboxViewport3D({
       );
       group.add(shell, wire, core);
       ctx.targetsGroup.add(group);
+
+      const badge = document.createElement("div");
+      badge.textContent = `${t.hit ? "✅" : "🎯"} ${t.label}`;
+      badge.className = `pointer-events-none absolute whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium shadow-md ${
+        t.hit
+          ? "border-emerald-400/60 bg-emerald-950/90 text-emerald-200"
+          : "border-amber-400/60 bg-[#1d1609]/90 text-amber-200"
+      }`;
+      ctx.targetsOverlay.append(badge);
+      ctx.targetBadgeEls.set(t.id, badge);
     }
 
     ctx.paint();
@@ -734,9 +857,11 @@ export default function SandboxViewport3D({
   }, [solved, showLeaders, showLabels, effectiveExplodePct, selectedNodeId, applyPosesAndPaint]);
 
   return (
-    <div
-      ref={hostRef}
-      className="relative h-full min-h-[28rem] w-full overflow-hidden rounded-lg border bg-[#0f1716]"
-    />
+    <div className="relative h-full min-h-[16rem] w-full overflow-hidden rounded-lg border bg-[#0f1716]">
+      <div ref={hostRef} className="h-full w-full" />
+      <div className="pointer-events-none absolute bottom-2 left-2.5 z-10 rounded-full border border-white/10 bg-[#0b1312]/80 px-2.5 py-1 text-[10px] text-muted-foreground backdrop-blur">
+        左键旋转 · 右键平移 · 滚轮缩放 · 点击零件选中
+      </div>
+    </div>
   );
 }
