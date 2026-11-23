@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Cpu, Download, ExternalLink, Layers, PackagePlus, Pause, Play, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Box, Cpu, Download, ExternalLink, Layers, PackagePlus, Pause, Play, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import {
   buildComposableFeedModuleTemplate,
@@ -32,6 +32,7 @@ type Props = {
   onTrialReady?: (ready: boolean) => void;
   onSave: (a: MechanicalAssembly, revisedWorkspace?: TwinWorkspace) => void;
   onInstallBundle: (b: MechanicalBundle) => void;
+  onSendToMujoco?: (a: MechanicalAssembly) => void | Promise<void>;
 };
 type Node = MechanicalAssembly["nodes"][number];
 type EditNode = Node & { key: string };
@@ -76,6 +77,10 @@ function draftOf(source: MechanicalAssembly | undefined, seed: string | undefine
       parent: n.parent && { ...n.parent, node: key(n.parent.node) },
       ...(n.coupledTo ? { coupledTo: { ...n.coupledTo, path: remapPath(n.coupledTo.path, key) } } : {}),
     })),
+    ...(source.baseMobility ? { baseMobility: source.baseMobility } : {}),
+    ...(source.closures ? {
+      closures: source.closures.map((c) => ({ ...c, nodeA: key(c.nodeA), nodeB: key(c.nodeB) })),
+    } : {}),
     output: { ...source.output, node: key(source.output.node) },
     commands: Object.fromEntries(Object.entries(source.commands).map(([path, v]) => [remapPath(path, key), String(v)])),
   };
@@ -94,6 +99,10 @@ function definition(d: Draft): MechanicalAssembly {
     id: d.id,
     name: d.name,
     commands,
+    ...(d.baseMobility ? { baseMobility: d.baseMobility } : {}),
+    ...(d.closures?.length ? {
+      closures: d.closures.map((c) => ({ ...c, nodeA: idOf(d, c.nodeA), nodeB: idOf(d, c.nodeB) })),
+    } : {}),
     nodes: d.nodes.map((n) => ({
       id: n.id,
       packageKey: n.packageKey,
@@ -102,6 +111,7 @@ function definition(d: Draft): MechanicalAssembly {
       ...(n.label ? { label: n.label } : {}),
       ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}),
       ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}),
+      ...(n.jointMode ? { jointMode: n.jointMode } : {}),
       ...(n.coupledTo ? { coupledTo: { ...n.coupledTo, path: remapPath(n.coupledTo.path, (ref) => idOf(d, ref)) } } : {}),
     })),
     output: { ...d.output, node: idOf(d, d.output.node) },
@@ -112,7 +122,9 @@ function signature(a?: MechanicalAssembly) {
     ? JSON.stringify([
         a.id,
         a.name,
-        a.nodes.map((n) => [n.id, n.packageKey, n.parent?.node, n.parent?.mount, n.materialId, n.label, n.explodeStep, n.explodeVectorMm, n.coupledTo]),
+        a.baseMobility,
+        a.closures,
+        a.nodes.map((n) => [n.id, n.packageKey, n.parent?.node, n.parent?.mount, n.materialId, n.label, n.explodeStep, n.explodeVectorMm, n.jointMode, n.coupledTo]),
         a.output.node,
         a.output.mount,
         Object.entries(a.commands).sort(([x], [y]) => x.localeCompare(y)),
@@ -192,6 +204,7 @@ export default function MechanicalAssemblyBench({
   onTrialReady,
   onSave,
   onInstallBundle,
+  onSendToMujoco,
 }: Props) {
   const packages = useMemo(() => new Map(workspace.packages.map(p => [packageKey(p), p])), [workspace.packages]);
   const available = useMemo(() => workspace.packages.filter(p => p.mechanics), [workspace.packages]);
@@ -314,7 +327,8 @@ export default function MechanicalAssemblyBench({
   function remove(n: EditNode) {
     const nodes = d.nodes.filter(other => other.key !== n.key).map(other =>
       other.parent && nodeOf(d, other.parent.node)?.key === n.key ? { ...other, parent: { node: "!" + n.id, mount: other.parent.mount } } : other);
-    edit({ ...d, nodes, output: endNode?.key === n.key ? { node: "!" + n.id, mount: d.output.mount } : d.output,
+    const nextClosures = d.closures?.filter((c) => c.nodeA !== n.key && c.nodeB !== n.key);
+    edit({ ...d, nodes, closures: nextClosures, output: endNode?.key === n.key ? { node: "!" + n.id, mount: d.output.mount } : d.output,
       commands: Object.fromEntries(Object.entries(d.commands).filter(([key]) => key !== n.key && !key.startsWith(n.key + "/"))) });
   }
   function submit(calculate: boolean) {
@@ -538,6 +552,12 @@ export default function MechanicalAssemblyBench({
                 <Cpu />
                 载入单轴丝杠模组
               </Button>
+              {onSendToMujoco && checked.a && checked.issues.length === 0 && (
+                <Button size="sm" variant="secondary" onClick={() => void onSendToMujoco(checked.a!)}>
+                  <Box />
+                  编译至 MuJoCo 物理台
+                </Button>
+              )}
             </>
           )}
         </div>

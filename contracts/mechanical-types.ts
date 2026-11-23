@@ -29,12 +29,25 @@ const nodes = z.array(z.strictObject({
   label: z.string().trim().min(1).max(120).optional(),
   explodeStep: z.number().int().min(0).max(16).optional(),
   explodeVectorMm: vec3("请给出爆炸偏移的 X、Y、Z 毫米分量").optional(),
+  jointMode: z.enum(["actuated", "passive", "velocity"]).optional(),
   coupledTo: z.strictObject({
     path: z.string().trim().min(1).max(240),
     ratio: finite,
     offset: finite.optional(),
   }).optional(),
 })).min(1).max(MECHANICAL_LIMITS.nodes).refine((items) => new Set(items.map((n) => n.id)).size === items.length, "机械实例标识重复");
+
+export const mechanicalClosureSchema = z.strictObject({
+  id: signalIdSchema,
+  kind: z.enum(["connect", "weld", "spring"]).optional(),
+  nodeA: signalIdSchema,
+  mountA: signalIdSchema,
+  nodeB: signalIdSchema,
+  mountB: signalIdSchema,
+  stiffnessNpm: z.number().finite().positive().optional(),
+  dampingNsPm: z.number().finite().nonnegative().optional(),
+});
+export type MechanicalClosure = z.infer<typeof mechanicalClosureSchema>;
 
 const commands = z.unknown().superRefine((source, ctx) => {
   if (!source || typeof source !== "object") return;
@@ -52,6 +65,8 @@ const commands = z.unknown().superRefine((source, ctx) => {
 export const mechanicalAssemblySchema = z.strictObject({
   schemaVersion: z.literal(1), kind: z.literal("mechanical-assembly"), id: signalIdSchema, name: z.string().trim().min(1).max(160),
   nodes, output: connection, commands,
+  baseMobility: z.enum(["fixed", "free"]).optional(),
+  closures: z.array(mechanicalClosureSchema).max(32).optional(),
 });
 export type MechanicalAssembly = z.infer<typeof mechanicalAssemblySchema>;
 export type MechanicalFrame = z.infer<typeof frameSchema>;
@@ -80,6 +95,17 @@ export function mechanicalTopology(a: MechanicalAssembly) {
     issues.push(`存在连接环，下列节点无法按父子顺序展开：${a.nodes.filter((n) => !reachable.has(n.id)).map((n) => n.id).join("、")}。`);
   }
   if (!byId.has(a.output.node) || !a.output.mount) issues.push(`观察点“${a.output.node}/${a.output.mount}”尚未连接到有效的实例和安装点。`);
+  if (a.closures) {
+    const closureIds = new Set<string>();
+    for (const c of a.closures) {
+      if (closureIds.has(c.id)) issues.push(`闭链约束标识“${c.id}”重复。`);
+      closureIds.add(c.id);
+      if (!byId.has(c.nodeA)) issues.push(`闭链约束“${c.id}”引用的节点“${c.nodeA}”不存在。`);
+      if (!byId.has(c.nodeB)) issues.push(`闭链约束“${c.id}”引用的节点“${c.nodeB}”不存在。`);
+      if (c.nodeA === c.nodeB) issues.push(`闭链约束“${c.id}”不能把同一节点（${c.nodeA}）连接到自身。`);
+      if (!c.mountA || !c.mountB) issues.push(`闭链约束“${c.id}”缺少有效的安装点名称。`);
+    }
+  }
   return { ordered, issues };
 }
 

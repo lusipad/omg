@@ -7,7 +7,7 @@ import { packageKey, parseDevicePackage, readTwinData, type DevicePackage } from
 import { emptyWorkspace, installPackage, maxPackages, type TwinWorkspace } from "./twin-simulation";
 import { deviceCompositionClosure } from "./device-composition";
 
-export { MECHANICAL_LIMITS, type MechanicalAssembly, type MechanicalFrame, type MechanicalPart } from "./mechanical-types";
+export { MECHANICAL_LIMITS, type MechanicalAssembly, type MechanicalClosure, type MechanicalFrame, type MechanicalPart } from "./mechanical-types";
 export interface MechanicalBundle { kind: "mechanical-package"; schemaVersion: 1; rootKey: string; packages: DevicePackage[] }
 type Endpoint = { path: string; mount: string };
 export interface ResolvedMechanicalAssembly {
@@ -41,16 +41,18 @@ export function mechanicalSubassembly(raw: MechanicalAssembly, rootId: string): 
     }
   }
   if (!keep.has(a.output.node) || !a.output.mount) throw new Error("请先选择子树内的有效观察点，再封装该部分。");
+  const nextClosures = a.closures?.filter((c) => keep.has(c.nodeA) && keep.has(c.nodeB));
   return {
     ...a,
     nodes: a.nodes
       .filter((n) => keep.has(n.id))
       .map((n) => {
         const dropCoupling = n.coupledTo && !keep.has(n.coupledTo.path.split("/")[0]);
-        const nextNode = dropCoupling ? { id: n.id, packageKey: n.packageKey, parent: n.parent, ...(n.materialId ? { materialId: n.materialId } : {}), ...(n.label ? { label: n.label } : {}), ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}), ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}) } : n;
+        const nextNode = dropCoupling ? { id: n.id, packageKey: n.packageKey, parent: n.parent, ...(n.materialId ? { materialId: n.materialId } : {}), ...(n.label ? { label: n.label } : {}), ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}), ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}), ...(n.jointMode ? { jointMode: n.jointMode } : {}) } : n;
         return nextNode.id === rootId ? { ...nextNode, parent: null } : nextNode;
       }),
     commands: Object.fromEntries(Object.entries(a.commands).filter(([path]) => keep.has(path.split("/")[0]))),
+    ...(nextClosures?.length ? { closures: nextClosures } : {}),
   };
 }
 
@@ -130,6 +132,12 @@ function inspect(ws: TwinWorkspace, a: MechanicalAssembly, rootKey?: string) {
     for (let i = start; i < nodes.length; i++) {
       const { part, value, path } = nodes[i], j = part.joint;
       if (j.type !== "fixed" && (value < j.range[0] || value > j.range[1])) report(`节点 ${path} 的默认值超出限位，请填写 [${j.range.join(", ")}] ${j.unit} 内的指令。`);
+    }
+    if (def.closures) {
+      for (const c of def.closures) {
+        endpoint({ node: c.nodeA, mount: c.mountA }, `闭链约束 ${c.id} 端点 A`);
+        endpoint({ node: c.nodeB, mount: c.mountB }, `闭链约束 ${c.id} 端点 B`);
+      }
     }
     return endpoint(def.output, `装配 ${prefix || def.id} 的观察点`);
   }

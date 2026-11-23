@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowRight,
   Blocks,
+  Box,
   Camera,
   Check,
   ChevronDown,
   Download,
   Eye,
   FolderOpen,
+  Globe,
   Layers,
+  Link2,
   Lock,
   Package,
   PanelRightClose,
@@ -28,6 +31,7 @@ import {
   Zap,
 } from "lucide-react";
 import { solveArticulatedAssembly } from "@contracts/articulated-kinematics";
+import { parseImportCatalog, type ModelRef } from "@contracts/import-catalog";
 import {
   analyzeMachinePhysics,
   classifyNodeFunctionalLayer,
@@ -49,8 +53,10 @@ import {
 } from "@contracts/machine-evolution";
 import type { MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { upsertMechanicalAssembly } from "@contracts/mechanical-assembly";
+import { compileAssemblyToMujoco } from "@contracts/mujoco-compiler";
 import { primitiveBoundingBoxMm, type AxisDir } from "@contracts/primitive-parts";
 import {
+  addAssemblyClosure,
   buildAssemblyTreeRows,
   convertSandboxToSystemTwin,
   createChallengeStarter,
@@ -60,26 +66,36 @@ import {
   listSavedSandboxMachines,
   loadSandboxMachineFromWorkspace,
   REAL_VENDOR_BOM_PRESETS,
+  removeAssemblyClosure,
   removeSandboxNode,
   SANDBOX_BLOCKS,
   sandboxBomToCsv,
   saveSandboxMachineToWorkspace,
+  setAssemblyBaseMobility,
   snapBlockOntoAssembly,
   updateSandboxNode,
   type SandboxBlockCategory,
 } from "@contracts/sandbox-challenges";
 import { type StudioRoute } from "@contracts/studio-navigation";
 import { packageKey } from "@contracts/twin-device";
-import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
+import {
+  loadUniversalArchetype,
+  UNIVERSAL_ARCHETYPES,
+  type UniversalArchetypeId,
+} from "@contracts/universal-archetypes";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { IS_PAGES } from "@/const";
 import { downloadBlob } from "@/lib/download";
+import { describeModel, putModelBundle } from "@/lib/model-files";
 import { SandboxBlockIcon } from "./SandboxBlockIcon";
 import SandboxViewport3D from "./SandboxViewport3D";
 import { VisionIntakePanel } from "./VisionIntakePanel";
+
+const MujocoSandboxArena = lazy(() => import("./MujocoSandboxArena"));
 
 export interface SandboxBuilderStudioProps {
   workspace: TwinWorkspace;
@@ -88,7 +104,7 @@ export interface SandboxBuilderStudioProps {
   onNavigate: (route: StudioRoute, message?: string) => void;
 }
 
-type PrimaryPillar = "showroom" | "commissions" | "sandbox";
+type PrimaryPillar = "showroom" | "commissions" | "sandbox" | "physics";
 type PaletteFilter = "all" | SandboxBlockCategory;
 type SandboxLeftTab = "blocks" | "manual";
 
@@ -242,6 +258,11 @@ export default function SandboxBuilderStudio({
   const [bomOpen, setBomOpen] = useState(false);
   const [bomTab, setBomTab] = useState<"bom" | "photo">("bom");
   const [customWidthInput, setCustomWidthInput] = useState("");
+  const [lastBuildPillar, setLastBuildPillar] = useState<"commissions" | "sandbox">("sandbox");
+  const [physicsSourceHint, setPhysicsSourceHint] = useState<"current" | UniversalArchetypeId | undefined>(undefined);
+  const [closureNodeA, setClosureNodeA] = useState("");
+  const [closureNodeB, setClosureNodeB] = useState("");
+  const [closureKind, setClosureKind] = useState<"connect" | "weld" | "spring">("connect");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -280,13 +301,22 @@ export default function SandboxBuilderStudio({
   );
 
   // Active workspace & assembly for whichever pillar is active
-  const activeSession = pillar === "commissions" ? commSession : pillar === "sandbox" ? sandboxSession : {
-    workspace: exhibitData.workspace,
-    assembly: exhibitData.assembly,
-    commands: exhibitData.assembly.commands,
-    dirty: false,
-    history: [],
-  };
+  const activeSession =
+    pillar === "commissions"
+      ? commSession
+      : pillar === "sandbox"
+        ? sandboxSession
+        : pillar === "physics"
+          ? lastBuildPillar === "commissions"
+            ? commSession
+            : sandboxSession
+          : {
+              workspace: exhibitData.workspace,
+              assembly: exhibitData.assembly,
+              commands: exhibitData.assembly.commands,
+              dirty: false,
+              history: [],
+            };
 
   // Precomputed live Showroom Trial simulation (reacts live to What-If sliders!)
   const showroomSim = useMemo(() => {
@@ -300,7 +330,7 @@ export default function SandboxBuilderStudio({
 
   // Active Trial Simulation for Commissions or Sandbox when user hits "通电试机"
   const activeBuildSim = useMemo(() => {
-    if (pillar === "showroom" || !showTrialVerdict) return null;
+    if (pillar === "showroom" || pillar === "physics" || !showTrialVerdict) return null;
     const mode = pillar === "commissions" ? currentCommission.trialMode : sandboxTrialMode;
     return simulateMachineTrial(activeSession.workspace, activeSession.assembly, mode);
   }, [pillar, showTrialVerdict, currentCommission.trialMode, sandboxTrialMode, activeSession.workspace, activeSession.assembly]);
@@ -336,7 +366,7 @@ export default function SandboxBuilderStudio({
 
   // Play trial run once (holding on final milled cut so user inspects result)
   useEffect(() => {
-    if (pillar === "showroom" || !trialPlaying || !activeBuildSim || activeBuildSim.frames.length === 0) return;
+    if (pillar === "showroom" || pillar === "physics" || !trialPlaying || !activeBuildSim || activeBuildSim.frames.length === 0) return;
     let raf = 0;
     let lastTs = performance.now();
     let acc = 0;
@@ -378,7 +408,7 @@ export default function SandboxBuilderStudio({
         showTipMarker: true,
       };
     }
-    if (pillar !== "showroom" && showTrialVerdict && activeBuildSim) {
+    if ((pillar === "commissions" || pillar === "sandbox") && showTrialVerdict && activeBuildSim) {
       const idx = clamp(trialFrameIdx, 0, Math.max(0, activeBuildSim.frames.length - 1));
       const frame = activeBuildSim.frames[idx];
       const stock = activeBuildSim.stockStates[idx] ?? null;
@@ -701,6 +731,69 @@ export default function SandboxBuilderStudio({
     }
   }
 
+  async function launchMujocoPro() {
+    setError("");
+    try {
+      const compiled = compileAssemblyToMujoco(activeSession.workspace, activeSession.assembly);
+      const baseRef = await describeModel(compiled.bundle);
+      const ref: ModelRef = { ...baseRef, run: compiled.recommendedRun };
+      await putModelBundle(ref, compiled.bundle);
+      const baseWs = parseWorkspace(workspace);
+      const existingCatalog = baseWs.catalog ?? { models: [], materials: [] };
+      const finalWs: TwinWorkspace = {
+        ...baseWs,
+        catalog: parseImportCatalog(
+          {
+            models: [...existingCatalog.models.filter((m) => m.id !== ref.id), ref],
+            materials: existingCatalog.materials,
+          },
+          baseWs.packages,
+        ),
+      };
+      onSaveWorkspace(finalWs);
+      setBomOpen(false);
+      onNavigate(
+        { view: "workbench", target: `model:${ref.id}` },
+        `已由当前设计编译 MuJoCo 刚体模型「${activeSession.assembly.name}」并载入多体求解台。`,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "编译送入 MuJoCo 多体物理台失败。");
+    }
+  }
+
+  function mutateAssemblyConfig(updater: (asm: MechanicalAssembly) => MechanicalAssembly) {
+    if (pillar === "showroom" || pillar === "physics") return;
+    setError("");
+    try {
+      const nextAsm = updater(activeSession.assembly);
+      setActiveEditorSession((prev) => ({
+        ...prev,
+        assembly: nextAsm,
+        dirty: true,
+        history: [...prev.history.slice(-15), { workspace: prev.workspace, assembly: prev.assembly }],
+      }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "修改装配物理设置失败。");
+    }
+  }
+
+  function loadArchetypeIntoSandbox(id: UniversalArchetypeId) {
+    setError("");
+    const loaded = loadUniversalArchetype(id);
+    setPillar("sandbox");
+    setSandboxSession({
+      workspace: loaded.workspace,
+      assembly: loaded.assembly,
+      commands: { ...loaded.assembly.commands },
+      dirty: true,
+      history: [...sandboxSession.history.slice(-15), { workspace: sandboxSession.workspace, assembly: sandboxSession.assembly }],
+    });
+    setSelectedNodeId("");
+    setPreferredParentId("");
+    setShowTrialVerdict(false);
+    setFitToken((n) => n + 1);
+  }
+
   const nextCommission = useMemo(() => {
     const idx = EVOLUTION_COMMISSIONS.findIndex((c) => c.id === commissionId);
     return idx >= 0 && idx + 1 < EVOLUTION_COMMISSIONS.length ? EVOLUTION_COMMISSIONS[idx + 1] : null;
@@ -733,7 +826,7 @@ export default function SandboxBuilderStudio({
   const activeSimResult = pillar === "showroom" ? showroomSim : activeBuildSim;
   const verdict = activeSimResult?.verdict;
   const causalFeed = pillar === "showroom" ? whatIfFeedMmS : 28;
-  const isInteractiveBuild = pillar !== "showroom";
+  const isInteractiveBuild = pillar === "commissions" || pillar === "sandbox";
   const preferredParentNode = preferredParentId
     ? activeSession.assembly.nodes.find((n) => n.id === preferredParentId)
     : undefined;
@@ -773,8 +866,8 @@ export default function SandboxBuilderStudio({
           </Button>
         </div>
 
-        {/* 3 Cohesive Pillars */}
-        <div role="tablist" aria-label="核心工作区切换" className="flex items-center gap-1 rounded-md border bg-background/70 p-0.5">
+        {/* 4 Cohesive Pillars */}
+        <div role="tablist" aria-label="核心工作区切换" className="flex flex-wrap items-center gap-1 rounded-md border bg-background/70 p-0.5">
           <Button
             size="sm"
             role="tab"
@@ -799,6 +892,7 @@ export default function SandboxBuilderStudio({
             className="h-7 px-2.5 text-xs"
             onClick={() => {
               setArmedItem(null);
+              setLastBuildPillar("commissions");
               setPillar("commissions");
               setFitToken((n) => n + 1);
             }}
@@ -817,6 +911,7 @@ export default function SandboxBuilderStudio({
             className="h-7 px-2.5 text-xs"
             onClick={() => {
               setArmedItem(null);
+              setLastBuildPillar("sandbox");
               setPillar("sandbox");
               setFitToken((n) => n + 1);
             }}
@@ -824,29 +919,48 @@ export default function SandboxBuilderStudio({
             <Blocks />
             自由创造与 BOM
           </Button>
+          <Button
+            size="sm"
+            role="tab"
+            aria-selected={pillar === "physics"}
+            variant={pillar === "physics" ? "default" : "ghost"}
+            className="h-7 px-2.5 text-xs"
+            onClick={() => {
+              setArmedItem(null);
+              setPhysicsSourceHint(undefined);
+              setPillar("physics");
+            }}
+          >
+            <Globe />
+            万物物理试炼场
+          </Button>
         </div>
 
         {/* Global Tools: X-Ray Principle, Explode View, Real BOM, Pro Mode */}
         <div className="flex flex-wrap items-center gap-1.5">
-          <Button
-            size="sm"
-            variant={xrayMode ? "default" : "outline"}
-            className="h-7 px-2 text-xs"
-            onClick={() => setXrayMode((v) => !v)}
-          >
-            <Activity className="size-3.5" />
-            {xrayMode ? "透视层：开" : "原理透视"}
-          </Button>
-          <Button
-            size="sm"
-            variant={explodePct > 0 ? "default" : "outline"}
-            className="h-7 px-2 text-xs"
-            onClick={() => setExplodePct((v) => (v > 0 ? 0 : 55))}
-          >
-            <Layers className="size-3.5" />
-            {explodePct > 0 ? `爆炸 ${explodePct}%` : "爆炸视图"}
-          </Button>
-          {pillar !== "showroom" && (
+          {pillar !== "physics" && (
+            <>
+              <Button
+                size="sm"
+                variant={xrayMode ? "default" : "outline"}
+                className="h-7 px-2 text-xs"
+                onClick={() => setXrayMode((v) => !v)}
+              >
+                <Activity className="size-3.5" />
+                {xrayMode ? "透视层：开" : "原理透视"}
+              </Button>
+              <Button
+                size="sm"
+                variant={explodePct > 0 ? "default" : "outline"}
+                className="h-7 px-2 text-xs"
+                onClick={() => setExplodePct((v) => (v > 0 ? 0 : 55))}
+              >
+                <Layers className="size-3.5" />
+                {explodePct > 0 ? `爆炸 ${explodePct}%` : "爆炸视图"}
+              </Button>
+            </>
+          )}
+          {(pillar === "commissions" || pillar === "sandbox") && (
             <Button
               size="sm"
               variant={saveFeedback ? "default" : "outline"}
@@ -871,6 +985,9 @@ export default function SandboxBuilderStudio({
             <DropdownMenuContent align="end" className="w-64">
               <DropdownMenuLabel>多求解器专业工程 IDE</DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => void launchMujocoPro()}>
+                <Box /> 送入 MuJoCo 多体物理求解台
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={launchClosedLoopTwin}>
                 <Sparkles /> 送入 Modelica 机电闭环求解台
               </DropdownMenuItem>
@@ -888,7 +1005,41 @@ export default function SandboxBuilderStudio({
         </div>
       </header>
 
-      {/* Locked 100dvh 3-Pane Workspace */}
+      {pillar === "physics" ? (
+        <Suspense
+          fallback={
+            <div className="surface flex flex-1 items-center justify-center text-xs text-muted-foreground">
+              正在装载 MuJoCo 万物刚体物理试炼场…
+            </div>
+          }
+        >
+          <MujocoSandboxArena
+            key={physicsSourceHint ?? `arena-${activeSession.assembly.id}-${activeSession.assembly.nodes.length}`}
+            hostWorkspace={workspace}
+            currentWorkspace={activeSession.workspace}
+            currentAssembly={activeSession.assembly}
+            initialSource={physicsSourceHint}
+            onLoadIntoSandbox={(nextWs, nextAsm) => {
+              setSandboxSession({
+                workspace: nextWs,
+                assembly: nextAsm,
+                commands: { ...nextAsm.commands },
+                dirty: true,
+                history: [...sandboxSession.history.slice(-15), { workspace: sandboxSession.workspace, assembly: sandboxSession.assembly }],
+              });
+              setLastBuildPillar("sandbox");
+              setSelectedNodeId("");
+              setPreferredParentId("");
+              setShowTrialVerdict(false);
+              setPillar("sandbox");
+              setFitToken((n) => n + 1);
+            }}
+            onSaveHostWorkspace={onSaveWorkspace}
+            onNavigate={onNavigate}
+          />
+        </Suspense>
+      ) : (
+      /* Locked 100dvh 3-Pane Workspace */
       <div
         className={`grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden max-lg:grid-rows-[44dvh_auto_minmax(0,1fr)] ${
           outlinerOpen ? "lg:grid-cols-[18.5rem_minmax(0,1fr)_18rem]" : "lg:grid-cols-[18.5rem_minmax(0,1fr)]"
@@ -1384,6 +1535,35 @@ export default function SandboxBuilderStudio({
                   </div>
                 </div>
 
+                {/* Starter Archetype Quick Loader */}
+                <div className="flex gap-1">
+                  <select
+                    aria-label="快速载入造物原型样机"
+                    className="h-7 flex-1 rounded border bg-background px-1.5 text-[11px]"
+                    value=""
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      if (val === "blank") {
+                        setSandboxSession(makeFreeSandboxSession());
+                        setSelectedNodeId("");
+                        setShowTrialVerdict(false);
+                        setFitToken((n) => n + 1);
+                      } else {
+                        loadArchetypeIntoSandbox(val as UniversalArchetypeId);
+                      }
+                    }}
+                  >
+                    <option value="">✨ 速载原型起步（车/爪/连杆/悬架）…</option>
+                    <option value="blank">全新空白铝合金底板</option>
+                    {UNIVERSAL_ARCHETYPES.map((arch) => (
+                      <option key={arch.id} value={arch.id}>
+                        {arch.badge} · {arch.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Encapsulate as reusable Turing-style block */}
                 <div className="flex gap-1">
                   <Input
@@ -1418,6 +1598,20 @@ export default function SandboxBuilderStudio({
                     <Zap /> 通电试机
                   </Button>
                 </div>
+
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 w-full border border-primary/30 text-[11px] text-primary hover:bg-primary/15"
+                  onClick={() => {
+                    setArmedItem(null);
+                    setLastBuildPillar("sandbox");
+                    setPhysicsSourceHint("current");
+                    setPillar("physics");
+                  }}
+                >
+                  <Globe /> 送去真物理试炼场（重力 · 接触 · 闭环验证）
+                </Button>
 
                 <div role="tablist" className="flex gap-1 pt-0.5">
                   <Button
@@ -1981,6 +2175,25 @@ export default function SandboxBuilderStudio({
                     </select>
                   )}
 
+                  {selectedPart && selectedPart.joint.type !== "fixed" && (
+                    <select
+                      aria-label="MuJoCo 驱动模式"
+                      className="h-7 w-full rounded border bg-background px-1.5 text-[11px]"
+                      value={selectedRawNode.jointMode ?? "actuated"}
+                      onChange={(e) =>
+                        mutateSelectedNode(selectedRawNode.id, {
+                          jointMode: e.target.value as "actuated" | "passive" | "velocity",
+                        })
+                      }
+                    >
+                      <option value="actuated">驱动模式：伺服位置控制 (actuated)</option>
+                      {selectedPart.joint.type === "hinge" && (
+                        <option value="velocity">驱动模式：连续转速马达 (velocity)</option>
+                      )}
+                      <option value="passive">驱动模式：无源自由随动 (passive)</option>
+                    </select>
+                  )}
+
                   <select
                     aria-label="更换为真实厂商零件型号"
                     className="h-7 w-full rounded border bg-background px-1.5 text-[11px]"
@@ -2000,10 +2213,114 @@ export default function SandboxBuilderStudio({
                   )}
                 </div>
               )}
+
+              {/* Base Mobility & Cross-Branch Closures Panel */}
+              <div className="mt-2 shrink-0 space-y-1.5 border-t pt-2">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="flex items-center gap-1 text-[11px] font-semibold text-foreground">
+                    <Link2 className="size-3 text-primary" /> 底盘与闭链约束
+                  </span>
+                  <button
+                    type="button"
+                    className={`rounded border px-1.5 py-0.5 text-[10px] font-medium ${
+                      activeSession.assembly.baseMobility === "free"
+                        ? "border-primary bg-primary/20 text-primary"
+                        : "border-border bg-background/60 text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() =>
+                      mutateAssemblyConfig((asm) =>
+                        setAssemblyBaseMobility(asm, asm.baseMobility === "free" ? "fixed" : "free"),
+                      )
+                    }
+                  >
+                    {activeSession.assembly.baseMobility === "free" ? "🛞 自由落地底盘" : "🔩 固定基座"}
+                  </button>
+                </div>
+
+                {(activeSession.assembly.closures?.length ?? 0) > 0 && (
+                  <div className="space-y-1">
+                    {activeSession.assembly.closures!.map((cl) => (
+                      <div key={cl.id} className="flex items-center justify-between gap-1 rounded border bg-background/50 px-1.5 py-1 text-[10px]">
+                        <span className="truncate">
+                          {cl.kind ?? "connect"} · {cl.nodeA} ↔ {cl.nodeB}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`移除闭环约束 ${cl.id}`}
+                          className="shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => mutateAssemblyConfig((asm) => removeAssemblyClosure(asm, cl.id))}
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {activeSession.assembly.nodes.length >= 2 && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    <select
+                      aria-label="闭环端点 A"
+                      className="h-6 min-w-0 flex-1 rounded border bg-background px-1 text-[10px]"
+                      value={closureNodeA}
+                      onChange={(e) => setClosureNodeA(e.target.value)}
+                    >
+                      <option value="">节点A…</option>
+                      {activeSession.assembly.nodes.map((n) => (
+                        <option key={n.id} value={n.id}>{n.label ?? n.id}</option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="闭环端点 B"
+                      className="h-6 min-w-0 flex-1 rounded border bg-background px-1 text-[10px]"
+                      value={closureNodeB}
+                      onChange={(e) => setClosureNodeB(e.target.value)}
+                    >
+                      <option value="">节点B…</option>
+                      {activeSession.assembly.nodes.map((n) => (
+                        <option key={n.id} value={n.id}>{n.label ?? n.id}</option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="闭环类型"
+                      className="h-6 rounded border bg-background px-1 text-[10px]"
+                      value={closureKind}
+                      onChange={(e) => setClosureKind(e.target.value as "connect" | "weld" | "spring")}
+                    >
+                      <option value="connect">销铰</option>
+                      <option value="weld">固焊</option>
+                      <option value="spring">弹簧</option>
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-1.5 text-[10px]"
+                      disabled={!closureNodeA || !closureNodeB || closureNodeA === closureNodeB}
+                      onClick={() => {
+                        mutateAssemblyConfig((asm) =>
+                          addAssemblyClosure(asm, {
+                            kind: closureKind,
+                            nodeA: closureNodeA,
+                            mountA: "center",
+                            nodeB: closureNodeB,
+                            mountB: "center",
+                            ...(closureKind === "spring" ? { stiffnessNpm: 320, dampingNsPm: 8 } : {}),
+                          }),
+                        );
+                        setClosureNodeA("");
+                        setClosureNodeB("");
+                      }}
+                    >
+                      ＋连
+                    </Button>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </aside>
       </div>
+      )}
 
       {/* Saved Machines Library & Quick Exhibit Loader Dialog */}
       <Dialog open={libraryOpen} onOpenChange={setLibraryOpen}>
@@ -2016,7 +2333,7 @@ export default function SandboxBuilderStudio({
           </DialogHeader>
 
           <div className="space-y-3 text-xs">
-            {pillar !== "showroom" && (
+            {(pillar === "commissions" || pillar === "sandbox") && (
               <div className="flex flex-wrap items-center gap-2 rounded border bg-background/60 p-2.5">
                 <Input
                   className="h-8 min-w-44 flex-1 text-xs"
@@ -2159,9 +2476,14 @@ export default function SandboxBuilderStudio({
                     去器件库录入自定义规格 →
                   </Button>
                 </div>
-                <Button size="sm" onClick={launchClosedLoopTwin}>
-                  <Sparkles /> 送入底层 Modelica 闭环深度校核 →
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => void launchMujocoPro()}>
+                    <Box /> 送入 MuJoCo 多体物理
+                  </Button>
+                  <Button size="sm" onClick={launchClosedLoopTwin}>
+                    <Sparkles /> 送入底层 Modelica 闭环深度校核 →
+                  </Button>
+                </div>
               </div>
             </div>
           ) : (

@@ -9,6 +9,7 @@ export const primitiveFinishSchema = z.enum([
   "spindle_red",
   "workpiece_alloy",
   "sensor_amber",
+  "rubber_grip",
 ]);
 export type PrimitiveFinish = z.infer<typeof primitiveFinishSchema>;
 

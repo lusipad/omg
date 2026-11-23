@@ -29,6 +29,7 @@ const FINISH_OPTIONS: Array<{ value: PrimitiveFinish; label: string }> = [
   { value: "spindle_red", label: "主轴红漆" },
   { value: "workpiece_alloy", label: "切削毛坯绿" },
   { value: "sensor_amber", label: "传感器琥珀色" },
+  { value: "rubber_grip", label: "高摩擦橡胶/防滑垫" },
 ];
 
 const DEFAULT_NAMES: Record<ShapeKind, string> = {

@@ -2,12 +2,15 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { ArrowLeft, Box, Cpu, Factory, FolderInput, Layers, LayoutGrid, Play, Plus, Upload, Workflow } from "lucide-react";
 import { Link } from "react-router";
 import { getStudioExample, studioHref, type MotorAxisLocation, type StudioExampleKind, type StudioRoute, type StudioTarget, type StudioTargetOption } from "@contracts/studio-navigation";
-import type { TwinWorkspace } from "@contracts/twin-simulation";
+import { parseImportCatalog, type ModelRef } from "@contracts/import-catalog";
+import { compileAssemblyToMujoco } from "@contracts/mujoco-compiler";
+import { parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
 import type { FactoryLayout } from "@contracts/factory";
 import type { LinearAssembly } from "@contracts/linear-assembly";
-import type { MechanicalAssembly, MechanicalBundle } from "@contracts/mechanical-assembly";
+import { upsertMechanicalAssembly, type MechanicalAssembly, type MechanicalBundle } from "@contracts/mechanical-assembly";
 import type { TwinSystemAssembly } from "@contracts/system-twin";
 import { Button } from "@/components/ui/button";
+import { describeModel, putModelBundle } from "@/lib/model-files";
 import type { IncomingWorkbenchModel, WorkbenchImportOptions } from "@/lib/workbench-import";
 import TwinSimulation from "./TwinSimulation";
 
@@ -530,7 +533,27 @@ export default function StudioRunArea({
             initialMotorKey={route.target?.startsWith("factory:") ? route.motorKey : undefined}
             onImport={onOpenImport} initialPackageKey={route.target === "factory-new" ? route.part : undefined} />}
           {(target === "mechanism-new" || mechanism) && <MechanicalAssemblyBench key={openedProject} workspace={workspace} assembly={mechanism}
-            initialPackageKey={route.target === "mechanism-new" ? route.part : undefined} onSave={onSaveMechanism} onInstallBundle={onInstallBundle} />}
+            initialPackageKey={route.target === "mechanism-new" ? route.part : undefined} onSave={onSaveMechanism} onInstallBundle={onInstallBundle}
+            onSendToMujoco={async (mech) => {
+              const baseWs = upsertMechanicalAssembly(parseWorkspace(workspace), mech);
+              const compiled = compileAssemblyToMujoco(baseWs, mech);
+              const baseRef = await describeModel(compiled.bundle);
+              const ref: ModelRef = { ...baseRef, run: compiled.recommendedRun };
+              await putModelBundle(ref, compiled.bundle);
+              const existingCatalog = baseWs.catalog ?? { models: [], materials: [] };
+              const nextWs: TwinWorkspace = {
+                ...baseWs,
+                catalog: parseImportCatalog(
+                  { models: [...existingCatalog.models.filter((m) => m.id !== ref.id), ref], materials: existingCatalog.materials },
+                  baseWs.packages,
+                ),
+              };
+              onChange(nextWs);
+              onNavigate(
+                { view: "workbench", target: `model:${ref.id}` },
+                `已将「${mech.name}」编译为 MuJoCo 多体物理模型并切换至仿真工作台。`,
+              );
+            }} />}
           {(target === "system-new" || system) && <SystemTwinBench key={`${openedProject}-${system?.id ?? "new"}`} workspace={workspace} system={system}
             onSave={onSaveSystem} />}
         </Suspense>

@@ -15,6 +15,7 @@ const FINISH_COLOR: Record<PrimitiveFinish, string> = {
   spindle_red: "#f87171",
   workpiece_alloy: "#a5b4fc",
   sensor_amber: "#fbbf24",
+  rubber_grip: "#38bdf8",
 };
 
 export function SandboxBlockIcon({
@@ -24,6 +25,47 @@ export function SandboxBlockIcon({
   className = "size-8 shrink-0",
 }: SandboxBlockIconProps) {
   const accent = finish ? FINISH_COLOR[finish] : "#5eead4";
+
+  // Dedicated icons for cross-domain universal blocks
+  if (blockId === "drive_wheel" || (shape === "cylinder" && finish === "rubber_grip")) {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <circle cx="18" cy="18" r="12" fill="#0f172a" stroke="#38bdf8" strokeWidth="3.2" strokeDasharray="4 2.2" />
+        <circle cx="18" cy="18" r="6" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.6" />
+        <circle cx="18" cy="18" r="2.2" fill="#5eead4" />
+      </svg>
+    );
+  }
+
+  if (blockId === "passive_hinge") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <circle cx="18" cy="18" r="9.5" fill="#422006" stroke="#eab308" strokeWidth="2" />
+        <circle cx="18" cy="18" r="3.5" fill="#0f172a" stroke="#fde047" strokeWidth="1.5" />
+        <path d="M9 11a12 12 0 0 1 18 0" stroke="#5eead4" strokeWidth="1.6" strokeLinecap="round" strokeDasharray="2.5 2" />
+      </svg>
+    );
+  }
+
+  if (blockId === "link_rod") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <rect x="4" y="13" width="28" height="10" rx="5" fill="#1e293b" stroke="#cbd5e1" strokeWidth="1.8" />
+        <circle cx="9.5" cy="18" r="2.5" fill="#0f172a" stroke="#5eead4" strokeWidth="1.6" />
+        <circle cx="26.5" cy="18" r="2.5" fill="#0f172a" stroke="#5eead4" strokeWidth="1.6" />
+      </svg>
+    );
+  }
+
+  if (blockId === "gripper_finger") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <rect x="7" y="7" width="22" height="6" rx="2" fill="#334155" stroke="#94a3b8" strokeWidth="1.5" />
+        <path d="M12 13v13l3 3M24 13v13l-3 3" stroke="#38bdf8" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="14" y="21" width="8" height="7" rx="1.2" fill="#f59e0b" fillOpacity="0.35" stroke="#fbbf24" strokeWidth="1.3" />
+      </svg>
+    );
+  }
 
   // Distinction among "box" shapes based on blockId or finish
   if (blockId === "limit_switch" || finish === "sensor_amber") {

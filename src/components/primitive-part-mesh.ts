@@ -17,6 +17,7 @@ const FINISH_CONFIG: Record<PrimitiveFinish, { color: number; metalness: number;
   spindle_red: { color: 0xc94a3f, metalness: 0.28, roughness: 0.4 },
   workpiece_alloy: { color: 0x6cb8a6, metalness: 0.36, roughness: 0.44 },
   sensor_amber: { color: 0xe39b3b, metalness: 0.2, roughness: 0.45 },
+  rubber_grip: { color: 0x1e242b, metalness: 0.08, roughness: 0.88 },
 };
 
 function makeMaterial(finish: PrimitiveFinish, selected?: boolean): THREE.MeshStandardMaterial {

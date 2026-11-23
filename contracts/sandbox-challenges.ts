@@ -5,7 +5,14 @@ import {
   type ArticulatedSolveResult,
 } from "./articulated-kinematics";
 import { hasFeedRole, hasServoRole } from "./device-model-binding";
-import { parseMechanicalAssembly, upsertMechanicalAssembly, type MechanicalAssembly, type MechanicalFrame, type MechanicalPart } from "./mechanical-assembly";
+import {
+  parseMechanicalAssembly,
+  upsertMechanicalAssembly,
+  type MechanicalAssembly,
+  type MechanicalClosure,
+  type MechanicalFrame,
+  type MechanicalPart,
+} from "./mechanical-assembly";
 import { PRIMITIVE_SHAPE_LABELS, primitiveBoundingBoxMm, type AxisDir, type PrimitiveFinish, type PrimitivePartSpec } from "./primitive-parts";
 import { upsertTwinSystem, type TwinSystemAssembly } from "./system-twin";
 import { buildPrimitivePartPackage, packageKey, parseDevicePackage, type DeviceModelBinding, type DevicePackage, type DeviceParameterEntry } from "./twin-device";
@@ -20,6 +27,8 @@ export interface SandboxBlockDefinition {
   readonly subtitle: string;
   readonly spec: PrimitivePartSpec;
   readonly defaultJoint: MechanicalPart["joint"];
+  readonly defaultJointMode?: "actuated" | "passive" | "velocity";
+  readonly extraOutputs?: MechanicalPart["outputs"];
   readonly attachMode?: "bottom" | "side_x" | "side_y" | "center";
   readonly roleHint?: "drive" | "motor" | "screw" | "table" | "sensor" | "spindle" | "workpiece" | "frame";
   readonly behavior?: Parameters<typeof buildPrimitivePartPackage>[0]["behavior"];
@@ -189,6 +198,51 @@ export const SANDBOX_BLOCKS: readonly SandboxBlockDefinition[] = [
     spec: { shape: "box", widthMm: 100, depthMm: 80, heightMm: 24, finish: "workpiece_alloy" },
     defaultJoint: { type: "fixed" },
     roleHint: "workpiece",
+  },
+
+  // ⑤ 万物扩展通用积木（驱动轮 / 随动铰链 / 连杆臂 / 防滑夹爪）
+  {
+    id: "link_rod",
+    category: "frame",
+    name: "双孔精密连杆臂",
+    subtitle: "160 mm 长连杆臂（预设两端 pin_a / pin_b 铰接安装点）",
+    spec: { shape: "box", widthMm: 160, depthMm: 18, heightMm: 18, finish: "aluminum" },
+    defaultJoint: { type: "fixed" },
+    extraOutputs: [
+      { id: "pin_a", positionMm: [-80, 0, 0], quatWxyz: [1, 0, 0, 0] },
+      { id: "pin_b", positionMm: [80, 0, 0], quatWxyz: [1, 0, 0, 0] },
+    ],
+    roleHint: "frame",
+  },
+  {
+    id: "passive_hinge",
+    category: "motion",
+    name: "无源随动铰链销",
+    subtitle: "绕 Y 轴自由转动，适用于四连杆闭环销接与悬挂摆臂",
+    spec: { shape: "cylinder", radiusMm: 14, lengthMm: 22, axis: "y", finish: "brass" },
+    defaultJoint: { type: "hinge", axis: [0, 1, 0], unit: "deg", range: [-180, 180] },
+    defaultJointMode: "passive",
+    roleHint: "frame",
+  },
+  {
+    id: "drive_wheel",
+    category: "actuator",
+    name: "高摩擦橡胶驱动轮",
+    subtitle: "Ø84×24 mm 高抓地橡胶轮胎，带连续转速驱动马达",
+    spec: { shape: "cylinder", radiusMm: 42, lengthMm: 24, axis: "y", finish: "rubber_grip" },
+    defaultJoint: { type: "hinge", axis: [0, 1, 0], unit: "deg", range: [-36000, 36000] },
+    defaultJointMode: "velocity",
+    roleHint: "drive",
+  },
+  {
+    id: "gripper_finger",
+    category: "actuator",
+    name: "橡胶防滑对夹手指",
+    subtitle: "沿 Y 向开合摩擦夹指（μ=1.85），可在重力场中夹持抬起方物块",
+    spec: { shape: "box", widthMm: 26, depthMm: 14, heightMm: 54, finish: "rubber_grip" },
+    defaultJoint: { type: "slide", axis: [0, 1, 0], unit: "mm", range: [-10, 26] },
+    defaultJointMode: "actuated",
+    roleHint: "frame",
   },
 ];
 
@@ -412,6 +466,7 @@ export function snapBlockOntoAssembly(
     primitive: effectiveSpec,
     joint: block.defaultJoint,
     input: { positionMm: inputPosMm, quatWxyz: Q_ID },
+    extraOutputs: block.extraOutputs,
     behavior: block.behavior,
   });
 
@@ -447,6 +502,7 @@ export function snapBlockOntoAssembly(
     parent: { node: parentNodeId, mount: parentMountId },
     explodeStep: parentStep + 1,
     explodeVectorMm: explodeVecMm,
+    ...(block.defaultJointMode ? { jointMode: block.defaultJointMode } : {}),
     ...(coupledTo ? { coupledTo } : {}),
   };
 
@@ -508,6 +564,7 @@ export function updateSandboxNode(
     jointType?: "fixed" | "slide" | "hinge";
     jointAxis?: AxisDir;
     jointRange?: readonly [number, number];
+    jointMode?: "actuated" | "passive" | "velocity";
     vendorPresetId?: string;
   },
 ): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
@@ -614,18 +671,31 @@ export function updateSandboxNode(
     ? parseWorkspace(ws)
     : installPackage(ws, finalPkg);
 
-  const nextNodes = assembly.nodes.map((n) =>
-    n.id === nodeId
-      ? {
-          ...n,
-          packageKey: packageKey(finalPkg),
-          ...(patch.label?.trim() ? { label: patch.label.trim() } : patch.vendorPresetId ? { label: model } : {}),
-        }
-      : n,
-  );
+  const nextNodes = assembly.nodes.map((n) => {
+    if (n.id !== nodeId) return n;
+    const nextJointMode = nextJoint.type === "fixed" ? undefined : (patch.jointMode ?? n.jointMode);
+    return {
+      ...n,
+      packageKey: packageKey(finalPkg),
+      ...(patch.label?.trim() ? { label: patch.label.trim() } : patch.vendorPresetId ? { label: model } : {}),
+      ...(nextJointMode ? { jointMode: nextJointMode } : { jointMode: undefined }),
+    };
+  });
+  const nextCommands = { ...assembly.commands };
+  if (nextJoint.type === "fixed") {
+    delete nextCommands[nodeId];
+  } else if (oldPkg.mechanics.joint.type === "fixed" && nextCommands[nodeId] === undefined) {
+    nextCommands[nodeId] = 0;
+  }
   const nextAssembly = parseMechanicalAssembly({
     ...assembly,
-    nodes: nextNodes,
+    nodes: nextNodes.map((n) => {
+      if (n.jointMode !== undefined) return n;
+      const cleaned = { ...n };
+      delete cleaned.jointMode;
+      return cleaned;
+    }),
+    commands: nextCommands,
   });
 
   if (nextWs.mechanisms?.some((m) => m.id === nextAssembly.id)) {
@@ -662,7 +732,7 @@ export function removeSandboxNode(
     .filter((n) => !toDrop.has(n.id))
     .map((n) => {
       if (!n.coupledTo || !toDrop.has(n.coupledTo.path.split("/")[0])) return n;
-      const { id, packageKey: pk, parent, materialId, label, explodeStep, explodeVectorMm } = n;
+      const { id, packageKey: pk, parent, materialId, label, explodeStep, explodeVectorMm, jointMode } = n;
       return {
         id,
         packageKey: pk,
@@ -671,6 +741,7 @@ export function removeSandboxNode(
         ...(label ? { label } : {}),
         ...(explodeStep !== undefined ? { explodeStep } : {}),
         ...(explodeVectorMm ? { explodeVectorMm } : {}),
+        ...(jointMode ? { jointMode } : {}),
       };
     });
 
@@ -687,12 +758,50 @@ export function removeSandboxNode(
     if (!toDrop.has(k.split("/")[0])) nextCommands[k] = v;
   }
 
-  return parseMechanicalAssembly({
+  const nextClosures = assembly.closures?.filter((c) => !toDrop.has(c.nodeA) && !toDrop.has(c.nodeB));
+  const draft: MechanicalAssembly = {
     ...assembly,
     nodes: remaining,
     output: nextOutput,
     commands: nextCommands,
+  };
+  if (nextClosures?.length) draft.closures = nextClosures;
+  else delete draft.closures;
+
+  return parseMechanicalAssembly(draft);
+}
+
+export function setAssemblyBaseMobility(
+  assembly: MechanicalAssembly,
+  baseMobility: "fixed" | "free",
+): MechanicalAssembly {
+  const draft = { ...assembly, baseMobility };
+  return parseMechanicalAssembly(draft);
+}
+
+export function addAssemblyClosure(
+  assembly: MechanicalAssembly,
+  closure: Omit<MechanicalClosure, "id">,
+): MechanicalAssembly {
+  const existing = assembly.closures ?? [];
+  let idx = existing.length + 1;
+  while (existing.some((c) => c.id === `closure_${idx}`)) idx++;
+  const nextClosure: MechanicalClosure = { ...closure, id: `closure_${idx}` };
+  return parseMechanicalAssembly({
+    ...assembly,
+    closures: [...existing, nextClosure],
   });
+}
+
+export function removeAssemblyClosure(
+  assembly: MechanicalAssembly,
+  closureId: string,
+): MechanicalAssembly {
+  const remaining = (assembly.closures ?? []).filter((c) => c.id !== closureId);
+  const draft = { ...assembly };
+  if (remaining.length > 0) draft.closures = remaining;
+  else delete draft.closures;
+  return parseMechanicalAssembly(draft);
 }
 
 // ==========================================
@@ -1533,6 +1642,8 @@ export const SANDBOX_MOUNT_LABELS: Record<string, string> = {
   nut_mount: "丝母套位",
   far_end: "末端轴承位",
   leg_b_face: "直角支撑面",
+  pin_a: "左端铰孔 (pin_a)",
+  pin_b: "右端铰孔 (pin_b)",
   center: "中心点",
 };
 
