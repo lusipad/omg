@@ -1,6 +1,6 @@
 import { useId, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { BookOpen, Camera, ChevronDown, ChevronUp, ClipboardPaste, Cpu, Download, FileSpreadsheet, FileUp, FolderInput, FolderOpen, Link2, Package, Play, Plus, Search } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronUp, ClipboardPaste, Cpu, Download, FileSpreadsheet, FileUp, FolderInput, FolderOpen, Link2, Package, Play, Plus, Search } from "lucide-react";
 import {
   effectiveModelBindings,
   evaluateBindingReadiness,
@@ -13,12 +13,11 @@ import { listRegisteredModels, modelKey } from "@contracts/model-registry";
 import { packageKey, type DevicePackage } from "@contracts/twin-device";
 import type { TwinWorkspace } from "@contracts/twin-simulation";
 import type { MaterialRow, ModelRef } from "@contracts/import-catalog";
-import { readStudioRoute, studioHref, type StudioTarget } from "@contracts/studio-navigation";
+import { readStudioRoute, studioHref } from "@contracts/studio-navigation";
 import { WORKBENCH_FILE_ACCEPT } from "@/lib/workbench-import";
 import { downloadFile } from "@/lib/download";
 import { deviceLibraryGroups, isStructureOnly, motorRoleNames } from "@/lib/device-library";
 import { compositionKind } from "@contracts/device-composition";
-import { VisionIntakePanel } from "@/components/VisionIntakePanel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -41,23 +40,14 @@ type Props = MaterialIntakeProps & {
 };
 const emptyPaste = { text: "", name: "", source: "" };
 
-type ImportEntryProps = MaterialIntakeProps & {
-  workspace: TwinWorkspace;
-  onApplyVision: (nextWorkspace: TwinWorkspace, options?: { openTarget?: StudioTarget; message?: string }) => void;
-  onBrowseRegistry: () => void;
-};
-
 function ImportEntry({
   onImportFiles,
   onImportText,
-  workspace,
-  onApplyVision,
-  onBrowseRegistry,
-}: ImportEntryProps) {
+}: MaterialIntakeProps) {
   const files = useRef<HTMLInputElement>(null), directory = useRef<HTMLInputElement>(null);
   const pasteId = useId();
   const [collapsed, setCollapsed] = useState(false);
-  const [intakeTab, setIntakeTab] = useState<"vision" | "files" | "material">("vision");
+  const [intakeTab, setIntakeTab] = useState<"files" | "material">("files");
   const [pasteOpen, setPasteOpen] = useState(false);
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [{ text, name, source }, setDraft] = useState(emptyPaste);
@@ -76,22 +66,10 @@ function ImportEntry({
     <div className="flex flex-wrap items-center justify-between gap-2.5 border-b pb-2.5">
       <div className="flex items-center gap-2">
         <FolderInput className="size-4 text-primary" />
-        <h2 className="text-sm font-semibold sm:text-base">快速入库 · 拍照识别与资料提取</h2>
+        <h2 className="text-sm font-semibold sm:text-base">导入工程、多体模型与器件资料</h2>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div role="tablist" aria-label="导入方式切换" className="flex flex-wrap gap-1 rounded-md border bg-background/60 p-0.5">
-          <Button
-            size="sm"
-            type="button"
-            role="tab"
-            className="h-7 px-2.5 text-xs"
-            aria-selected={intakeTab === "vision" && !collapsed}
-            variant={intakeTab === "vision" && !collapsed ? "secondary" : "ghost"}
-            onClick={() => { setCollapsed(false); setIntakeTab("vision"); }}
-          >
-            <Camera className="size-3.5" />
-            拍照 / 铭牌识别
-          </Button>
           <Button
             size="sm"
             type="button"
@@ -102,7 +80,7 @@ function ImportEntry({
             onClick={() => { setCollapsed(false); setIntakeTab("files"); }}
           >
             <FileUp className="size-3.5" />
-            文件 / CAD / 链接
+            工程包与多体模型文件
           </Button>
           <Button
             size="sm"
@@ -114,7 +92,7 @@ function ImportEntry({
             onClick={() => { setCollapsed(false); setIntakeTab("material"); }}
           >
             <FileSpreadsheet className="size-3.5" />
-            BOM 与手册录入
+            BOM 物料表与规格手册
           </Button>
         </div>
         <Button
@@ -125,25 +103,22 @@ function ImportEntry({
           onClick={() => setCollapsed((v) => !v)}
         >
           {collapsed ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />}
-          {collapsed ? "展开入库台" : "收起"}
+          {collapsed ? "展开导入栏" : "收起"}
         </Button>
       </div>
     </div>
 
-    {!collapsed && intakeTab === "vision" && (
-      <VisionIntakePanel
-        workspace={workspace}
-        onApply={onApplyVision}
-        onBrowseRegistry={onBrowseRegistry}
-      />
-    )}
-
     {!collapsed && intakeTab === "files" && (
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-          <p className="text-xs leading-5 text-muted-foreground">
-            导入 `.twin.json` 工程/设备包、`.step/.glb/.stl/.urdf/.xml` 三维模型或 G 代码与配置文件。
-          </p>
+          <div className="space-y-1 text-xs leading-5 text-muted-foreground">
+            <p>按对应求解器直接识别导入：自动解析端口、机械拓扑与模型哈希签名。</p>
+            <div className="flex flex-wrap gap-1.5 text-[11px]">
+              <span className="rounded bg-muted/60 px-1.5 py-0.5">Modelica: `.twin.json` / `.ini` / `.hal`</span>
+              <span className="rounded bg-muted/60 px-1.5 py-0.5">MuJoCo: `.xml` / `.urdf` / `.zip` / `.stl` / `.glb`</span>
+              <span className="rounded bg-muted/60 px-1.5 py-0.5">产线加工: `.nc` / `.gcode`</span>
+            </div>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={() => files.current?.click()}><FileUp />选择文件</Button>
             <Button size="sm" variant="outline" onClick={() => directory.current?.click()}><FolderOpen />选择文件夹</Button>
@@ -170,7 +145,7 @@ function ImportEntry({
           setPasteOpen(false);
         }}>
           <label className="block"><span className="field-label">内容或资料链接</span>
-            <Textarea autoFocus aria-label="待导入内容或链接" className="h-28 resize-y" placeholder="粘贴模型 XML、设备包或装配 JSON、G 代码或官网资料链接"
+            <Textarea autoFocus aria-label="待导入内容或链接" className="h-28 resize-y" placeholder="粘贴 MuJoCo XML、设备包或装配 JSON、G 代码或官网规格链接"
               value={text} onChange={(event) => edit("text", event.target.value)} />
           </label>
           <details className="text-xs" open={metadataOpen} onToggle={(event) => setMetadataOpen(event.currentTarget.open)}>
@@ -207,6 +182,7 @@ type StatusBadge = { label: string; tone: "ready" | "pending" | "neutral" };
 type Resource = {
   id: string;
   category: string;
+  solverTag: string;
   name: string;
   detail: string;
   section: Exclude<Filter, "all">;
@@ -218,7 +194,7 @@ type Resource = {
   | { kind: "system"; system: System; action: string }
 );
 
-function describeDevicePackage(device: DevicePackage): { category: string; detail: string; statusBadge: StatusBadge } {
+function describeDevicePackage(device: DevicePackage): { category: string; solverTag: string; detail: string; statusBadge: StatusBadge } {
   const bindings = effectiveModelBindings(device);
   let pendingCount = 0;
   for (const b of bindings) {
@@ -227,13 +203,16 @@ function describeDevicePackage(device: DevicePackage): { category: string; detai
   }
 
   let category = "设备包";
+  let solverTag = "Modelica 闭环";
   let specSummary = "";
 
   if (device.factory) {
     category = "工厂设备";
+    solverTag = "产线与加工";
     specSummary = `${device.factory.modelRef.id}`;
   } else if (device.motorPhysics) {
     category = motorRoleNames[device.motorPhysics.kind];
+    solverTag = "产线与加工";
     specSummary = `适配口 ${device.motorPhysics.fit}`;
   } else if (hasServoRole(device, "drive")) {
     category = "伺服驱动器";
@@ -244,7 +223,7 @@ function describeDevicePackage(device: DevicePackage): { category: string; detai
     const ratings = tryResolveServoMotorRatings(device);
     specSummary = ratings
       ? `${ratings.ratedPowerW} W · ${ratings.ratedTorqueNm} N·m · ${ratings.ratedSpeedRpm} rpm`
-      : "已提取部分铭牌参数";
+      : "已提取部分规格参数";
   } else if (hasFeedRole(device, "screw")) {
     category = "滚珠丝杠";
     const b = bindings.find((item) => item.modelRef.id === "Gouyuan.IdealLeadScrew");
@@ -269,9 +248,11 @@ function describeDevicePackage(device: DevicePackage): { category: string; detai
     specSummary = "数字输入防抖滤波模型";
   } else if (device.mechanics) {
     category = device.mechanics.kind === "assembly" ? "三维子装配" : "三维机械件";
+    solverTag = "MuJoCo / 三维机构";
     specSummary = device.mechanics.kind === "assembly" ? `${device.mechanics.assembly.nodes.length} 个部件节点` : `${device.mechanics.outputs.length} 个安装接口`;
   } else if (isStructureOnly(device)) {
     category = "结构件";
+    solverTag = "结构定义";
     specSummary = `${compositionKind(device) === "leaf" ? "最小件" : "结构总成"}${device.source.locator ? ` · ${device.source.locator}` : ""}`;
   } else {
     category = "电气与控制件";
@@ -289,7 +270,7 @@ function describeDevicePackage(device: DevicePackage): { category: string; detai
       ? { label: "可执行就绪", tone: "ready" }
       : { label: "结构定义", tone: "neutral" };
 
-  return { category, detail, statusBadge };
+  return { category, solverTag, detail, statusBadge };
 }
 
 function projectResources(workspace: TwinWorkspace) {
@@ -298,63 +279,64 @@ function projectResources(workspace: TwinWorkspace) {
   for (const sys of workspace.systems ?? []) {
     rows.push({
       id: `system:${sys.id}`, kind: "system", system: `system:${sys.id}`, section: "system",
-      category: "机电控系统", name: sys.name,
+      category: "机电控系统", solverTag: "Modelica 闭环", name: sys.name,
       detail: `${sys.axes.length} 根进给轴 · ${sys.sensors.length} 开关 · ${sys.diChannels.length} 滤波通道`,
-      action: "进入仿真", statusBadge: { label: "闭环系统", tone: "ready" },
+      action: "进入求解台", statusBadge: { label: "闭环系统", tone: "ready" },
     });
   }
   for (const assembly of workspace.mechanisms ?? []) {
     rows.push({
       id: `mechanism:${assembly.id}`, kind: "system", system: `mechanism:${assembly.id}`, section: "system",
-      category: "三维机构", name: assembly.name,
+      category: "三维机构", solverTag: "MuJoCo / 三维机构", name: assembly.name,
       detail: `${assembly.nodes.length} 个可动零部件实例`,
-      action: "打开三维装配", statusBadge: { label: "三维机构", tone: "ready" },
+      action: "打开三维机构", statusBadge: { label: "三维机构", tone: "ready" },
     });
   }
   for (const assembly of workspace.assemblies ?? []) {
     rows.push({
       id: `assembly:${assembly.id}`, kind: "system", system: `assembly:${assembly.id}`, section: "system",
-      category: "直线轴装配", name: assembly.name,
+      category: "直线轴装配", solverTag: "Modelica 闭环", name: assembly.name,
       detail: `${assembly.modules.length} 种轴模块 · ${assembly.axes.length} 根轴`,
-      action: "打开装配", statusBadge: { label: "直驱进给", tone: "ready" },
+      action: "打开直线轴", statusBadge: { label: "直驱进给", tone: "ready" },
     });
   }
   for (const factory of workspace.factories ?? []) {
     rows.push({
       id: `factory:${factory.id}`, kind: "system", system: `factory:${factory.id}`, section: "system",
-      category: "工厂产线", name: factory.name,
+      category: "工厂产线", solverTag: "产线与加工", name: factory.name,
       detail: `${factory.lines.length} 条产线 · ${factory.resources.length} 台设备`,
       action: "打开产线", statusBadge: { label: "产线节拍", tone: "ready" },
     });
   }
   if (so101) rows.push({
     id: "system:so101", kind: "system", system: "so101", section: "material",
-    category: "BOM", name: "SO-101 Follower 采购清单",
+    category: "BOM", solverTag: "MuJoCo 多体", name: "SO-101 Follower 采购清单",
     detail: `${so101.bom.length} 行物料 · ${so101.waypoints.length} 个动作关键帧`,
     action: "打开 SO-101",
   });
   if (milo?.bom) rows.push({
     id: "milo:bom", kind: "system", system: "milo", section: "material",
-    category: "BOM", name: "Milo v1.5 采购清单",
+    category: "BOM", solverTag: "产线与加工", name: "Milo v1.5 采购清单",
     detail: `${milo.bom.length} 行物料 · 已装配 ${milo.assembled.length} / 3 轴`,
     action: "查看装配",
   });
   if (milo?.program.trim()) rows.push({
     id: "milo:program", kind: "system", system: "milo", section: "system",
-    category: "数控程序", name: "Milo v1.5 G 代码",
+    category: "数控程序", solverTag: "产线与加工", name: "Milo v1.5 G 代码",
     detail: `${milo.program.trimEnd().split(/\r\n?|\n/).length} 行 NC 程序 · 已装配 ${milo.assembled.length} / 3 轴`,
     action: "查看程序",
   });
   if (workspace.instances.length) rows.push({
     id: "system:wiring", kind: "system", system: "wiring", section: "system",
-    category: "信号接线", name: "设备接线场景",
+    category: "信号接线", solverTag: "Modelica 闭环", name: "设备接线场景",
     detail: `${workspace.instances.length} 个设备实例 · ${workspace.connections.length} 条连线`,
     action: "打开接线",
   });
   if (servoAxis) {
     const models = new Map(workspace.packages.map((device) => [packageKey(device), device.model]));
     rows.push({
-      id: "system:servo", kind: "system", system: "servo", section: "system", category: "伺服装配", name: "伺服单轴",
+      id: "system:servo", kind: "system", system: "servo", section: "system",
+      category: "伺服装配", solverTag: "Modelica 闭环", name: "伺服单轴",
       detail: [models.get(servoAxis.driveKey), models.get(servoAxis.motorKey), `目标 ${servoAxis.targetDeg}°`,
         servoAxis.modelRef && `${servoAxis.modelRef.id} @ ${servoAxis.modelRef.version}`].filter(Boolean).join(" · "),
       action: "打开伺服轴",
@@ -364,12 +346,13 @@ function projectResources(workspace: TwinWorkspace) {
     const info = describeDevicePackage(device);
     rows.push({
       kind: "device", section: "device", id: "pkg:" + packageKey(device),
-      category: info.category, name: device.model, detail: info.detail, statusBadge: info.statusBadge, device,
+      category: info.category, solverTag: info.solverTag, name: device.model, detail: info.detail, statusBadge: info.statusBadge, device,
     });
   }
   for (const model of workspace.catalog?.models ?? []) {
     rows.push({
-      kind: "physics", section: "physics", id: "model:" + model.id, category: "物理模型", name: model.name,
+      kind: "physics", section: "physics", id: "model:" + model.id,
+      category: "物理模型", solverTag: "MuJoCo 多体", name: model.name,
       detail: `入口文件 ${model.entry}`, model, statusBadge: { label: "多体模型", tone: "ready" },
     });
   }
@@ -377,6 +360,7 @@ function projectResources(workspace: TwinWorkspace) {
     rows.push({
       kind: "material", section: "material", id: "material:" + row.id,
       category: row.id.startsWith("doc-") ? "设备手册" : row.id.startsWith("bom-") ? "BOM 物料" : "资料记录",
+      solverTag: "BOM / 规格源",
       name: row.name,
       detail: [`${row.quantity}${row.unit ? " " + row.unit : ""}`, row.manufacturer, row.model,
         row.leadMmPerRev !== undefined && `导程 ${row.leadMmPerRev} mm/rev`,
@@ -458,23 +442,17 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
   return <section className="min-w-0 space-y-3.5" aria-label="设备与资料">
     <header className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 className="display-title text-xl font-semibold tracking-tight sm:text-2xl">设备与资料库</h1>
-        <p className="mt-0.5 text-xs text-muted-foreground">① 拍照或导入真实器件参数 → ② 绑定严格模型注册表 → ③ 进入装配与闭环对标</p>
+        <h1 className="display-title text-xl font-semibold tracking-tight sm:text-2xl">器件与模型库</h1>
+        <p className="mt-0.5 text-xs text-muted-foreground">统一管理设备参数包、MuJoCo 多体模型、BOM 清单与多求解器工程对象</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" onClick={() => setRegistryOpen(true)}><Cpu />模型注册表 ({registeredModels.length})</Button>
-        <Button size="sm" variant="secondary" onClick={onCreateDevice}><Plus />新建参数化设备</Button>
+        <Button size="sm" variant="secondary" onClick={onCreateDevice}><Plus />新建/提取单个器件</Button>
       </div>
     </header>
     <ImportEntry
-      workspace={workspace}
       onImportFiles={onImportFiles}
       onImportText={onImportText}
-      onBrowseRegistry={() => setRegistryOpen(true)}
-      onApplyVision={(nextWs, opts) => {
-        onChange(nextWs);
-        if (opts?.openTarget) navigate(studioHref({ view: "workbench", target: opts.openTarget }));
-      }}
     />
     <section className="surface min-w-0 space-y-3 p-4" aria-label="工程资源清单">
       <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -516,26 +494,28 @@ export default function ImportCenter({ workspace, onChange, onOpenDevice, onPrev
         }} />显示随附子件（{componentKeys.size} 个修订）
       </label>}
       {!resources.length ? <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3.5">
-        <p className="text-xs text-muted-foreground">当前工程还没有设备或模型。点击上方拍照识别一键试玩，或直接载入参考工程模板。</p>
+        <p className="text-xs text-muted-foreground">当前本机工程还没有导入资产。可从上方导入 `.twin.json` / `.xml` / `.urdf` / `.csv` 文件，或从三大求解器算例直接开始。</p>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => navigate(studioHref({ view: "workbench", exampleId: "closed-loop-feed-system" }))}><Play />体验跨品牌闭环与实测对标</Button>
-          <Button size="sm" variant="outline" onClick={onBrowseExamples}><BookOpen />浏览参考模板</Button>
+          <Button size="sm" onClick={() => navigate(studioHref({ view: "workbench", exampleId: "closed-loop-feed-system" }))}><Play />体验 Modelica 闭环对标</Button>
+          <Button size="sm" variant="outline" onClick={() => navigate(studioHref({ view: "workbench", exampleId: "ur5e" }))}><Play />体验 MuJoCo 机械臂</Button>
+          <Button size="sm" variant="outline" onClick={onBrowseExamples}><BookOpen />浏览标准算例库</Button>
         </div>
       </div> : !rows.length ? <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
         <p className="text-xs text-muted-foreground">当前筛选下没有匹配的资源。</p>
         <Button variant="ghost" size="sm" onClick={() => { setQuery(""); setCursor({ filter: "all", query: "", page: 0 }); choose("all"); }}>显示全部</Button>
       </div> : <>
-        <div aria-hidden="true" className="hidden grid-cols-[minmax(0,1fr)_8.5rem_14rem] gap-x-4 border-t pb-1 pt-2.5 text-[11px] font-medium text-muted-foreground sm:grid">
-          <span>资源名称与规格摘要</span><span>类别与就绪状态</span><span className="text-right">操作</span>
+        <div aria-hidden="true" className="hidden grid-cols-[minmax(0,1fr)_13rem_13.5rem] gap-x-4 border-t pb-1 pt-2.5 text-[11px] font-medium text-muted-foreground sm:grid">
+          <span>资源名称与规格摘要</span><span>求解引擎 · 类别与状态</span><span className="text-right">操作</span>
         </div>
         <ul aria-label="工程资源列表" className="divide-y border-t sm:border-t-0">
-        {rows.map((item) => <li key={item.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 py-2.5 sm:grid-cols-[minmax(0,1fr)_8.5rem_14rem]">
+        {rows.map((item) => <li key={item.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 py-2.5 sm:grid-cols-[minmax(0,1fr)_13rem_13.5rem]">
           <div className="min-w-0">
             <p className="break-words text-sm font-medium">{item.name}</p>
             <p className="mt-0.5 break-words text-xs text-muted-foreground">{item.detail}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5 sm:flex-col sm:items-start sm:gap-1">
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-foreground/90">{item.category}</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">{item.solverTag}</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground/90">{item.category}</span>
             {item.statusBadge && (
               <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
                 item.statusBadge.tone === "ready"

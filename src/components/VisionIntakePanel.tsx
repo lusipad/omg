@@ -7,7 +7,6 @@ import {
   Copy,
   FileJson,
   ImagePlus,
-  Sparkles,
   Trash2,
   Upload,
   Workflow,
@@ -18,7 +17,6 @@ import type { TwinWorkspace } from "@contracts/twin-simulation";
 import {
   buildVisionIntakePrompt,
   verifyAndApplyVisionIntake,
-  VISION_DEMO_PRESETS,
   type VisionImageInput,
   type VisionIntakeResult,
 } from "@contracts/vision-intake";
@@ -86,45 +84,6 @@ async function encodeImageForIntake(
   if (!ctx) return { mimeType: mime, dataUrl: rawUrl };
   ctx.drawImage(img, 0, 0, width, height);
   return { mimeType: "image/jpeg", dataUrl: canvas.toDataURL("image/jpeg", 0.85) };
-}
-
-function DemoThumb({ id }: { id: (typeof VISION_DEMO_PRESETS)[number]["id"] }) {
-  if (id === "nameplate-panasonic") {
-    return (
-      <svg
-        viewBox="0 0 120 72"
-        className="h-14 w-24 shrink-0 rounded border bg-slate-950/90 p-1 text-slate-200"
-        aria-hidden="true"
-      >
-        <rect x="4" y="6" width="112" height="60" rx="4" fill="#0f172a" stroke="#64748b" strokeWidth="1.5" />
-        <text x="10" y="20" fontSize="7.5" fill="#38bdf8" fontFamily="monospace" fontWeight="bold">Panasonic SERVO</text>
-        <text x="10" y="31" fontSize="6.5" fill="#e2e8f0" fontFamily="monospace">MSMF042L1V2M</text>
-        <text x="10" y="42" fontSize="6.5" fill="#94a3b8" fontFamily="monospace">400W 3000r/min</text>
-        <text x="10" y="53" fontSize="6.5" fill="#94a3b8" fontFamily="monospace">1.27 N.m 2.6 A</text>
-        <rect x="86" y="45" width="24" height="14" rx="2" fill="none" stroke="#f59e0b" strokeDasharray="2 1.5" />
-        <text x="90" y="54" fontSize="6" fill="#fbbf24" fontFamily="monospace">J?</text>
-      </svg>
-    );
-  }
-  return (
-    <svg
-      viewBox="0 0 120 72"
-      className="h-14 w-24 shrink-0 rounded border bg-slate-950/90 p-1 text-slate-200"
-      aria-hidden="true"
-    >
-      <rect x="4" y="6" width="112" height="60" rx="4" fill="#0f172a" stroke="#64748b" strokeWidth="1.5" />
-      <rect x="8" y="14" width="22" height="18" rx="2" fill="#1e293b" stroke="#38bdf8" />
-      <text x="11" y="25" fontSize="5.5" fill="#7dd3fc" fontFamily="monospace">SV660</text>
-      <rect x="36" y="14" width="20" height="18" rx="2" fill="#1e293b" stroke="#34d399" />
-      <text x="41" y="25" fontSize="5.5" fill="#6ee7b7" fontFamily="monospace">M</text>
-      <line x1="56" y1="23" x2="96" y2="23" stroke="#cbd5e1" strokeWidth="1.5" strokeDasharray="2 1" />
-      <rect x="92" y="15" width="20" height="16" rx="2" fill="#1e293b" stroke="#e2e8f0" />
-      <text x="95" y="25" fontSize="5.5" fill="#f8fafc" fontFamily="monospace">8kg</text>
-      <path d="M 98 35 L 98 52 L 58 52" fill="none" stroke="#f59e0b" strokeWidth="1.2" />
-      <rect x="26" y="44" width="32" height="14" rx="2" fill="#1e293b" stroke="#f59e0b" />
-      <text x="29" y="53" fontSize="5.5" fill="#fbbf24" fontFamily="monospace">NC-&gt;DI00</text>
-    </svg>
-  );
 }
 
 export function VisionIntakePanel({ workspace, onApply, onBrowseRegistry }: VisionIntakePanelProps) {
@@ -213,23 +172,6 @@ export function VisionIntakePanel({ workspace, onApply, onBrowseRegistry }: Visi
     }
   }
 
-  function runDemoPreset(presetId: (typeof VISION_DEMO_PRESETS)[number]["id"]) {
-    const preset = VISION_DEMO_PRESETS.find((item) => item.id === presetId);
-    if (!preset) return;
-    setError("");
-    try {
-      const result = verifyAndApplyVisionIntake(workspace, preset.rawOutput, {
-        sourceLabel: preset.title,
-      });
-      setLastResult(result);
-      onApply(result.workspace, {
-        message: `已加载「${preset.title}」。`,
-      });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "加载示例识别结果失败。");
-    }
-  }
-
   async function copyVisionPrompt() {
     setError("");
     try {
@@ -268,7 +210,9 @@ export function VisionIntakePanel({ workspace, onApply, onBrowseRegistry }: Visi
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          拍电机铭牌、丝杠参数表或手绘接线草图自动提取；未标出参数标记为「待补全」，绝不编造。
+          {serverAiReady
+            ? "上传器件铭牌或规格表照片自动提取参数；照片未标出项严格标为「待补全」，绝不编造数值。"
+            : "当前静态/离线部署未连接服务端视觉模型：如需从实物铭牌/草图提取真实参数，可复制提示词交由外部看图 AI 识别后，粘贴 JSON 校验入库（未标出项标为待补全，绝不编造）。"}
         </p>
         {onBrowseRegistry && (
           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onBrowseRegistry}>
@@ -277,115 +221,90 @@ export function VisionIntakePanel({ workspace, onApply, onBrowseRegistry }: Visi
         )}
       </div>
 
-      {/* 2 built-in 1-click presets so GitHub Pages / zero-API users can try immediately */}
-      <div className="grid gap-2 md:grid-cols-2">
-        {VISION_DEMO_PRESETS.map((preset) => (
-          <button
-            key={preset.id}
-            type="button"
-            onClick={() => runDemoPreset(preset.id)}
-            className="flex items-center gap-2.5 rounded-lg border bg-background/60 p-2.5 text-left transition-colors hover:border-primary/50 hover:bg-accent/40"
-          >
-            <DemoThumb id={preset.id} />
-            <div className="min-w-0 flex-1 space-y-0.5">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                <Sparkles className="size-3.5 shrink-0 text-primary" />
-                <span className="truncate">{preset.title}</span>
-              </div>
-              <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                {preset.subtitle}
-              </p>
-              <span className="inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                {preset.badge}
+      {serverAiReady && (
+        <div
+          className={`rounded-lg border border-dashed p-3 transition-colors ${
+            dragging ? "border-primary bg-primary/5" : "border-border/80 bg-background/40"
+          }`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            void addFiles(e.dataTransfer.files);
+          }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            className="sr-only"
+            aria-label="选择或拍摄设备照片"
+            onChange={(e) => {
+              void addFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
+              <ImagePlus className="size-4 text-primary" />
+              <span>
+                支持 1–{MAX_PHOTOS} 张照片（.jpg / .png / .webp）：拖入铭牌或规格表截图，或点击右侧选择
               </span>
             </div>
-          </button>
-        ))}
-      </div>
-
-      {/* Photo dropzone */}
-      <div
-        className={`rounded-lg border border-dashed p-3 transition-colors ${
-          dragging ? "border-primary bg-primary/5" : "border-border/80 bg-background/40"
-        }`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          void addFiles(e.dataTransfer.files);
-        }}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          multiple
-          className="sr-only"
-          aria-label="选择或拍摄设备照片"
-          onChange={(e) => {
-            void addFiles(e.target.files);
-            e.target.value = "";
-          }}
-        />
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
-            <ImagePlus className="size-4 text-primary" />
-            <span>
-              支持 1–{MAX_PHOTOS} 张照片（.jpg / .png / .webp）：拖入图片，或点击右侧选择/拍照
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
-              <Camera />
-              选择照片 / 拍照 ({photos.length}/{MAX_PHOTOS})
-            </Button>
-            {photos.length > 0 && (
-              <Button size="sm" variant="ghost" onClick={() => setPhotos([])}>
-                <Trash2 />
-                清空
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                <Camera />
+                选择铭牌照片 ({photos.length}/{MAX_PHOTOS})
               </Button>
-            )}
+              {photos.length > 0 && (
+                <Button size="sm" variant="ghost" onClick={() => setPhotos([])}>
+                  <Trash2 />
+                  清空
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
 
-        {photos.length > 0 && (
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {photos.map((photo) => (
-              <div key={photo.id} className="relative overflow-hidden rounded-md border bg-background p-1.5">
-                <img
-                  src={photo.dataUrl}
-                  alt={photo.name}
-                  className="h-24 w-full rounded object-contain bg-muted/30"
-                />
-                <div className="mt-1 flex items-center justify-between gap-1 text-[11px]">
-                  <span className="truncate font-medium" title={photo.name}>{photo.name}</span>
-                  <button
-                    type="button"
-                    aria-label={`移除 ${photo.name}`}
-                    className="rounded px-1 text-muted-foreground hover:text-destructive"
-                    onClick={() => setPhotos((prev) => prev.filter((item) => item.id !== photo.id))}
-                  >
-                    移除
-                  </button>
+          {photos.length > 0 && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {photos.map((photo) => (
+                <div key={photo.id} className="relative overflow-hidden rounded-md border bg-background p-1.5">
+                  <img
+                    src={photo.dataUrl}
+                    alt={photo.name}
+                    className="h-24 w-full rounded bg-muted/30 object-contain"
+                  />
+                  <div className="mt-1 flex items-center justify-between gap-1 text-[11px]">
+                    <span className="truncate font-medium" title={photo.name}>{photo.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`移除 ${photo.name}`}
+                      className="rounded px-1 text-muted-foreground hover:text-destructive"
+                      onClick={() => setPhotos((prev) => prev.filter((item) => item.id !== photo.id))}
+                    >
+                      移除
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Goal + Analyze / Offline Prompt Controls */}
       <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
         <label className="space-y-1">
-          <span className="field-label">本次装配/仿真意图（可选）</span>
+          <span className="field-label">本次建库或装配意图（可选）</span>
           <Input
             className="h-8 text-xs"
-            placeholder="例如：X 轴伺服+滚珠丝杠单轴台，需限位急停闭环仿真"
+            placeholder="例如：松下 400W 伺服电机铭牌，或 X 轴丝杠进给单元"
             value={userGoal}
             onChange={(e) => setUserGoal(e.target.value)}
           />
@@ -394,37 +313,31 @@ export function VisionIntakePanel({ workspace, onApply, onBrowseRegistry }: Visi
           {serverAiReady && (
             <Button size="sm" onClick={() => void analyzeOnline()} disabled={!photos.length || busy}>
               <Upload />
-              {busy ? "正在识别照片..." : "AI 识别照片并构建"}
+              {busy ? "正在识别铭牌..." : "AI 识别铭牌并校验入库"}
             </Button>
           )}
           <Button size="sm" variant={serverAiReady ? "outline" : "secondary"} onClick={() => void copyVisionPrompt()}>
             {copiedPrompt ? <Check /> : <Copy />}
-            {copiedPrompt ? "已复制提示词" : "复制视觉提示词（外部 AI 用）"}
+            {copiedPrompt ? "已复制提示词" : "复制铭牌结构化提取提示词"}
           </Button>
         </div>
       </div>
 
-      <details className="rounded-md border bg-background/50 px-3 py-2 text-xs">
-        <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
-          {IS_PAGES
-            ? "展开粘贴外部多模态 AI（GPT-4o / Gemini / Claude）识别 JSON 并校验入库"
-            : serverAiReady
-              ? "或展开粘贴外部多模态 AI 返回的 JSON 直接入库"
-              : "未配置服务端视觉模型：展开粘贴外部看图 AI 返回的 JSON 校验入库"}
-        </summary>
-        <div className="mt-2.5 space-y-2">
-          <Textarea
-            className="mono min-h-24 text-xs"
-            placeholder='粘贴包含 "sceneKind"、"transcribedText"、"devices" 的严格 JSON...'
-            value={pastedJson}
-            onChange={(e) => setPastedJson(e.target.value)}
-          />
-          <Button size="sm" variant="outline" onClick={verifyPastedVisionJson}>
-            <FileJson />
-            校验并导入照片识别 JSON
-          </Button>
-        </div>
-      </details>
+      <div className="space-y-2 rounded-md border bg-background/50 p-2.5 text-xs">
+        <span className="block font-medium text-muted-foreground">
+          {serverAiReady ? "或直接粘贴外部多模态 AI 返回的 JSON 进行防编造校验" : "粘贴外部看图 AI 返回的严格 JSON（本地逐字校验后入库）"}
+        </span>
+        <Textarea
+          className="mono min-h-20 text-xs"
+          placeholder='粘贴包含 "sceneKind"、"transcribedText"、"devices" 的严格 JSON...'
+          value={pastedJson}
+          onChange={(e) => setPastedJson(e.target.value)}
+        />
+        <Button size="sm" variant="outline" disabled={!pastedJson.trim()} onClick={verifyPastedVisionJson}>
+          <FileJson />
+          校验并导入结构化 JSON
+        </Button>
+      </div>
 
       {error && (
         <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">

@@ -34,9 +34,9 @@ const ImportCenter = lazy(() => import("@/components/ImportCenter"));
 const StudioExamples = lazy(() => import("@/components/StudioExamples"));
 const SandboxBuilderStudio = lazy(() => import("@/components/SandboxBuilderStudio"));
 const destinations = [
-  { route: { view: "resources" }, label: "① 设备与资料", icon: Package },
-  { route: { view: "workbench" }, label: "② 装配与仿真", icon: Workflow },
-  { route: { view: "examples" }, label: "③ 参考模板", icon: LayoutGrid },
+  { route: { view: "workbench" }, label: "求解工作台", icon: Workflow },
+  { route: { view: "resources" }, label: "器件与模型库", icon: Package },
+  { route: { view: "examples" }, label: "标准算例库", icon: LayoutGrid },
 ] as const;
 
 function readLocalWorkspace() {
@@ -484,7 +484,7 @@ export default function TwinStudio() {
             <CircuitBoard className="size-5 text-primary" strokeWidth={1.8} />
             <span className="text-sm font-semibold tracking-wide sm:text-base">构元</span>
             <span className="hidden rounded border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary sm:inline-block">
-              专业工程台
+              多求解器工程台
             </span>
           </div>
           <nav aria-label="工作台主导航" className="order-last flex w-full min-w-0 items-center gap-1 rounded-md border bg-background/70 p-0.5 lg:order-none lg:w-auto">
@@ -581,10 +581,15 @@ export default function TwinStudio() {
           </Suspense>
         </div>
         <section hidden={!authoring} aria-label="创建设备" className="space-y-4">
-          <Link to={studioHref({ view: "resources" })} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />返回工程资源</Link>
+          <Link to={studioHref({ view: "resources" })} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />返回器件与模型库</Link>
           <TwinDeviceLibrary key={JSON.stringify([generation, sourceDraft?.key ?? 0, route.view === "resources" ? route.motorPart : undefined])}
             workspace={workspace} initialMotorPartKey={route.view === "resources" ? route.motorPart : undefined} initialSource={sourceDraft?.value} incomingSource={incomingSource}
-            active={authoring} onImportFile={importFile} onImportText={importText} onPreviewDevice={intake.previewDevice} />
+            active={authoring} onImportFile={importFile} onImportText={importText} onPreviewDevice={intake.previewDevice}
+            onApplyVision={(nextWs, opts) => {
+              save(nextWs);
+              if (opts?.openTarget) go({ view: "workbench", target: opts.openTarget }, opts.message);
+              else if (opts?.message) setNotice(opts.message);
+            }} />
           {authoring && !IS_PAGES && <section className="surface">
             <button type="button" className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm font-medium" aria-expanded={showPairSource} aria-controls="servo-sources" onClick={() => setShowPairSource(!showPairSource)}>
               从官网创建配套伺服设备<ChevronDown className={`size-4 ${showPairSource ? "rotate-180" : ""}`} />

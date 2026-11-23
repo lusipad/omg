@@ -75,6 +75,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { IS_PAGES } from "@/const";
 import { downloadBlob } from "@/lib/download";
 import { SandboxBlockIcon } from "./SandboxBlockIcon";
 import SandboxViewport3D from "./SandboxViewport3D";
@@ -867,20 +868,20 @@ export default function SandboxBuilderStudio({
                 专业工程模式
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-60">
-              <DropdownMenuLabel>底层 Modelica 与工业工程面板</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel>多求解器专业工程 IDE</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => onNavigate({ view: "resources" })}>
-                <Camera /> ① 拍照识别与设备资料库
-              </DropdownMenuItem>
               <DropdownMenuItem onSelect={launchClosedLoopTwin}>
-                <Sparkles /> 将当前机器送入 Modelica 闭环工作台
+                <Sparkles /> 送入 Modelica 机电闭环求解台
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onNavigate({ view: "workbench" })}>
-                <Wrench /> ② 进入高级装配与录波工作台
+                <Wrench /> 进入多求解器工作台 (Modelica / MuJoCo / 产线)
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onNavigate({ view: "resources" })}>
+                <Package /> 器件与模型资产库
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onNavigate({ view: "examples" })}>
-                <Blocks /> ③ 浏览全部 16 个参考工程模板
+                <Blocks /> 浏览三大引擎 16 个标准算例
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -2076,15 +2077,17 @@ export default function SandboxBuilderStudio({
           </DialogHeader>
 
           <div role="tablist" className="flex gap-1 border-b pb-2">
-            <Button size="sm" variant={bomTab === "bom" ? "secondary" : "ghost"} onClick={() => setBomTab("bom")}>
+            <Button size="sm" variant={bomTab === "bom" || IS_PAGES ? "secondary" : "ghost"} onClick={() => setBomTab("bom")}>
               <Package /> BOM 与真实型号替换 ({bomRows.length}类)
             </Button>
-            <Button size="sm" variant={bomTab === "photo" ? "secondary" : "ghost"} onClick={() => setBomTab("photo")}>
-              <Camera /> 拍照识别实物铭牌入库
-            </Button>
+            {!IS_PAGES && (
+              <Button size="sm" variant={bomTab === "photo" ? "secondary" : "ghost"} onClick={() => setBomTab("photo")}>
+                <Camera /> 拍照识别实物铭牌入库
+              </Button>
+            )}
           </div>
 
-          {bomTab === "bom" ? (
+          {bomTab === "bom" || IS_PAGES ? (
             <div className="space-y-3 text-xs">
               <div className="max-h-72 overflow-y-auto rounded border">
                 <table className="w-full text-left">
@@ -2137,13 +2140,25 @@ export default function SandboxBuilderStudio({
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => downloadBlob(sandboxBomToCsv(bomRows), `${activeSession.assembly.name}-bom.csv`, "text/csv;charset=utf-8")}
-                >
-                  <Download /> 导出采购 BOM CSV
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => downloadBlob(sandboxBomToCsv(bomRows), `${activeSession.assembly.name}-bom.csv`, "text/csv;charset=utf-8")}
+                  >
+                    <Download /> 导出采购 BOM CSV
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setBomOpen(false);
+                      onNavigate({ view: "resources", section: "author" });
+                    }}
+                  >
+                    去器件库录入自定义规格 →
+                  </Button>
+                </div>
                 <Button size="sm" onClick={launchClosedLoopTwin}>
                   <Sparkles /> 送入底层 Modelica 闭环深度校核 →
                 </Button>

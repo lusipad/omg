@@ -20,6 +20,9 @@ import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { parseDevicePackage, type DevicePackage } from "@contracts/twin-device";
 import { deviceExtractionPrompt, deviceSourceFromMaterial, generateDevicePackage, inovanceSource, suggestSourceMetadata, type DeviceSourceInput } from "@contracts/twin-extract";
 
+import type { StudioTarget } from "@contracts/studio-navigation";
+import { VisionIntakePanel } from "./VisionIntakePanel";
+
 const emptySource: DeviceSourceInput = { manufacturer: "", model: "", revision: "", title: "", url: "", locator: "", text: "" };
 const LocalLeafForm = lazy(() => import("./DeviceCompositionEditor").then(module => ({ default: module.LocalLeafForm })));
 const MotorAssemblyForm = lazy(() => import("./MotorAssemblyForm"));
@@ -47,7 +50,7 @@ function isSampleUrl(value: string) {
   }
 }
 
-export default function TwinDeviceLibrary({ workspace, initialSource, incomingSource, initialMotorPartKey, onImportFile, onImportText, onPreviewDevice, active = true }: {
+export default function TwinDeviceLibrary({ workspace, initialSource, incomingSource, initialMotorPartKey, onImportFile, onImportText, onPreviewDevice, onApplyVision, active = true }: {
   workspace: TwinWorkspace;
   initialMotorPartKey?: string;
   initialSource?: Partial<DeviceSourceInput>;
@@ -56,6 +59,7 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
   onImportFile: (file: File, hint?: WorkbenchImportOptions["hint"]) => void;
   onImportText: (text: string, name: string, options?: WorkbenchImportOptions) => void;
   onPreviewDevice: (device: DevicePackage, installed?: boolean) => void;
+  onApplyVision?: (nextWorkspace: TwinWorkspace, options?: { openTarget?: StudioTarget; message?: string }) => void;
 }) {
   const [mode, setMode] = useState<"source" | "package" | "leaf" | "motor">(initialMotorPartKey ? "motor" : "source");
   const [source, setSource] = useState<DeviceSourceInput>(() => ({ ...emptySource, ...initialSource }));
@@ -507,7 +511,7 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
               ) : (
                 <div className="space-y-2.5">
                   <p className="leading-5 text-muted-foreground">
-                    系统会只向 AI 索取目标模型所需参数的原始值、单位与逐字摘录，再由确定性代码校验并换算；照片或草图建库建议直接使用「设备与资料 → 拍照/传图自动构建」。
+                    系统会只向 AI 索取目标模型所需参数的原始值、单位与逐字摘录，再由确定性代码校验并换算（未列出的参数保持待补全状态）。
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     {!IS_PAGES && aiStatus.data?.available && aiStatus.data.authenticated && (
@@ -533,6 +537,18 @@ export default function TwinDeviceLibrary({ workspace, initialSource, incomingSo
                 </div>
               )}
             </div>
+            {onApplyVision && (
+              <details className="rounded-md border bg-background/40 p-3 text-xs">
+                <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
+                  {!IS_PAGES && aiStatus.data?.available && aiStatus.data.authenticated
+                    ? "辅助工具：实物铭牌 / 规格表照片识别入库（可选）"
+                    : "辅助工具：外部看图 AI 铭牌提取提示词与本地防幻觉 JSON 核验（可选）"}
+                </summary>
+                <div className="mt-3 border-t pt-3">
+                  <VisionIntakePanel workspace={workspace} onApply={onApplyVision} />
+                </div>
+              </details>
+            )}
           </> : mode === "motor" ? <Suspense fallback={<p role="status">正在打开电机选件表单…</p>}>
             <MotorAssemblyForm key={initialMotorPartKey} workspace={workspace} initialPartKey={initialMotorPartKey}
               submitLabel="核对组装电机" onBuild={device => onPreviewDevice(device)} />
