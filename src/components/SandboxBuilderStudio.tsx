@@ -923,7 +923,7 @@ export default function SandboxBuilderStudio({
     : hoverHint ||
       (pillar === "showroom"
         ? activeMegaDef
-          ? `🌟 ${activeMegaDef.badge} · ${activeMegaDef.title} — ${activeMegaDef.physicsHighlights}`
+          ? `${activeMegaDef.badge} · ${activeMegaDef.title} — ${activeMegaDef.physicsHighlights}`
           : `${currentExhibitDef.badge} · ${currentExhibitDef.title} — ${currentExhibitDef.takeaway}`
         : pillar === "commissions"
           ? `${currentCommission.badge} · ${currentCommission.title}`
@@ -1019,7 +1019,7 @@ export default function SandboxBuilderStudio({
             }}
           >
             <Globe />
-            万物物理试炼场
+            多体物理仿真
           </Button>
         </div>
 
@@ -1096,7 +1096,7 @@ export default function SandboxBuilderStudio({
         <Suspense
           fallback={
             <div className="surface flex flex-1 items-center justify-center text-xs text-muted-foreground">
-              正在装载 MuJoCo 万物刚体物理试炼场…
+              正在加载 MuJoCo 刚体物理环境…
             </div>
           }
         >
@@ -1170,7 +1170,7 @@ export default function SandboxBuilderStudio({
               {/* Flagship Exhibits Selector */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-semibold text-foreground">旗舰整机实景展品</h2>
+                  <h2 className="font-semibold text-foreground">预置装配模型</h2>
                   <div className="flex items-center gap-1">
                     <Button
                       size="sm"
@@ -1197,7 +1197,7 @@ export default function SandboxBuilderStudio({
                   </div>
                 </div>
 
-                <p className="text-[10px] font-semibold text-amber-300/90">🌟 震撼空天与地标巨构</p>
+                <p className="text-[10px] font-semibold text-muted-foreground">空天载具与建筑结构</p>
                 <div className="grid gap-1.5">
                   {flagshipArchetypes.map((item) => {
                     const selected = megaExhibitId === item.id;
@@ -1214,7 +1214,7 @@ export default function SandboxBuilderStudio({
                       >
                         <div className="flex items-center justify-between gap-1">
                           <span className="font-semibold">{item.title}</span>
-                          <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] text-amber-300">
+                          <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] text-amber-300">
                             {item.badge}
                           </span>
                         </div>
@@ -1224,7 +1224,7 @@ export default function SandboxBuilderStudio({
                   })}
                 </div>
 
-                <p className="pt-1 text-[10px] font-semibold text-muted-foreground">🔧 工业母机与机械臂展品</p>
+                <p className="pt-1 text-[10px] font-semibold text-muted-foreground">数控机床与机械臂</p>
                 <div className="grid gap-1.5">
                   {SHOWROOM_EXHIBITS.map((ex) => {
                     const selected = megaExhibitId === null && ex.id === exhibitId;
@@ -1253,7 +1253,7 @@ export default function SandboxBuilderStudio({
               {activeMegaDef && megaExhibitData ? (
                 <div className="space-y-2 rounded-md border border-primary/30 bg-background/60 p-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-foreground">🚀 巨构透视与机构联调台</span>
+                    <span className="font-semibold text-foreground">结构分解与运动预览</span>
                     <button
                       type="button"
                       className="text-[10px] text-muted-foreground hover:text-foreground"
@@ -1274,7 +1274,7 @@ export default function SandboxBuilderStudio({
                     </div>
                     <input
                       type="range"
-                      aria-label="巨构三维爆炸展开"
+                      aria-label="模型三维爆炸展开"
                       min={0}
                       max={100}
                       step={2}
@@ -1290,7 +1290,7 @@ export default function SandboxBuilderStudio({
                     className="h-7 w-full text-[11px]"
                     onClick={() => setExplodePct((v) => (v > 0 ? 0 : 65))}
                   >
-                    💥 {explodePct > 0 ? "合拢收回结构层级" : "一键爆炸透视内部结构 / 卫星载荷"}
+                    {explodePct > 0 ? "收拢装配结构" : "展开装配爆炸图"}
                   </Button>
 
                   <label className="block space-y-0.5">
@@ -1300,7 +1300,7 @@ export default function SandboxBuilderStudio({
                     </div>
                     <input
                       type="range"
-                      aria-label="巨构运转演示速率"
+                      aria-label="机构运转演示速率"
                       min={0.4}
                       max={2.5}
                       step={0.1}
@@ -1318,7 +1318,7 @@ export default function SandboxBuilderStudio({
                       setPillar("physics");
                     }}
                   >
-                    🔥 进入 MuJoCo 真物理升空 / 旋转试炼 →
+                    在 MuJoCo 中运行刚体仿真 →
                   </Button>
 
                   <Button
@@ -1344,7 +1344,7 @@ export default function SandboxBuilderStudio({
                       setFitToken((n) => n + 1);
                     }}
                   >
-                    🧱 送入自由创造台拆改积木 & 导出 BOM
+                    载入自由创造台编辑与导出 BOM
                   </Button>
                 </div>
               ) : (
@@ -1827,7 +1827,7 @@ export default function SandboxBuilderStudio({
                     setPillar("physics");
                   }}
                 >
-                  <Globe /> 送去真物理试炼场（重力 · 接触 · 闭环验证）
+                  <Globe /> 在 MuJoCo 中运行刚体仿真（重力 · 接触 · 闭环验证）
                 </Button>
 
                 <div role="tablist" className="flex gap-1 pt-0.5">

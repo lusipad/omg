@@ -246,12 +246,12 @@ export const SANDBOX_BLOCKS: readonly SandboxBlockDefinition[] = [
     roleHint: "frame",
   },
 
-  // ⑥ 空天载具与地标巨构基本件（矢量火箭喷管 / 升力旋翼 / 明珠太空球 / 整流罩尖锥）
+  // ⑥ 空天载具与建筑结构基本件（矢量火箭喷管 / 升力旋翼 / 明珠球舱 / 整流罩尖锥）
   {
     id: "rocket_thruster",
     category: "actuator",
     name: "矢量火箭发动机喷管",
-    subtitle: "可绕 Y 轴 ±15° 摆动并自带局部轴向推力（支持 MuJoCo 点火升空）",
+    subtitle: "可绕 Y 轴 ±15° 摆动并带局部轴向推力（支持 MuJoCo 推力求解）",
     spec: { shape: "cone", radiusBottomMm: 26, radiusTopMm: 12, lengthMm: 44, axis: "z", finish: "anodized_black" },
     defaultJoint: { type: "hinge", axis: [0, 1, 0], unit: "deg", range: [-15, 15] },
     defaultJointMode: "actuated",
@@ -272,8 +272,8 @@ export const SANDBOX_BLOCKS: readonly SandboxBlockDefinition[] = [
   {
     id: "pearl_sphere",
     category: "frame",
-    name: "东方明珠观光球舱",
-    subtitle: "R42 mm 璀璨洋红金属球舱（带赤道金属环，适合多级地标旋转）",
+    name: "建筑观光球舱",
+    subtitle: "R42 mm 黛紫红铝板球舱（带冰蓝玻璃幕墙腰线，适合球形舱体与塔体节点）",
     spec: { shape: "sphere", radiusMm: 42, finish: "pearl_crimson" },
     defaultJoint: { type: "fixed" },
     roleHint: "frame",
@@ -928,7 +928,7 @@ export const SANDBOX_CHALLENGES: readonly SandboxChallengeDef[] = [
     hints: [
       "1. 可直接在左侧点「查看参考拼法」载入 23 件标准三轴铣床，或自己用型材/导轨/主轴自由搭出全新构型",
       "2. 在「▶ 试动与挑战」下让 Z 轴下降贴近毛坯，并移动 X/Y 覆盖毛坯上方的 4 个切削靶球",
-      "3. 随时点顶部「💥 爆炸视图」拉动展开，直接看清所有配合面和丝杠传动关系",
+      "3. 随时点顶部「爆炸视图」拉动展开，直接看清所有配合面和丝杠传动关系",
     ],
     targets: [
       { id: "m1", label: "切点 1 (-35,-25)", anchorMode: "workpiece", posMm: [-35, -25, 0], radiusMm: 26 },

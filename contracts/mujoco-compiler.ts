@@ -499,24 +499,27 @@ function buildPartGeoms(pkg: DevicePackage | undefined): { geoms: GeomXmlSpec[];
       break;
     }
     case "cone": {
-      // Split conical frustum into 3 stepped coaxial cylinders along spec.axis so MuJoCo contact & Three.js preview match cleanly without external meshes
+      // Split conical frustum into 8 smooth coaxial cylinders along spec.axis so MuJoCo contact & Three.js preview match cleanly without external meshes
       const q = axisQuaternion(spec.axis);
-      const halfSegLenM = (spec.lengthMm / 6) * 0.001;
-      const fracs = [1 / 6, 0.5, 5 / 6] as const;
-      const offsetsMm = [-spec.lengthMm / 3, 0, spec.lengthMm / 3] as const;
-      const segRadiiM = fracs.map((t) =>
-        Math.max(0.0015, ((spec.radiusBottomMm * (1 - t) + spec.radiusTopMm * t) * 0.001)),
-      );
-      const sumR2 = segRadiiM.reduce((acc, r) => acc + r * r, 0) || 1;
-      for (let i = 0; i < 3; i++) {
+      const segCount = 8;
+      const halfSegLenM = (spec.lengthMm / (2 * segCount)) * 0.001;
+      const radiiM: number[] = [];
+      const offsetsMm: number[] = [];
+      for (let i = 0; i < segCount; i++) {
+        const t = (i + 0.5) / segCount;
+        offsetsMm.push((t - 0.5) * spec.lengthMm);
+        radiiM.push(Math.max(0.0012, (spec.radiusBottomMm * (1 - t) + spec.radiusTopMm * t) * 0.001));
+      }
+      const sumR2 = radiiM.reduce((acc, r) => acc + r * r, 0) || 1;
+      for (let i = 0; i < segCount; i++) {
         const localShift = new Vector3(0, 0, offsetsMm[i]! * 0.001).applyQuaternion(q);
         geoms.push({
           kind: "cylinder",
           posM: [localShift.x, localShift.y, localShift.z],
           quat: q,
-          sizeM: [segRadiiM[i]!, halfSegLenM],
+          sizeM: [radiiM[i]!, halfSegLenM],
           rgba,
-          massKg: Math.max(0.006, (totalMassKg * segRadiiM[i]! * segRadiiM[i]!) / sumR2),
+          massKg: Math.max(0.002, (totalMassKg * radiiM[i]! * radiiM[i]!) / sumR2),
           isHighGrip: false,
         });
       }

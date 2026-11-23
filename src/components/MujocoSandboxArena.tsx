@@ -308,14 +308,14 @@ export default function MujocoSandboxArena({
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden max-lg:grid-rows-[46dvh_auto_minmax(0,1fr)] lg:grid-cols-[19rem_minmax(0,1fr)_18.5rem]">
       {/* Left Pane: Subject Selection, Arena & Controls */}
       <aside
-        aria-label="万物试炼对象与环境控制"
+        aria-label="多体仿真对象与环境控制"
         className="surface flex min-h-0 flex-col gap-2 overflow-y-auto p-2.5 text-xs max-lg:row-start-3 lg:col-start-1 lg:row-start-1"
       >
         <div className="space-y-1.5">
           <div className="flex items-center justify-between gap-1">
-            <h2 className="font-semibold text-foreground">选择造物试炼对象</h2>
+            <h2 className="font-semibold text-foreground">仿真装配模型</h2>
             <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-              MuJoCo 真实刚体
+              MuJoCo 刚体求解
             </span>
           </div>
 
@@ -330,14 +330,14 @@ export default function MujocoSandboxArena({
           >
             <div className="flex items-center justify-between gap-1">
               <span className="truncate font-semibold text-foreground">
-                📐 当前拼装 · {currentAssembly.name}
+                当前装配 · {currentAssembly.name}
               </span>
               <span className="shrink-0 rounded bg-muted px-1 text-[9px] text-muted-foreground">
                 {currentAssembly.nodes.length}件
               </span>
             </div>
             <p className="mt-0.5 text-[10px] text-muted-foreground">
-              直接把你在创造台拼出的任何构型编译进真物理重力世界
+              将当前拼装构型编译为刚体模型并在重力场中求解
             </p>
           </button>
 
@@ -345,13 +345,13 @@ export default function MujocoSandboxArena({
             [
               {
                 category: "flagship" as const,
-                heading: "🌟 震撼空天与地标巨构（点火升空 · 共轴旋翼 · 多级旋转）",
-                badgeClass: "bg-amber-500/20 text-amber-300",
+                heading: "空天载具与建筑结构",
+                badgeClass: "bg-amber-500/15 text-amber-300",
               },
               {
                 category: "mechanism" as const,
-                heading: "⚙️ 经典机构与地面载具（越障爬坡 · 摩擦抓取 · 闭环四杆）",
-                badgeClass: "bg-sky-500/20 text-sky-300",
+                heading: "移动底盘与典型机构",
+                badgeClass: "bg-sky-500/15 text-sky-300",
               },
             ] as const
           ).map((group) => (
@@ -717,7 +717,7 @@ export default function MujocoSandboxArena({
                   }`}
                 >
                   {telemetry.deltaXMm > 350 && telemetry.deltaZMm > 30
-                    ? "✅ 四轮库仑摩擦稳健驱动底盘冲上 10° 坡道并抬升质心！"
+                    ? "四轮接触摩擦驱动底盘沿 10° 坡面爬升"
                     : "可在左侧开启转速驱动或切换 6-DOF 自由底盘观察轮地接触牵引。"}
                 </div>
               )}
@@ -736,8 +736,8 @@ export default function MujocoSandboxArena({
                   </div>
                   <p>
                     {telemetry.peakZMm > 350
-                      ? `✅ 真实 -9.81 m/s² 重力场下推力克服自重拔地升空（峰值 +${(telemetry.peakZMm / 1000).toFixed(2)} m）！`
-                      : "可在左侧开启推进推力或调整旋翼总距与矢量摆角，观察真实重力场起飞轨迹。"}
+                      ? `推力大于自重，垂直爬升峰值 +${(telemetry.peakZMm / 1000).toFixed(2)} m`
+                      : "可在左侧开启推进推力或调整旋翼总距与矢量摆角，观察重力场爬升轨迹。"}
                   </p>
                 </div>
               )}
@@ -746,7 +746,7 @@ export default function MujocoSandboxArena({
                 compilation.ok &&
                 compilation.result.actuatorMeta.filter((a) => a.mode === "velocity").length >= 2 && (
                   <div className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 text-[10px] text-emerald-200">
-                    ✅ 多级独立旋转观光层（{compilation.result.actuatorMeta.length} 组受控回转环）在真实刚体约束下同步平稳运转！
+                    {compilation.result.actuatorMeta.length} 组回转副按设定角速度同步运行
                   </div>
                 )}
 
