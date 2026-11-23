@@ -6,7 +6,17 @@ import { buildComposableMiloMillTemplate } from "../contracts/articulated-kinema
 import { buildGantryMillTemplate } from "../contracts/machine-evolution";
 import { inspectMechanicalAssembly } from "../contracts/mechanical-assembly";
 import { compileAssemblyToMujoco } from "../contracts/mujoco-compiler";
-import { buildFourBarLinkageTemplate, buildFourWheelRoverTemplate, buildGripperPickArmTemplate, buildSpringSuspensionTemplate, loadUniversalArchetype, UNIVERSAL_ARCHETYPES } from "../contracts/universal-archetypes";
+import {
+  buildFourBarLinkageTemplate,
+  buildFourWheelRoverTemplate,
+  buildGripperPickArmTemplate,
+  buildOrientalPearlTemplate,
+  buildRescueHelicopterTemplate,
+  buildReusableRocketTemplate,
+  buildSpringSuspensionTemplate,
+  loadUniversalArchetype,
+  UNIVERSAL_ARCHETYPES,
+} from "../contracts/universal-archetypes";
 import { createImportedPhysics } from "../src/lib/imported-physics-core";
 import { compileImportedModel } from "../src/lib/imported-physics-model";
 
@@ -29,7 +39,7 @@ async function openCompiled(compiled: ReturnType<typeof compileAssemblyToMujoco>
 }
 
 describe("万能装配 → MuJoCo MJCF 真物理编译器与跨领域万物动力学验证", () => {
-  it("4 套跨领域万物样机通过装配拓扑与闭环约束校验，且可无报错编译至真实 MuJoCo WASM", async () => {
+  it("全部 7 套跨领域万物样机通过装配拓扑与闭环约束校验，且可无报错编译至真实 MuJoCo WASM", async () => {
     for (const item of UNIVERSAL_ARCHETYPES) {
       const { workspace, assembly } = loadUniversalArchetype(item.id);
       expect(inspectMechanicalAssembly(workspace, assembly)).toEqual([]);
@@ -150,5 +160,62 @@ describe("万能装配 → MuJoCo MJCF 真物理编译器与跨领域万物动�
       const frames = engine.run(compiled.recommendedRun);
       expect(frames.length).toBeGreaterThan(20);
     }
+  });
+
+  it("猎鹰级矢量推力火箭：<motor site> 在 -9.81 m/s² 重力下点火拔地升空 > 0.75 m 并完成程序转弯机动", async () => {
+    const { workspace, assembly } = buildReusableRocketTemplate();
+    const compiled = compileAssemblyToMujoco(workspace, assembly, { arena: "launch_complex" });
+    expect(compiled.stats.baseMobility).toBe("free");
+    expect(compiled.actuatorMeta.some((a) => a.mode === "thrust" && a.unit === "N")).toBe(true);
+
+    const { engine } = await openCompiled(compiled);
+    const frames = engine.run(compiled.recommendedRun);
+    const start = frames[0]!;
+    const end = frames.at(-1)!;
+    const peakZ = Math.max(...frames.map((f) => f.pointM[2]));
+
+    expect(peakZ - start.pointM[2]).toBeGreaterThan(0.75);
+    expect(end.pointM[2] - start.pointM[2]).toBeGreaterThan(0.65);
+    expect(Math.abs(end.pointM[0] - start.pointM[0])).toBeGreaterThan(0.10);
+  });
+
+  it("共轴双旋翼救援直升机：上下旋翼精确反向对转抵消扭矩，垂直拉升 > 0.35 m 并前倾巡航", async () => {
+    const { workspace, assembly } = buildRescueHelicopterTemplate();
+    const compiled = compileAssemblyToMujoco(workspace, assembly, { arena: "launch_complex" });
+    expect(compiled.stats.equalityCount).toBeGreaterThanOrEqual(1); // upper_rotor coupled -1 to lower_rotor
+
+    const { engine } = await openCompiled(compiled);
+    const frames = engine.run(compiled.recommendedRun);
+    const start = frames[0]!;
+    const end = frames.at(-1)!;
+    const mid = frames[Math.floor(frames.length * 0.65)]!;
+
+    // 上下共轴旋翼角速度方向精确相反、速率一致（ratio = -1）
+    const lowerRotVelIdx = 7;
+    const upperRotVelIdx = 8;
+    expect(mid.qvel[lowerRotVelIdx]!).toBeGreaterThan(5);
+    expect(mid.qvel[upperRotVelIdx]!).toBeLessThan(-5);
+    expect(Math.abs(mid.qvel[lowerRotVelIdx]! + mid.qvel[upperRotVelIdx]!)).toBeLessThan(0.5);
+
+    expect(end.pointM[2] - start.pointM[2]).toBeGreaterThan(0.35);
+    expect(end.pointM[0] - start.pointM[0]).toBeGreaterThan(0.15);
+  });
+
+  it("东方明珠三级旋转观光塔：圆球/圆台/三斜柱无警告编译，三级观光转盘平稳错落旋转", async () => {
+    const { workspace, assembly } = buildOrientalPearlTemplate();
+    const compiled = compileAssemblyToMujoco(workspace, assembly, { arena: "lab_floor" });
+    expect(compiled.stats.baseMobility).toBe("fixed");
+    expect(compiled.stats.actuatorCount).toBe(3);
+
+    const { engine } = await openCompiled(compiled);
+    expect(engine.info.warnings).toEqual([]);
+    const frames = engine.run(compiled.recommendedRun);
+    const start = frames[0]!;
+    const end = frames.at(-1)!;
+
+    // 98m 观景环廊(+)、267m 旋转餐厅(-)、350m 太空舱(+) 三级转盘全数转动 > 3 rad
+    expect(end.qpos[0]! - start.qpos[0]!).toBeGreaterThan(3.0);
+    expect(start.qpos[1]! - end.qpos[1]!).toBeGreaterThan(2.5);
+    expect(end.qpos[2]! - start.qpos[2]!).toBeGreaterThan(3.5);
   });
 });

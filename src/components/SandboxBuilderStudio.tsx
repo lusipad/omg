@@ -214,6 +214,9 @@ export default function SandboxBuilderStudio({
   // Pillar 1: Showroom Exhibit & Destructive What-If Physics Lab
   const [exhibitId, setExhibitId] = useState<ShowroomExhibitId>("c-frame-mill");
   const [exhibitData, setExhibitData] = useState(() => loadShowroomExhibit("c-frame-mill"));
+  const [megaExhibitId, setMegaExhibitId] = useState<UniversalArchetypeId | null>("oriental-pearl-tower");
+  const [megaPhaseDeg, setMegaPhaseDeg] = useState(0);
+  const [megaSpeedMult, setMegaSpeedMult] = useState(1);
   const [whatIfPayloadKg, setWhatIfPayloadKg] = useState(0);
   const [whatIfLeadMm, setWhatIfLeadMm] = useState(8);
   const [whatIfFeedMmS, setWhatIfFeedMmS] = useState(32);
@@ -299,6 +302,18 @@ export default function SandboxBuilderStudio({
     () => SHOWROOM_EXHIBITS.find((e) => e.id === exhibitId) ?? SHOWROOM_EXHIBITS[0]!,
     [exhibitId],
   );
+  const flagshipArchetypes = useMemo(
+    () => UNIVERSAL_ARCHETYPES.filter((a) => a.category === "flagship"),
+    [],
+  );
+  const activeMegaDef = useMemo(
+    () => (megaExhibitId ? UNIVERSAL_ARCHETYPES.find((a) => a.id === megaExhibitId) ?? null : null),
+    [megaExhibitId],
+  );
+  const megaExhibitData = useMemo(
+    () => (megaExhibitId ? loadUniversalArchetype(megaExhibitId) : null),
+    [megaExhibitId],
+  );
 
   // Active workspace & assembly for whichever pillar is active
   const activeSession =
@@ -310,23 +325,31 @@ export default function SandboxBuilderStudio({
           ? lastBuildPillar === "commissions"
             ? commSession
             : sandboxSession
-          : {
-              workspace: exhibitData.workspace,
-              assembly: exhibitData.assembly,
-              commands: exhibitData.assembly.commands,
-              dirty: false,
-              history: [],
-            };
+          : megaExhibitData
+            ? {
+                workspace: megaExhibitData.workspace,
+                assembly: megaExhibitData.assembly,
+                commands: megaExhibitData.assembly.commands,
+                dirty: false,
+                history: [],
+              }
+            : {
+                workspace: exhibitData.workspace,
+                assembly: exhibitData.assembly,
+                commands: exhibitData.assembly.commands,
+                dirty: false,
+                history: [],
+              };
 
   // Precomputed live Showroom Trial simulation (reacts live to What-If sliders!)
   const showroomSim = useMemo(() => {
-    if (pillar !== "showroom") return null;
+    if (pillar !== "showroom" || megaExhibitId !== null) return null;
     return simulateMachineTrial(exhibitData.workspace, exhibitData.assembly, currentExhibitDef.simMode, {
       payloadMassKg: whatIfPayloadKg,
       screwLeadOverrideMm: whatIfLeadMm,
       feedRateMmS: whatIfFeedMmS,
     });
-  }, [pillar, exhibitData, currentExhibitDef.simMode, whatIfPayloadKg, whatIfLeadMm, whatIfFeedMmS]);
+  }, [pillar, megaExhibitId, exhibitData, currentExhibitDef.simMode, whatIfPayloadKg, whatIfLeadMm, whatIfFeedMmS]);
 
   // Active Trial Simulation for Commissions or Sandbox when user hits "通电试机"
   const activeBuildSim = useMemo(() => {
@@ -364,6 +387,22 @@ export default function SandboxBuilderStudio({
     return () => window.cancelAnimationFrame(raf);
   }, [pillar, showroomPlaying, showroomSim]);
 
+  // Loop Flagship Space & Landmark real-time articulated showroom animation
+  useEffect(() => {
+    if (pillar !== "showroom" || megaExhibitId === null || !showroomPlaying) return;
+    let raf = 0;
+    let lastTs = performance.now();
+
+    const tick = (now: number) => {
+      const dtSec = Math.min(0.1, Math.max(0, (now - lastTs) / 1000));
+      lastTs = now;
+      setMegaPhaseDeg((prev) => (prev + dtSec * 72 * megaSpeedMult) % 36000);
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [pillar, megaExhibitId, showroomPlaying, megaSpeedMult]);
+
   // Play trial run once (holding on final milled cut so user inspects result)
   useEffect(() => {
     if (pillar === "showroom" || pillar === "physics" || !trialPlaying || !activeBuildSim || activeBuildSim.frames.length === 0) return;
@@ -395,6 +434,31 @@ export default function SandboxBuilderStudio({
 
   // Resolve current viewport commands & real 3D carved aluminum state
   const viewportPlayback = useMemo(() => {
+    if (pillar === "showroom" && megaExhibitId !== null && megaExhibitData) {
+      const commands: Record<string, number> =
+        megaExhibitId === "oriental-pearl-tower"
+          ? {
+              lower_orbit_ring: megaPhaseDeg * 0.45,
+              sky_restaurant_deck: -megaPhaseDeg * 0.3,
+              space_capsule_rotor: megaPhaseDeg * 0.75,
+            }
+          : megaExhibitId === "rescue-helicopter"
+            ? {
+                lower_rotor: megaPhaseDeg * 3.5,
+                swashplate_tilt: Math.sin((megaPhaseDeg * Math.PI) / 180) * 8,
+              }
+            : {
+                tvc_nozzle: Math.sin((megaPhaseDeg * 1.6 * Math.PI) / 180) * 11,
+              };
+      return {
+        commands,
+        stockState: null,
+        idealTrailMm: undefined,
+        actualTrailMm: undefined,
+        trailInWorkpieceFrame: false,
+        showTipMarker: false,
+      };
+    }
     if (pillar === "showroom" && showroomSim) {
       const idx = clamp(showroomFrameIdx, 0, Math.max(0, showroomSim.frames.length - 1));
       const frame = showroomSim.frames[idx];
@@ -429,7 +493,18 @@ export default function SandboxBuilderStudio({
       trailInWorkpieceFrame: false,
       showTipMarker: false,
     };
-  }, [pillar, showroomSim, showroomFrameIdx, showTrialVerdict, activeBuildSim, trialFrameIdx, activeSession.commands]);
+  }, [
+    pillar,
+    megaExhibitId,
+    megaExhibitData,
+    megaPhaseDeg,
+    showroomSim,
+    showroomFrameIdx,
+    showTrialVerdict,
+    activeBuildSim,
+    trialFrameIdx,
+    activeSession.commands,
+  ]);
 
   const solved = useMemo(
     () =>
@@ -493,12 +568,22 @@ export default function SandboxBuilderStudio({
   );
 
   function selectExhibit(nextId: ShowroomExhibitId) {
+    setMegaExhibitId(null);
     setExhibitId(nextId);
     setExhibitData(loadShowroomExhibit(nextId));
     setShowroomFrameIdx(0);
     setShowroomPlaying(true);
     setActiveLayerId(null);
     setSelectedNodeId("");
+    setFitToken((n) => n + 1);
+  }
+
+  function selectMegaExhibit(nextId: UniversalArchetypeId) {
+    setMegaExhibitId(nextId);
+    setExplodePct(0);
+    setActiveLayerId(null);
+    setSelectedNodeId("");
+    setShowroomPlaying(true);
     setFitToken((n) => n + 1);
   }
 
@@ -814,13 +899,13 @@ export default function SandboxBuilderStudio({
 
   const physicsHighlight = useMemo(
     () => ({
-      overloadedNodeIds: livePhysics.overloadedNodeIds,
+      overloadedNodeIds: pillar === "showroom" && megaExhibitId ? [] : livePhysics.overloadedNodeIds,
       columnDeflectionUm: livePhysics.columnDeflectionUm,
       cuttingForceN: livePhysics.cuttingForceN,
       thrustForceN: livePhysics.thrustForceN,
       hasSpindle: livePhysics.hasSpindle,
     }),
-    [livePhysics],
+    [livePhysics, pillar, megaExhibitId],
   );
 
   const activeSimResult = pillar === "showroom" ? showroomSim : activeBuildSim;
@@ -837,7 +922,9 @@ export default function SandboxBuilderStudio({
       : "已拿起积木 — 点击 3D 视口青色发光球吸附（或点右侧直接吸附）"
     : hoverHint ||
       (pillar === "showroom"
-        ? `${currentExhibitDef.badge} · ${currentExhibitDef.title} — ${currentExhibitDef.takeaway}`
+        ? activeMegaDef
+          ? `🌟 ${activeMegaDef.badge} · ${activeMegaDef.title} — ${activeMegaDef.physicsHighlights}`
+          : `${currentExhibitDef.badge} · ${currentExhibitDef.title} — ${currentExhibitDef.takeaway}`
         : pillar === "commissions"
           ? `${currentCommission.badge} · ${currentCommission.title}`
           : `自由创造台 · ${activeSession.assembly.name}`);
@@ -1099,19 +1186,48 @@ export default function SandboxBuilderStudio({
                       variant="ghost"
                       className="h-6 px-1.5 text-[10px]"
                       onClick={() => {
-                        setShowroomFrameIdx(0);
+                        if (megaExhibitId) setMegaPhaseDeg(0);
+                        else setShowroomFrameIdx(0);
                         setShowroomPlaying(true);
                       }}
                     >
                       <RotateCcw className="size-3" />
-                      重切
+                      {megaExhibitId ? "归零" : "重切"}
                     </Button>
                   </div>
                 </div>
 
+                <p className="text-[10px] font-semibold text-amber-300/90">🌟 震撼空天与地标巨构</p>
+                <div className="grid gap-1.5">
+                  {flagshipArchetypes.map((item) => {
+                    const selected = megaExhibitId === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => selectMegaExhibit(item.id)}
+                        className={`rounded-md border p-2 text-left transition-colors ${
+                          selected
+                            ? "border-primary bg-primary/15 text-foreground ring-1 ring-primary"
+                            : "bg-background/50 hover:border-primary/40 hover:bg-accent/40"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-semibold">{item.title}</span>
+                          <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] text-amber-300">
+                            {item.badge}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{item.subtitle}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="pt-1 text-[10px] font-semibold text-muted-foreground">🔧 工业母机与机械臂展品</p>
                 <div className="grid gap-1.5">
                   {SHOWROOM_EXHIBITS.map((ex) => {
-                    const selected = ex.id === exhibitId;
+                    const selected = megaExhibitId === null && ex.id === exhibitId;
                     return (
                       <button
                         key={ex.id}
@@ -1134,149 +1250,250 @@ export default function SandboxBuilderStudio({
                 </div>
               </div>
 
-              {/* Destructive Physics Lab Sliders */}
-              <div className="space-y-2 rounded-md border bg-background/60 p-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-foreground">动手“破坏实验”看物理规律</span>
-                  <button
-                    type="button"
-                    className="text-[10px] text-muted-foreground hover:text-foreground"
-                    onClick={() => {
-                      setWhatIfPayloadKg(0);
-                      setWhatIfLeadMm(8);
-                      setWhatIfFeedMmS(32);
-                      setExplodePct(0);
-                      setActiveLayerId(null);
-                    }}
-                  >
-                    恢复标准
-                  </button>
-                </div>
-
-                <label className="block space-y-0.5">
-                  <div className="flex justify-between text-[11px]">
-                    <span>工件附加配重（看惯量过冲）</span>
-                    <span className="mono text-primary">+{whatIfPayloadKg} kg</span>
+              {activeMegaDef && megaExhibitData ? (
+                <div className="space-y-2 rounded-md border border-primary/30 bg-background/60 p-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-foreground">🚀 巨构透视与机构联调台</span>
+                    <button
+                      type="button"
+                      className="text-[10px] text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setMegaSpeedMult(1);
+                        setExplodePct(0);
+                        setActiveLayerId(null);
+                      }}
+                    >
+                      恢复默认
+                    </button>
                   </div>
-                  <input
-                    type="range"
-                    aria-label="工件附加配重"
-                    min={0}
-                    max={45}
-                    step={1}
-                    value={whatIfPayloadKg}
-                    className="h-3.5 w-full accent-primary"
-                    onChange={(e) => setWhatIfPayloadKg(Number(e.currentTarget.value))}
-                  />
-                </label>
 
-                <label className="block space-y-0.5">
-                  <div className="flex justify-between text-[11px]">
-                    <span>丝杠导程 p（机械杠杆比）</span>
-                    <span className="mono text-primary">{whatIfLeadMm} mm/rev</span>
-                  </div>
-                  <input
-                    type="range"
-                    aria-label="丝杠导程"
-                    min={4}
-                    max={24}
-                    step={2}
-                    value={whatIfLeadMm}
-                    className="h-3.5 w-full accent-primary"
-                    onChange={(e) => setWhatIfLeadMm(Number(e.currentTarget.value))}
-                  />
-                </label>
+                  <label className="block space-y-0.5">
+                    <div className="flex justify-between text-[11px]">
+                      <span>分层三维爆炸展开</span>
+                      <span className="mono text-primary">{explodePct}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      aria-label="巨构三维爆炸展开"
+                      min={0}
+                      max={100}
+                      step={2}
+                      value={explodePct}
+                      className="h-3.5 w-full accent-primary"
+                      onChange={(e) => setExplodePct(Number(e.currentTarget.value))}
+                    />
+                  </label>
 
-                <label className="block space-y-0.5">
-                  <div className="flex justify-between text-[11px]">
-                    <span>切削进给速度（看让刀变形）</span>
-                    <span className="mono text-primary">{whatIfFeedMmS} mm/s</span>
-                  </div>
-                  <input
-                    type="range"
-                    aria-label="切削进给速度"
-                    min={10}
-                    max={120}
-                    step={2}
-                    value={whatIfFeedMmS}
-                    className="h-3.5 w-full accent-primary"
-                    onChange={(e) => setWhatIfFeedMmS(Number(e.currentTarget.value))}
-                  />
-                </label>
-
-                <label className="block space-y-0.5">
-                  <div className="flex justify-between text-[11px]">
-                    <span>分层三维爆炸展开</span>
-                    <span className="mono text-primary">{explodePct}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    aria-label="分层爆炸展开"
-                    min={0}
-                    max={100}
-                    step={2}
-                    value={explodePct}
-                    className="h-3.5 w-full accent-primary"
-                    onChange={(e) => setExplodePct(Number(e.currentTarget.value))}
-                  />
-                </label>
-
-                {/* One-click Contrast Experiment Buttons */}
-                <div className="grid grid-cols-1 gap-1 pt-1">
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="h-6 justify-start text-[10px]"
-                    onClick={() => {
-                      if (exhibitId === "articulated-arm") selectExhibit("c-frame-mill");
-                      setWhatIfPayloadKg(38);
-                      setWhatIfLeadMm(10);
-                      setWhatIfFeedMmS(74);
-                      setXrayMode(true);
-                    }}
+                    variant={explodePct > 0 ? "default" : "outline"}
+                    className="h-7 w-full text-[11px]"
+                    onClick={() => setExplodePct((v) => (v > 0 ? 0 : 65))}
                   >
-                    ⚡ 实验 A：5倍超重负载 → 看拐角明显失圆
+                    💥 {explodePct > 0 ? "合拢收回结构层级" : "一键爆炸透视内部结构 / 卫星载荷"}
                   </Button>
+
+                  <label className="block space-y-0.5">
+                    <div className="flex justify-between text-[11px]">
+                      <span>运转演示速率</span>
+                      <span className="mono text-primary">{megaSpeedMult.toFixed(1)}x</span>
+                    </div>
+                    <input
+                      type="range"
+                      aria-label="巨构运转演示速率"
+                      min={0.4}
+                      max={2.5}
+                      step={0.1}
+                      value={megaSpeedMult}
+                      className="h-3.5 w-full accent-primary"
+                      onChange={(e) => setMegaSpeedMult(Number(e.currentTarget.value))}
+                    />
+                  </label>
+
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="h-6 justify-start text-[10px]"
+                    className="h-8 w-full text-xs"
                     onClick={() => {
-                      if (exhibitId === "articulated-arm") selectExhibit("c-frame-mill");
-                      setWhatIfPayloadKg(14);
-                      setWhatIfLeadMm(24);
-                      setWhatIfFeedMmS(88);
-                      setXrayMode(true);
+                      setPhysicsSourceHint(activeMegaDef.id);
+                      setPillar("physics");
                     }}
                   >
-                    ⚡ 实验 B：大导程 24 mm → 看电机红灯过载报警
+                    🔥 进入 MuJoCo 真物理升空 / 旋转试炼 →
                   </Button>
+
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-6 justify-start text-[10px]"
+                    className="h-7 w-full text-[11px]"
                     onClick={() => {
-                      const target = exhibitId === "gantry-mill" ? "c-frame-mill" : "gantry-mill";
-                      selectExhibit(target);
-                      setWhatIfPayloadKg(6);
-                      setWhatIfLeadMm(8);
-                      setWhatIfFeedMmS(76);
-                      setXrayMode(true);
+                      setSandboxSession({
+                        workspace: megaExhibitData.workspace,
+                        assembly: megaExhibitData.assembly,
+                        commands: { ...megaExhibitData.assembly.commands },
+                        dirty: true,
+                        history: [
+                          ...sandboxSession.history.slice(-15),
+                          { workspace: sandboxSession.workspace, assembly: sandboxSession.assembly },
+                        ],
+                      });
+                      setLastBuildPillar("sandbox");
+                      setSelectedNodeId("");
+                      setPreferredParentId("");
+                      setShowTrialVerdict(false);
+                      setPillar("sandbox");
+                      setFitToken((n) => n + 1);
                     }}
                   >
-                    ⚡ 实验 C：一键切换 C型单柱 vs 双柱龙门对比让刀
+                    🧱 送入自由创造台拆改积木 & 导出 BOM
                   </Button>
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* Destructive Physics Lab Sliders */}
+                  <div className="space-y-2 rounded-md border bg-background/60 p-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-foreground">动手“破坏实验”看物理规律</span>
+                      <button
+                        type="button"
+                        className="text-[10px] text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          setWhatIfPayloadKg(0);
+                          setWhatIfLeadMm(8);
+                          setWhatIfFeedMmS(32);
+                          setExplodePct(0);
+                          setActiveLayerId(null);
+                        }}
+                      >
+                        恢复标准
+                      </button>
+                    </div>
 
-              <Button
-                size="sm"
-                className="mt-auto h-8 w-full text-xs"
-                onClick={() => enterCommissionWithStarter("comm-1-axis")}
-              >
-                看懂原理了？去「造物演进委托」亲手搭一台
-                <ArrowRight />
-              </Button>
+                    <label className="block space-y-0.5">
+                      <div className="flex justify-between text-[11px]">
+                        <span>工件附加配重（看惯量过冲）</span>
+                        <span className="mono text-primary">+{whatIfPayloadKg} kg</span>
+                      </div>
+                      <input
+                        type="range"
+                        aria-label="工件附加配重"
+                        min={0}
+                        max={45}
+                        step={1}
+                        value={whatIfPayloadKg}
+                        className="h-3.5 w-full accent-primary"
+                        onChange={(e) => setWhatIfPayloadKg(Number(e.currentTarget.value))}
+                      />
+                    </label>
+
+                    <label className="block space-y-0.5">
+                      <div className="flex justify-between text-[11px]">
+                        <span>丝杠导程 p（机械杠杆比）</span>
+                        <span className="mono text-primary">{whatIfLeadMm} mm/rev</span>
+                      </div>
+                      <input
+                        type="range"
+                        aria-label="丝杠导程"
+                        min={4}
+                        max={24}
+                        step={2}
+                        value={whatIfLeadMm}
+                        className="h-3.5 w-full accent-primary"
+                        onChange={(e) => setWhatIfLeadMm(Number(e.currentTarget.value))}
+                      />
+                    </label>
+
+                    <label className="block space-y-0.5">
+                      <div className="flex justify-between text-[11px]">
+                        <span>切削进给速度（看让刀变形）</span>
+                        <span className="mono text-primary">{whatIfFeedMmS} mm/s</span>
+                      </div>
+                      <input
+                        type="range"
+                        aria-label="切削进给速度"
+                        min={10}
+                        max={120}
+                        step={2}
+                        value={whatIfFeedMmS}
+                        className="h-3.5 w-full accent-primary"
+                        onChange={(e) => setWhatIfFeedMmS(Number(e.currentTarget.value))}
+                      />
+                    </label>
+
+                    <label className="block space-y-0.5">
+                      <div className="flex justify-between text-[11px]">
+                        <span>分层三维爆炸展开</span>
+                        <span className="mono text-primary">{explodePct}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        aria-label="分层爆炸展开"
+                        min={0}
+                        max={100}
+                        step={2}
+                        value={explodePct}
+                        className="h-3.5 w-full accent-primary"
+                        onChange={(e) => setExplodePct(Number(e.currentTarget.value))}
+                      />
+                    </label>
+
+                    {/* One-click Contrast Experiment Buttons */}
+                    <div className="grid grid-cols-1 gap-1 pt-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 justify-start text-[10px]"
+                        onClick={() => {
+                          if (exhibitId === "articulated-arm") selectExhibit("c-frame-mill");
+                          setWhatIfPayloadKg(38);
+                          setWhatIfLeadMm(10);
+                          setWhatIfFeedMmS(74);
+                          setXrayMode(true);
+                        }}
+                      >
+                        ⚡ 实验 A：5倍超重负载 → 看拐角明显失圆
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 justify-start text-[10px]"
+                        onClick={() => {
+                          if (exhibitId === "articulated-arm") selectExhibit("c-frame-mill");
+                          setWhatIfPayloadKg(14);
+                          setWhatIfLeadMm(24);
+                          setWhatIfFeedMmS(88);
+                          setXrayMode(true);
+                        }}
+                      >
+                        ⚡ 实验 B：大导程 24 mm → 看电机红灯过载报警
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 justify-start text-[10px]"
+                        onClick={() => {
+                          const target = exhibitId === "gantry-mill" ? "c-frame-mill" : "gantry-mill";
+                          selectExhibit(target);
+                          setWhatIfPayloadKg(6);
+                          setWhatIfLeadMm(8);
+                          setWhatIfFeedMmS(76);
+                          setXrayMode(true);
+                        }}
+                      >
+                        ⚡ 实验 C：一键切换 C型单柱 vs 双柱龙门对比让刀
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    className="mt-auto h-8 w-full text-xs"
+                    onClick={() => enterCommissionWithStarter("comm-1-axis")}
+                  >
+                    看懂原理了？去「造物演进委托」亲手搭一台
+                    <ArrowRight />
+                  </Button>
+                </>
+              )}
             </div>
           )}
 
@@ -1856,48 +2073,61 @@ export default function SandboxBuilderStudio({
 
           {/* Bottom Floating Live Causal Physics HUD */}
           <div className="pointer-events-none absolute inset-x-2.5 bottom-9 z-10 hidden justify-center sm:flex">
-            <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[#0b1412]/90 px-3 py-1.5 text-[11px] shadow-lg backdrop-blur">
-              <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">进给指令</span>
-                <span className="mono font-medium text-sky-300">{causalFeed} mm/s</span>
-              </div>
-              <span className="text-muted-foreground/40">→</span>
-              <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">电机扭矩负荷</span>
-                <span className={`mono font-semibold ${livePhysics.peakTorquePct > 100 ? "text-red-400" : "text-emerald-300"}`}>
-                  {livePhysics.peakTorquePct.toFixed(0)}%
+            {pillar === "showroom" && activeMegaDef ? (
+              <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[#0b1412]/90 px-3 py-1.5 text-[11px] shadow-lg backdrop-blur">
+                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 font-semibold text-amber-300">
+                  {activeMegaDef.badge}
                 </span>
+                <span className="text-foreground">模块总成 {activeSession.assembly.nodes.length} 件</span>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="mono text-sky-300">结构总重 {livePhysics.totalMassKg.toFixed(2)} kg</span>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="text-emerald-300">{activeMegaDef.physicsHighlights}</span>
               </div>
-              <span className="text-muted-foreground/40">→</span>
-              <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">惯量比</span>
-                <span className={`mono font-medium ${livePhysics.maxInertiaRatio > 8 ? "text-amber-300" : "text-foreground"}`}>
-                  {livePhysics.maxInertiaRatio}:1
-                </span>
+            ) : (
+              <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[#0b1412]/90 px-3 py-1.5 text-[11px] shadow-lg backdrop-blur">
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">进给指令</span>
+                  <span className="mono font-medium text-sky-300">{causalFeed} mm/s</span>
+                </div>
+                <span className="text-muted-foreground/40">→</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">电机扭矩负荷</span>
+                  <span className={`mono font-semibold ${livePhysics.peakTorquePct > 100 ? "text-red-400" : "text-emerald-300"}`}>
+                    {livePhysics.peakTorquePct.toFixed(0)}%
+                  </span>
+                </div>
+                <span className="text-muted-foreground/40">→</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">惯量比</span>
+                  <span className={`mono font-medium ${livePhysics.maxInertiaRatio > 8 ? "text-amber-300" : "text-foreground"}`}>
+                    {livePhysics.maxInertiaRatio}:1
+                  </span>
+                </div>
+                {livePhysics.hasSpindle && (
+                  <>
+                    <span className="text-muted-foreground/40">→</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground">立柱让刀 δ</span>
+                      <span className={`mono font-medium ${livePhysics.columnDeflectionUm > 48 ? "text-red-400" : "text-emerald-300"}`}>
+                        {livePhysics.columnDeflectionUm} μm
+                      </span>
+                    </div>
+                  </>
+                )}
+                {verdict && (
+                  <>
+                    <span className="text-muted-foreground/40">→</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground">{livePhysics.hasSpindle ? "实切误差" : "跟随精度"}</span>
+                      <span className={`mono font-semibold ${verdict.passed ? "text-emerald-300" : "text-amber-300"}`}>
+                        ±{verdict.maxContourErrorMm} mm ({verdict.grade})
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
-              {livePhysics.hasSpindle && (
-                <>
-                  <span className="text-muted-foreground/40">→</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-muted-foreground">立柱让刀 δ</span>
-                    <span className={`mono font-medium ${livePhysics.columnDeflectionUm > 48 ? "text-red-400" : "text-emerald-300"}`}>
-                      {livePhysics.columnDeflectionUm} μm
-                    </span>
-                  </div>
-                </>
-              )}
-              {verdict && (
-                <>
-                  <span className="text-muted-foreground/40">→</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-muted-foreground">{livePhysics.hasSpindle ? "实切误差" : "跟随精度"}</span>
-                    <span className={`mono font-semibold ${verdict.passed ? "text-emerald-300" : "text-amber-300"}`}>
-                      ±{verdict.maxContourErrorMm} mm ({verdict.grade})
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
+            )}
           </div>
         </main>
 
@@ -1948,7 +2178,7 @@ export default function SandboxBuilderStudio({
                 })}
               </div>
 
-              {livePhysics.warnings.length > 0 && (
+              {!megaExhibitId && livePhysics.warnings.length > 0 && (
                 <div className="shrink-0 space-y-1 rounded border border-red-400/50 bg-red-500/10 p-2 text-[10px] text-red-200">
                   {livePhysics.warnings.map((w) => (
                     <p key={w}>⚠️ {w}</p>

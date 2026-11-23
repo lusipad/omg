@@ -65,7 +65,7 @@ export default function MujocoSandboxArena({
   onNavigate,
 }: MujocoSandboxArenaProps) {
   const [sourceChoice, setSourceChoice] = useState<ArenaSourceChoice>(() =>
-    initialSource ?? (currentAssembly.nodes.length >= 2 ? "current" : "four-wheel-rover"),
+    initialSource ?? (currentAssembly.nodes.length >= 2 ? "current" : "reusable-tvc-rocket"),
   );
   const [arenaOverride, setArenaOverride] = useState<ArenaPresetId | null>(null);
   const [mobilityOverride, setMobilityOverride] = useState<"fixed" | "free" | null>(null);
@@ -341,36 +341,51 @@ export default function MujocoSandboxArena({
             </p>
           </button>
 
-          <p className="pt-1 text-[10px] font-semibold text-muted-foreground">
-            跨领域万物验证样机（点选运行 · 支持拆回修改）
-          </p>
-          <div className="space-y-1">
-            {UNIVERSAL_ARCHETYPES.map((item) => {
-              const selected = sourceChoice === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleSelectSource(item.id)}
-                  className={`w-full rounded-md border p-2 text-left transition-colors ${
-                    selected
-                      ? "border-primary bg-primary/15 ring-1 ring-primary"
-                      : "bg-background/50 hover:border-primary/40"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="truncate font-semibold text-foreground">{item.title}</span>
-                    <span className="shrink-0 rounded bg-sky-500/20 px-1 py-0.5 text-[9px] text-sky-300">
-                      {item.badge}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-muted-foreground">
-                    {item.subtitle}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
+          {(
+            [
+              {
+                category: "flagship" as const,
+                heading: "🌟 震撼空天与地标巨构（点火升空 · 共轴旋翼 · 多级旋转）",
+                badgeClass: "bg-amber-500/20 text-amber-300",
+              },
+              {
+                category: "mechanism" as const,
+                heading: "⚙️ 经典机构与地面载具（越障爬坡 · 摩擦抓取 · 闭环四杆）",
+                badgeClass: "bg-sky-500/20 text-sky-300",
+              },
+            ] as const
+          ).map((group) => (
+            <div key={group.category} className="space-y-1 pt-1">
+              <p className="text-[10px] font-semibold text-muted-foreground">{group.heading}</p>
+              <div className="space-y-1">
+                {UNIVERSAL_ARCHETYPES.filter((a) => a.category === group.category).map((item) => {
+                  const selected = sourceChoice === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleSelectSource(item.id)}
+                      className={`w-full rounded-md border p-2 text-left transition-colors ${
+                        selected
+                          ? "border-primary bg-primary/15 ring-1 ring-primary"
+                          : "bg-background/50 hover:border-primary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="truncate font-semibold text-foreground">{item.title}</span>
+                        <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] ${group.badgeClass}`}>
+                          {item.badge}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-muted-foreground">
+                        {item.subtitle}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
 
           {activeInput.isArchetype && (
             <Button
@@ -472,9 +487,14 @@ export default function MujocoSandboxArena({
             <div className="space-y-1.5">
               {compilation.result.actuatorMeta.map((act, idx) => {
                 const val = sliderValues[idx] ?? 0;
-                const displayVal = act.unit === "rad" ? `${((val * 180) / Math.PI).toFixed(0)}°`
-                  : act.unit === "m" ? `${(val * 1000).toFixed(1)} mm`
-                    : `${val.toFixed(1)} rad/s`;
+                const displayVal =
+                  act.unit === "rad"
+                    ? `${((val * 180) / Math.PI).toFixed(1)}°`
+                    : act.unit === "m"
+                      ? `${(val * 1000).toFixed(1)} mm`
+                      : act.unit === "N"
+                        ? `${val.toFixed(1)} N`
+                        : `${val.toFixed(1)} rad/s`;
                 return (
                   <label key={act.name} className="block space-y-0.5 rounded border bg-background/60 p-1.5">
                     <div className="flex items-center justify-between gap-1">
@@ -701,6 +721,34 @@ export default function MujocoSandboxArena({
                     : "可在左侧开启转速驱动或切换 6-DOF 自由底盘观察轮地接触牵引。"}
                 </div>
               )}
+
+              {effectiveArena === "launch_complex" && effectiveMobility === "free" && (
+                <div
+                  className={`space-y-1 rounded border p-2 text-[10px] ${
+                    telemetry.peakZMm > 350
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                      : "border-border bg-background/60 text-muted-foreground"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 font-semibold">
+                    <span>峰值爬升高度 +{(telemetry.peakZMm / 1000).toFixed(2)} m</span>
+                    <span className="mono">水平航程 {(telemetry.deltaXMm / 1000).toFixed(2)} m</span>
+                  </div>
+                  <p>
+                    {telemetry.peakZMm > 350
+                      ? `✅ 真实 -9.81 m/s² 重力场下推力克服自重拔地升空（峰值 +${(telemetry.peakZMm / 1000).toFixed(2)} m）！`
+                      : "可在左侧开启推进推力或调整旋翼总距与矢量摆角，观察真实重力场起飞轨迹。"}
+                  </p>
+                </div>
+              )}
+
+              {effectiveMobility === "fixed" &&
+                compilation.ok &&
+                compilation.result.actuatorMeta.filter((a) => a.mode === "velocity").length >= 2 && (
+                  <div className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 text-[10px] text-emerald-200">
+                    ✅ 多级独立旋转观光层（{compilation.result.actuatorMeta.length} 组受控回转环）在真实刚体约束下同步平稳运转！
+                  </div>
+                )}
 
               {simState && simState.info.warnings.length > 0 && (
                 <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[10px] text-amber-200">

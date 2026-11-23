@@ -28,6 +28,7 @@ export interface SandboxBlockDefinition {
   readonly spec: PrimitivePartSpec;
   readonly defaultJoint: MechanicalPart["joint"];
   readonly defaultJointMode?: "actuated" | "passive" | "velocity";
+  readonly defaultThruster?: MechanicalAssembly["nodes"][number]["thruster"];
   readonly extraOutputs?: MechanicalPart["outputs"];
   readonly attachMode?: "bottom" | "side_x" | "side_y" | "center";
   readonly roleHint?: "drive" | "motor" | "screw" | "table" | "sensor" | "spindle" | "workpiece" | "frame";
@@ -242,6 +243,48 @@ export const SANDBOX_BLOCKS: readonly SandboxBlockDefinition[] = [
     spec: { shape: "box", widthMm: 26, depthMm: 14, heightMm: 54, finish: "rubber_grip" },
     defaultJoint: { type: "slide", axis: [0, 1, 0], unit: "mm", range: [-10, 26] },
     defaultJointMode: "actuated",
+    roleHint: "frame",
+  },
+
+  // ⑥ 空天载具与地标巨构基本件（矢量火箭喷管 / 升力旋翼 / 明珠太空球 / 整流罩尖锥）
+  {
+    id: "rocket_thruster",
+    category: "actuator",
+    name: "矢量火箭发动机喷管",
+    subtitle: "可绕 Y 轴 ±15° 摆动并自带局部轴向推力（支持 MuJoCo 点火升空）",
+    spec: { shape: "cone", radiusBottomMm: 26, radiusTopMm: 12, lengthMm: 44, axis: "z", finish: "anodized_black" },
+    defaultJoint: { type: "hinge", axis: [0, 1, 0], unit: "deg", range: [-15, 15] },
+    defaultJointMode: "actuated",
+    defaultThruster: { maxForceN: 95, direction: [0, 0, 1], label: "矢量引擎推力" },
+    roleHint: "drive",
+  },
+  {
+    id: "rotor_propeller",
+    category: "actuator",
+    name: "高速升力旋翼桨盘",
+    subtitle: "260 mm 长高速旋转桨叶并带垂直升力推进器",
+    spec: { shape: "box", widthMm: 260, depthMm: 22, heightMm: 6, finish: "anodized_black" },
+    defaultJoint: { type: "hinge", axis: [0, 0, 1], unit: "deg", range: [-36000, 36000] },
+    defaultJointMode: "velocity",
+    defaultThruster: { maxForceN: 55, direction: [0, 0, 1], label: "旋翼总距升力" },
+    roleHint: "drive",
+  },
+  {
+    id: "pearl_sphere",
+    category: "frame",
+    name: "东方明珠观光球舱",
+    subtitle: "R42 mm 璀璨洋红金属球舱（带赤道金属环，适合多级地标旋转）",
+    spec: { shape: "sphere", radiusMm: 42, finish: "pearl_crimson" },
+    defaultJoint: { type: "fixed" },
+    roleHint: "frame",
+  },
+  {
+    id: "nose_cone",
+    category: "frame",
+    name: "气动整流罩 / 天线塔尖",
+    subtitle: "白瓷锥台结构，可用于火箭整流罩、飞行器机头或摩天塔尖",
+    spec: { shape: "cone", radiusBottomMm: 32, radiusTopMm: 2, lengthMm: 88, axis: "z", finish: "aerospace_white" },
+    defaultJoint: { type: "fixed" },
     roleHint: "frame",
   },
 ];
@@ -503,6 +546,7 @@ export function snapBlockOntoAssembly(
     explodeStep: parentStep + 1,
     explodeVectorMm: explodeVecMm,
     ...(block.defaultJointMode ? { jointMode: block.defaultJointMode } : {}),
+    ...(block.defaultThruster ? { thruster: block.defaultThruster } : {}),
     ...(coupledTo ? { coupledTo } : {}),
   };
 
@@ -732,7 +776,7 @@ export function removeSandboxNode(
     .filter((n) => !toDrop.has(n.id))
     .map((n) => {
       if (!n.coupledTo || !toDrop.has(n.coupledTo.path.split("/")[0])) return n;
-      const { id, packageKey: pk, parent, materialId, label, explodeStep, explodeVectorMm, jointMode } = n;
+      const { id, packageKey: pk, parent, materialId, label, explodeStep, explodeVectorMm, jointMode, thruster } = n;
       return {
         id,
         packageKey: pk,
@@ -742,6 +786,7 @@ export function removeSandboxNode(
         ...(explodeStep !== undefined ? { explodeStep } : {}),
         ...(explodeVectorMm ? { explodeVectorMm } : {}),
         ...(jointMode ? { jointMode } : {}),
+        ...(thruster ? { thruster } : {}),
       };
     });
 

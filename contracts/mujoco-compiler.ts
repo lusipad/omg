@@ -19,7 +19,7 @@ import {
 import { packageKey, type DevicePackage } from "./twin-device";
 import type { TwinWorkspace } from "./twin-simulation";
 
-export type ArenaPresetId = "flat_ramp" | "grasp_pedestal" | "step_obstacles" | "lab_floor";
+export type ArenaPresetId = "flat_ramp" | "grasp_pedestal" | "step_obstacles" | "launch_complex" | "lab_floor";
 
 export interface ArenaPresetInfo {
   readonly id: ArenaPresetId;
@@ -29,6 +29,12 @@ export interface ArenaPresetInfo {
 }
 
 export const ARENA_PRESETS: readonly ArenaPresetInfo[] = [
+  {
+    id: "launch_complex",
+    label: "航天发射台与开阔空域（火箭 / 直升机起飞场）",
+    shortLabel: "航天发射场",
+    summary: "8×8 m 广域发射场与混凝土发射坪，零阻力空中矢量推力升空、共轴旋翼悬停与程序转弯。",
+  },
   {
     id: "flat_ramp",
     label: "重力平地 + 10° 越障坡道",
@@ -51,7 +57,7 @@ export const ARENA_PRESETS: readonly ArenaPresetInfo[] = [
     id: "lab_floor",
     label: "标准重力实验地坪",
     shortLabel: "纯净重力场",
-    summary: "-9.81 m/s² 重力硬质混凝土地面，适合测试闭链连杆、弹簧摆臂与工业精密机构。",
+    summary: "-9.81 m/s² 重力硬质混凝土地面，适合测试闭链连杆、弹簧摆臂、东方明珠与工业机构。",
   },
 ];
 
@@ -60,8 +66,8 @@ export interface CompiledMujocoActuatorMeta {
   readonly name: string;
   readonly nodePath: string;
   readonly label: string;
-  readonly mode: "actuated" | "velocity";
-  readonly unit: "rad/s" | "rad" | "m";
+  readonly mode: "actuated" | "velocity" | "thrust";
+  readonly unit: "rad/s" | "rad" | "m" | "N";
   readonly range: readonly [number, number];
 }
 
@@ -100,6 +106,8 @@ const FINISH_RGBA: Record<PrimitiveFinish, string> = {
   workpiece_alloy: "0.42 0.72 0.65 1",
   sensor_amber: "0.89 0.61 0.23 1",
   rubber_grip: "0.11 0.14 0.17 1",
+  aerospace_white: "0.94 0.96 0.98 1",
+  pearl_crimson: "0.86 0.16 0.48 1",
 };
 
 const FINISH_DENSITY_KG_M3: Record<PrimitiveFinish, number> = {
@@ -111,6 +119,8 @@ const FINISH_DENSITY_KG_M3: Record<PrimitiveFinish, number> = {
   workpiece_alloy: 2700,
   sensor_amber: 1800,
   rubber_grip: 1250,
+  aerospace_white: 1950,
+  pearl_crimson: 2400,
 };
 
 function escAttr(raw: string): string {
@@ -209,6 +219,17 @@ function estimatePartMassKg(pkg: DevicePackage | undefined, finish: PrimitiveFin
     case "bearing_pillow":
       volM3 = spec.widthMm * spec.depthMm * spec.heightMm * 0.65 * mm3ToM3;
       break;
+    case "sphere":
+      volM3 = (4 / 3) * Math.PI * spec.radiusMm ** 3 * mm3ToM3;
+      break;
+    case "cone":
+      volM3 =
+        (Math.PI *
+          spec.lengthMm *
+          (spec.radiusBottomMm ** 2 + spec.radiusBottomMm * spec.radiusTopMm + spec.radiusTopMm ** 2)) /
+        3 *
+        mm3ToM3;
+      break;
     case "external_mesh":
       volM3 = spec.approxBoundsMm[0] * spec.approxBoundsMm[1] * spec.approxBoundsMm[2] * 0.5 * mm3ToM3;
       break;
@@ -219,7 +240,7 @@ function estimatePartMassKg(pkg: DevicePackage | undefined, finish: PrimitiveFin
 }
 
 interface GeomXmlSpec {
-  readonly kind: "box" | "cylinder";
+  readonly kind: "box" | "cylinder" | "sphere";
   readonly posM: readonly [number, number, number];
   readonly quat: Quaternion;
   readonly sizeM: readonly number[];
@@ -461,6 +482,42 @@ function buildPartGeoms(pkg: DevicePackage | undefined): { geoms: GeomXmlSpec[];
       );
       break;
     }
+    case "sphere": {
+      geoms.push({
+        kind: "sphere",
+        posM: [0, 0, 0],
+        quat: new Quaternion(),
+        sizeM: [spec.radiusMm * 0.001],
+        rgba,
+        massKg: totalMassKg,
+        isHighGrip: false,
+      });
+      break;
+    }
+    case "cone": {
+      // Split conical frustum into 3 stepped coaxial cylinders along spec.axis so MuJoCo contact & Three.js preview match cleanly without external meshes
+      const q = axisQuaternion(spec.axis);
+      const halfSegLenM = (spec.lengthMm / 6) * 0.001;
+      const fracs = [1 / 6, 0.5, 5 / 6] as const;
+      const offsetsMm = [-spec.lengthMm / 3, 0, spec.lengthMm / 3] as const;
+      const segRadiiM = fracs.map((t) =>
+        Math.max(0.0015, ((spec.radiusBottomMm * (1 - t) + spec.radiusTopMm * t) * 0.001)),
+      );
+      const sumR2 = segRadiiM.reduce((acc, r) => acc + r * r, 0) || 1;
+      for (let i = 0; i < 3; i++) {
+        const localShift = new Vector3(0, 0, offsetsMm[i]! * 0.001).applyQuaternion(q);
+        geoms.push({
+          kind: "cylinder",
+          posM: [localShift.x, localShift.y, localShift.z],
+          quat: q,
+          sizeM: [segRadiiM[i]!, halfSegLenM],
+          rgba,
+          massKg: Math.max(0.006, (totalMassKg * segRadiiM[i]! * segRadiiM[i]!) / sumR2),
+          isHighGrip: false,
+        });
+      }
+      break;
+    }
   }
 
   return { geoms, totalMassKg };
@@ -475,6 +532,7 @@ interface FlatCompiledNode {
   readonly pkg?: DevicePackage;
   readonly part: MechanicalPart;
   readonly jointMode?: "actuated" | "passive" | "velocity";
+  readonly thruster?: NonNullable<MechanicalAssembly["nodes"][number]["thruster"]>;
   readonly coupledTo?: NonNullable<MechanicalAssembly["nodes"][number]["coupledTo"]>;
   readonly mountById: Map<string, Matrix4>;
   readonly mountFrameById: Map<string, MechanicalFrame>;
@@ -550,6 +608,7 @@ function flattenAssemblyForPhysics(ws: TwinWorkspace, rootAssembly: MechanicalAs
         pkg,
         part,
         jointMode: node.jointMode,
+        thruster: node.thruster,
         coupledTo: node.coupledTo ? { ...node.coupledTo, path: remapPath(node.coupledTo.path) } : undefined,
         mountById: new Map(part.outputs.map((m) => [m.id, frameToMatrixMm(m)])),
         mountFrameById: new Map(part.outputs.map((m) => [m.id, m])),
@@ -599,6 +658,7 @@ export function inferDefaultArenaAndMobility(
   const pkgMap = new Map(ws.packages.map((p) => [packageKey(p), p]));
   let hasWheel = false;
   let hasGripper = false;
+  const hasThruster = assembly.nodes.some((n) => Boolean(n.thruster));
   const hasSpring = Boolean(assembly.closures?.some((c) => c.kind === "spring"));
   const hasLoop = Boolean(assembly.closures?.some((c) => !c.kind || c.kind === "connect" || c.kind === "weld"));
 
@@ -614,21 +674,30 @@ export function inferDefaultArenaAndMobility(
     }
   }
 
-  const baseMobility: "fixed" | "free" = assembly.baseMobility ?? (hasWheel ? "free" : "fixed");
-  const arena: ArenaPresetId = assembly.id.includes("suspension") || hasSpring
-    ? "lab_floor"
-    : assembly.id.includes("linkage") || hasLoop
+  const baseMobility: "fixed" | "free" = assembly.baseMobility ?? (hasWheel || hasThruster ? "free" : "fixed");
+  const arena: ArenaPresetId = hasThruster
+    ? "launch_complex"
+    : assembly.id.includes("suspension") || hasSpring
       ? "lab_floor"
-      : hasGripper
-        ? "grasp_pedestal"
-        : baseMobility === "free" || hasWheel
-          ? "flat_ramp"
-          : "lab_floor";
+      : assembly.id.includes("linkage") || hasLoop
+        ? "lab_floor"
+        : hasGripper
+          ? "grasp_pedestal"
+          : baseMobility === "free" || hasWheel
+            ? "flat_ramp"
+            : "lab_floor";
   return { arena, baseMobility };
 }
 
 function renderArenaWorldbodyXml(arena: ArenaPresetId): { xml: string; payloadSiteName?: string } {
   switch (arena) {
+    case "launch_complex":
+      return {
+        xml: [
+          `    <geom name="arena_ground" type="plane" pos="0 0 0" size="8 8 0.05" contype="2" conaffinity="3" condim="4" friction="1.2 0.015 0.003" rgba="0.13 0.19 0.18 1"/>`,
+          `    <geom name="arena_pad" type="box" pos="0 0 0.004" size="0.16 0.16 0.004" contype="2" conaffinity="3" condim="4" friction="1.4 0.02 0.004" rgba="0.24 0.30 0.34 1"/>`,
+        ].join("\n"),
+      };
     case "flat_ramp": {
       // Right-handed +Y rotation by -10 deg raises +X toward +Z.
       const rad = (-10 * Math.PI) / 180;
@@ -737,13 +806,14 @@ export function compileAssemblyToMujoco(
     }
   }
 
-  const groundClearanceMm = baseMobility === "free" ? 2.5 : 0;
+  const padTopMm = arena === "launch_complex" ? 8 : 0;
+  const groundClearanceMm = (baseMobility === "free" ? 2.5 : 0) + padTopMm;
   const rootLiftM = Number.isFinite(minZMm) ? -minZMm * 0.001 + groundClearanceMm * 0.001 : 0.05;
 
   const rootNode = flat.nodes.find((n) => n.parentPath === null);
   if (!rootNode) throw new Error("装配体缺少唯一根节点。");
 
-  const usedNames = new Set<string>(["world", "arena_ground", "arena_ramp", "arena_plateau", "payload_cube", "payload_free", "payload_geom", "payload_center", "push_crate", "crate_free", "crate_geom", "push_box_center", "chassis_free", "tcp_site"]);
+  const usedNames = new Set<string>(["world", "arena_ground", "arena_pad", "arena_ramp", "arena_plateau", "payload_cube", "payload_free", "payload_geom", "payload_center", "push_crate", "crate_free", "crate_geom", "push_box_center", "chassis_free", "tcp_site"]);
   const uniqueName = (seed: string) => {
     const base = sanitizeMjName(seed);
     if (!usedNames.has(base)) {
@@ -962,6 +1032,27 @@ export function compileAssemblyToMujoco(
       lines.push(`${indent}  <site name="${escAttr(s.siteName)}" pos="${fmt(s.posM[0])} ${fmt(s.posM[1])} ${fmt(s.posM[2])}"/>`);
     }
 
+    if (node.thruster) {
+      const thrSiteName = uniqueName(`thr_site_${node.path}`);
+      const thrActName = uniqueName(`thr_${node.path}`);
+      const thrDir = new Vector3(...(node.thruster.direction ?? [0, 0, 1])).normalize();
+      const thrQuat = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), thrDir);
+      lines.push(`${indent}  <site name="${escAttr(thrSiteName)}" pos="0 0 0" quat="${fmtQuatWxyz(thrQuat)}"/>`);
+      const actIdx = actuatorMeta.length;
+      actuatorLines.push(
+        `    <motor name="${escAttr(thrActName)}" site="${escAttr(thrSiteName)}" gear="0 0 1 0 0 0" ctrlrange="0 ${fmt(node.thruster.maxForceN)}"/>`,
+      );
+      actuatorMeta.push({
+        index: actIdx,
+        name: thrActName,
+        nodePath: node.path,
+        label: node.thruster.label?.trim() || `${node.label} · 推力`,
+        mode: "thrust",
+        unit: "N",
+        range: [0, node.thruster.maxForceN],
+      });
+    }
+
     for (const child of childrenMap.get(node.path) ?? []) {
       lines.push(emitBodyXml(child, `${indent}  `));
     }
@@ -1033,6 +1124,7 @@ export function compileAssemblyToMujoco(
     assembly,
     arena,
     baseMobility,
+    totalMassKg,
     actuatorMeta,
     tcpSiteId,
     payloadSiteId,
@@ -1061,18 +1153,86 @@ function buildRecommendedRunSettings(args: {
   assembly: MechanicalAssembly;
   arena: ArenaPresetId;
   baseMobility: "fixed" | "free";
+  totalMassKg: number;
   actuatorMeta: readonly CompiledMujocoActuatorMeta[];
   tcpSiteId: string;
   payloadSiteId?: string;
 }): ImportedRunSettings {
-  const { assembly, arena, baseMobility, actuatorMeta, tcpSiteId, payloadSiteId } = args;
+  const { assembly, arena, baseMobility, totalMassKg, actuatorMeta, tcpSiteId, payloadSiteId } = args;
   const zeros = actuatorMeta.map(() => 0);
+  const weightN = Math.max(0.5, totalMassKg * 9.81);
+  const clampAct = (a: CompiledMujocoActuatorMeta, val: number) =>
+    Number(Math.max(a.range[0], Math.min(a.range[1], val)).toFixed(4));
 
   if (actuatorMeta.length === 0) {
     return {
       durationS: 1.6,
       controls: [],
       pointId: tcpSiteId,
+    };
+  }
+
+  // Case 0A: Coaxial Helicopter / Rotorcraft (thrusters + velocity rotors)
+  const hasThrust = actuatorMeta.some((a) => a.mode === "thrust");
+  const hasVelocity = actuatorMeta.some((a) => a.mode === "velocity");
+  if (hasThrust && hasVelocity) {
+    const spool = actuatorMeta.map((a) =>
+      a.mode === "velocity" ? clampAct(a, 18) : a.mode === "thrust" ? clampAct(a, weightN * 0.45) : 0,
+    );
+    const takeoff = actuatorMeta.map((a) =>
+      a.mode === "velocity"
+        ? clampAct(a, 18)
+        : a.mode === "thrust"
+          ? clampAct(a, weightN * 1.4)
+          : clampAct(a, 0.014),
+    );
+    const accel = actuatorMeta.map((a) =>
+      a.mode === "velocity"
+        ? clampAct(a, 18)
+        : a.mode === "thrust"
+          ? clampAct(a, weightN * 1.22)
+          : clampAct(a, 0.024),
+    );
+    const cruise = actuatorMeta.map((a) =>
+      a.mode === "velocity"
+        ? clampAct(a, 18)
+        : a.mode === "thrust"
+          ? clampAct(a, weightN * 1.08)
+          : clampAct(a, -0.024),
+    );
+    return {
+      durationS: 2.15,
+      controls: zeros,
+      pointId: tcpSiteId,
+      sequence: [
+        { timeS: 0.35, controls: spool, label: "共轴旋翼反扭起转" },
+        { timeS: 0.9, controls: takeoff, label: "总距拉升垂直起飞" },
+        { timeS: 1.4, controls: accel, label: "前倾变距加速推进" },
+        { timeS: 2.05, controls: cruise, label: "姿态改平空中巡航" },
+      ],
+    };
+  }
+
+  // Case 0B: TVC Vector-Thrust Rocket (thrusters + gimbal actuators)
+  if (hasThrust) {
+    const stage1 = actuatorMeta.map((a) => (a.mode === "thrust" ? clampAct(a, weightN * 1.55) : 0));
+    const stage2 = actuatorMeta.map((a) =>
+      a.mode === "thrust" ? clampAct(a, weightN * 1.50) : clampAct(a, 0.022),
+    );
+    const stage3 = actuatorMeta.map((a) =>
+      a.mode === "thrust" ? clampAct(a, weightN * 1.45) : clampAct(a, -0.022),
+    );
+    const stage4 = actuatorMeta.map((a) => (a.mode === "thrust" ? clampAct(a, weightN * 1.28) : 0));
+    return {
+      durationS: 2.05,
+      controls: zeros,
+      pointId: tcpSiteId,
+      sequence: [
+        { timeS: 0.25, controls: stage1, label: "主发全推点火离台" },
+        { timeS: 0.55, controls: stage2, label: "TVC 程序转弯偏移" },
+        { timeS: 0.85, controls: stage3, label: "对称反向姿态修正" },
+        { timeS: 1.95, controls: stage4, label: "稳定爬升与重力转弯" },
+      ],
     };
   }
 
@@ -1112,6 +1272,28 @@ function buildRecommendedRunSettings(args: {
       sequence: [
         { timeS: 0.12, controls: actuatorMeta.map(() => 6.0), label: "四轮平稳落地起步" },
         { timeS: 1.8, controls: driveCtrls, label: arena === "flat_ramp" ? "全轮扭矩爬坡" : "全速越野推进" },
+      ],
+    };
+  }
+
+  // Case 2B: Multi-layer fixed rotating monument (e.g., Oriental Pearl Tower with 3 rotating tiers)
+  const velCount = actuatorMeta.filter((a) => a.mode === "velocity").length;
+  if (baseMobility === "fixed" && velCount >= 2) {
+    const spinHarmonics = [2.4, -1.6, 3.0, -2.0];
+    let velOrder = 0;
+    const spinCtrls = actuatorMeta.map((a) => {
+      if (a.mode !== "velocity") return 0;
+      const spd = spinHarmonics[velOrder % spinHarmonics.length]!;
+      velOrder++;
+      return clampAct(a, spd);
+    });
+    return {
+      durationS: 2.6,
+      controls: spinCtrls,
+      pointId: tcpSiteId,
+      sequence: [
+        { timeS: 0.25, controls: spinCtrls, label: "多级观光转盘平稳启动" },
+        { timeS: 2.4, controls: spinCtrls, label: "观景环廊 / 旋转餐厅 / 太空舱同步运转" },
       ],
     };
   }

@@ -468,6 +468,16 @@ export function estimatePartMassAndCost(pkg: DevicePackage | undefined): { massK
       volCm3 = 75;
       costCny = 65;
       break;
+    case "sphere":
+      densityGcm3 = spec.finish === "pearl_crimson" ? 2.4 : 2.7;
+      volCm3 = ((4 / 3) * Math.PI * spec.radiusMm ** 3) / 1000;
+      costCny = 95 + volCm3 * 0.28;
+      break;
+    case "cone":
+      densityGcm3 = spec.finish === "aerospace_white" ? 1.95 : 2.7;
+      volCm3 = (Math.PI * spec.lengthMm * (spec.radiusBottomMm ** 2 + spec.radiusBottomMm * spec.radiusTopMm + spec.radiusTopMm ** 2)) / 3000;
+      costCny = 110 + volCm3 * 0.3;
+      break;
     case "external_mesh":
       volCm3 = 300;
       costCny = 260;

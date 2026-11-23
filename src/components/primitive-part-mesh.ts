@@ -18,6 +18,8 @@ const FINISH_CONFIG: Record<PrimitiveFinish, { color: number; metalness: number;
   workpiece_alloy: { color: 0x6cb8a6, metalness: 0.36, roughness: 0.44 },
   sensor_amber: { color: 0xe39b3b, metalness: 0.2, roughness: 0.45 },
   rubber_grip: { color: 0x1e242b, metalness: 0.08, roughness: 0.88 },
+  aerospace_white: { color: 0xf1f5f9, metalness: 0.18, roughness: 0.28 },
+  pearl_crimson: { color: 0xdb2777, metalness: 0.42, roughness: 0.24 },
 };
 
 function makeMaterial(finish: PrimitiveFinish, selected?: boolean): THREE.MeshStandardMaterial {
@@ -421,6 +423,30 @@ export function createPrimitivePartGroup(
       sleeveGeo.rotateX(Math.PI / 2);
       sleeveHolder.add(new THREE.Mesh(sleeveGeo, brassMat));
       root.add(sleeveHolder);
+      break;
+    }
+    case "sphere": {
+      const geo = new THREE.SphereGeometry(spec.radiusMm, 32, 22);
+      const mesh = new THREE.Mesh(geo, mainMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      root.add(mesh);
+      // Equatorial rim ring so spin angles are clearly visible in 3D view
+      const bandGeo = new THREE.TorusGeometry(spec.radiusMm * 1.005, Math.max(0.8, spec.radiusMm * 0.03), 8, 36);
+      const bandMat = finish === "pearl_crimson" ? brassMat : steelMat;
+      root.add(new THREE.Mesh(bandGeo, bandMat));
+      break;
+    }
+    case "cone": {
+      const geo = new THREE.CylinderGeometry(spec.radiusTopMm, spec.radiusBottomMm, spec.lengthMm, 28);
+      geo.rotateX(Math.PI / 2);
+      const holder = new THREE.Group();
+      holder.quaternion.copy(axisQuaternion(spec.axis));
+      const coneMesh = new THREE.Mesh(geo, mainMat);
+      coneMesh.castShadow = true;
+      coneMesh.receiveShadow = true;
+      holder.add(coneMesh);
+      root.add(holder);
       break;
     }
     case "external_mesh": {

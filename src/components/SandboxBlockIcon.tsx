@@ -16,6 +16,8 @@ const FINISH_COLOR: Record<PrimitiveFinish, string> = {
   workpiece_alloy: "#a5b4fc",
   sensor_amber: "#fbbf24",
   rubber_grip: "#38bdf8",
+  aerospace_white: "#f8fafc",
+  pearl_crimson: "#f472b6",
 };
 
 export function SandboxBlockIcon({
@@ -53,6 +55,43 @@ export function SandboxBlockIcon({
         <rect x="4" y="13" width="28" height="10" rx="5" fill="#1e293b" stroke="#cbd5e1" strokeWidth="1.8" />
         <circle cx="9.5" cy="18" r="2.5" fill="#0f172a" stroke="#5eead4" strokeWidth="1.6" />
         <circle cx="26.5" cy="18" r="2.5" fill="#0f172a" stroke="#5eead4" strokeWidth="1.6" />
+      </svg>
+    );
+  }
+
+  if (blockId === "rocket_thruster") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <path d="M14 6h8l4 13H10l4-13Z" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M13 19l2 10 3-5 3 5 2-10" fill="#fb923c" fillOpacity="0.45" stroke="#f97316" strokeWidth="1.8" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
+  if (blockId === "rotor_propeller") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <line x1="4" y1="16" x2="32" y2="16" stroke="#38bdf8" strokeWidth="3.2" strokeLinecap="round" />
+        <circle cx="18" cy="16" r="4" fill="#0f172a" stroke="#e2e8f0" strokeWidth="1.6" />
+        <path d="M12 24h12M18 20v7" stroke="#5eead4" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (shape === "sphere") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <circle cx="18" cy="18" r="11.5" fill={finish === "pearl_crimson" ? "#831843" : "#1e293b"} stroke={accent} strokeWidth="1.8" />
+        <ellipse cx="18" cy="18" rx="11.5" ry="4" stroke="#f8fafc" strokeWidth="1.2" strokeOpacity="0.7" />
+      </svg>
+    );
+  }
+
+  if (shape === "cone") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <path d="M18 5 28 29H8L18 5Z" fill="#1e293b" stroke={accent} strokeWidth="1.8" strokeLinejoin="round" />
+        <ellipse cx="18" cy="29" rx="10" ry="2.5" stroke={accent} strokeWidth="1.2" />
       </svg>
     );
   }

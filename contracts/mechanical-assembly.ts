@@ -48,7 +48,7 @@ export function mechanicalSubassembly(raw: MechanicalAssembly, rootId: string): 
       .filter((n) => keep.has(n.id))
       .map((n) => {
         const dropCoupling = n.coupledTo && !keep.has(n.coupledTo.path.split("/")[0]);
-        const nextNode = dropCoupling ? { id: n.id, packageKey: n.packageKey, parent: n.parent, ...(n.materialId ? { materialId: n.materialId } : {}), ...(n.label ? { label: n.label } : {}), ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}), ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}), ...(n.jointMode ? { jointMode: n.jointMode } : {}) } : n;
+        const nextNode = dropCoupling ? { id: n.id, packageKey: n.packageKey, parent: n.parent, ...(n.materialId ? { materialId: n.materialId } : {}), ...(n.label ? { label: n.label } : {}), ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}), ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}), ...(n.jointMode ? { jointMode: n.jointMode } : {}), ...(n.thruster ? { thruster: n.thruster } : {}) } : n;
         return nextNode.id === rootId ? { ...nextNode, parent: null } : nextNode;
       }),
     commands: Object.fromEntries(Object.entries(a.commands).filter(([path]) => keep.has(path.split("/")[0]))),

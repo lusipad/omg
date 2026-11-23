@@ -1,8 +1,12 @@
+import { Quaternion, Vector3 } from "three";
 import { parseMechanicalAssembly, type MechanicalAssembly } from "./mechanical-assembly";
 import { buildPrimitivePartPackage, packageKey } from "./twin-device";
 import { emptyWorkspace, installPackage, type TwinWorkspace } from "./twin-simulation";
 
 export type UniversalArchetypeId =
+  | "reusable-tvc-rocket"
+  | "rescue-helicopter"
+  | "oriental-pearl-tower"
   | "four-wheel-rover"
   | "gripper-pick-arm"
   | "four-bar-linkage"
@@ -10,47 +14,631 @@ export type UniversalArchetypeId =
 
 export interface UniversalArchetypeDef {
   readonly id: UniversalArchetypeId;
+  readonly category: "flagship" | "mechanism";
   readonly badge: string;
   readonly title: string;
   readonly subtitle: string;
   readonly physicsHighlights: string;
+  readonly showroomMode: "rocket-launch" | "helicopter-flight" | "tower-spin" | "kinematic-demo";
 }
 
 export const UNIVERSAL_ARCHETYPES: readonly UniversalArchetypeDef[] = [
   {
+    id: "reusable-tvc-rocket",
+    category: "flagship",
+    badge: "矢量火箭",
+    title: "猎鹰级可回收矢量推力火箭",
+    subtitle: "四着陆支腿 + 钛栅格翼 + 二级贮箱 + 整流罩内藏金色卫星 + 摆动矢量喷管，真物理点火拔地升空",
+    physicsHighlights: "局部矢量喷管 <motor site> · ±15° TVC 程序转弯 · 爆炸视图揭露卫星载荷",
+    showroomMode: "rocket-launch",
+  },
+  {
+    id: "rescue-helicopter",
+    category: "flagship",
+    badge: "共轴旋翼",
+    title: "共轴双旋翼救援直升机",
+    subtitle: "球形全景座舱 + 双雪橇起落架 + 尾梁垂尾 + 上下反向等速对转四叶旋翼 + 倾转周期变距飞控",
+    physicsHighlights: "ratio=-1 物理抵消反扭力矩 · 垂直离地拉升 · 前倾 4° 空中巡航",
+    showroomMode: "helicopter-flight",
+  },
+  {
+    id: "oriental-pearl-tower",
+    category: "flagship",
+    badge: "地标巨构",
+    title: "东方明珠三级旋转观光塔",
+    subtitle: "120° 三擎斜撑巨柱 + 大小双璀璨明珠 + 98m 环廊 / 267m 空中旋转餐厅 / 350m 太空舱三级独立旋转",
+    physicsHighlights: "多级独立角速度旋转层 · 立体几何与高精度球锥组合 · 468m 发射天线桅杆",
+    showroomMode: "tower-spin",
+  },
+  {
     id: "four-wheel-rover",
+    category: "mechanism",
     badge: "移动载具",
     title: "四轮差速越障探索车",
     subtitle: "6-DOF 自由刚体底盘 + 四驱高摩擦橡胶胎，在 -9.81 m/s² 重力下自动落地并冲上 10° 坡道",
     physicsHighlights: "freejoint 自由落地 · 轮胎库仑静摩擦推进 · 质心稳定爬坡",
+    showroomMode: "kinematic-demo",
   },
   {
     id: "gripper-pick-arm",
+    category: "mechanism",
     badge: "接触操作",
     title: "二指摩擦夹爪取物机械臂",
     subtitle: "Z 向伺服升降臂 + 对夹同步防滑橡胶手指，纯粹依靠接触摩擦力夹起 80g 自由方块",
     physicsHighlights: "多阶段轨迹序列 · 对夹多项式耦合 · 非固定物体摩擦抓取",
+    showroomMode: "kinematic-demo",
   },
   {
     id: "four-bar-linkage",
+    category: "mechanism",
     badge: "闭链机构",
     title: "闭链四连杆曲柄摇杆机构",
     subtitle: "严格 Grashof 曲柄摇杆 + <connect> 球铰闭环约束，连续 360° 整周转动驱动摇杆摆动",
     physicsHighlights: "树状拓扑跨枝闭环 · 主动速度曲柄 + 双无源随动铰链",
+    showroomMode: "kinematic-demo",
   },
   {
     id: "spring-suspension-rig",
+    category: "mechanism",
     badge: "弹性悬架",
     title: "弹簧减震摆臂测试台",
     subtitle: "无源铰链摆臂 + 配重轮 + 斜置空间弹簧阻尼器 <tendon>，重现真实欠阻尼弹性振荡衰减",
     physicsHighlights: "空间肌腱弹簧阻尼 · 重力下垂受迫响应 · 可调刚度与阻尼系数",
+    showroomMode: "kinematic-demo",
   },
 ];
 
 const Q_ID: [number, number, number, number] = [1, 0, 0, 0];
 
+function quatFromZToVec(vx: number, vy: number, vz: number): [number, number, number, number] {
+  const q = new Quaternion().setFromUnitVectors(
+    new Vector3(0, 0, 1),
+    new Vector3(vx, vy, vz).normalize(),
+  );
+  return [q.w, q.x, q.y, q.z];
+}
+
+function quatAroundZ(rad: number): [number, number, number, number] {
+  const q = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), rad);
+  return [q.w, q.x, q.y, q.z];
+}
+
 /**
- * 样机①：四轮差速越障探索车（freejoint 自由底盘 + 4× 橡胶驱动轮）
+ * 旗舰①：猎鹰级矢量推力可回收火箭（四腿着陆支架 + 栅格翼 + 金色卫星 + TVC 喷管）
+ */
+export function buildReusableRocketTemplate(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
+  const sin25 = Math.sin((25 * Math.PI) / 180);
+  const cos25 = Math.cos((25 * Math.PI) / 180);
+
+  const pkgCore = buildPrimitivePartPackage({
+    manufacturer: "构元空天",
+    model: "一级可回收液体芯级贮箱",
+    revision: "F9",
+    primitive: { shape: "cylinder", radiusMm: 32, lengthMm: 220, axis: "z", finish: "aerospace_white" },
+    behavior: { kind: "moving_table", massKg: 0.92 },
+    extraOutputs: [
+      { id: "interstage_mount", positionMm: [0, 0, 110], quatWxyz: Q_ID },
+      { id: "nozzle_mount", positionMm: [0, 0, -110], quatWxyz: Q_ID },
+      { id: "leg_px", positionMm: [30, 0, -92], quatWxyz: quatFromZToVec(-sin25, 0, cos25) },
+      { id: "leg_nx", positionMm: [-30, 0, -92], quatWxyz: quatFromZToVec(sin25, 0, cos25) },
+      { id: "leg_py", positionMm: [0, 30, -92], quatWxyz: quatFromZToVec(0, -sin25, cos25) },
+      { id: "leg_ny", positionMm: [0, -30, -92], quatWxyz: quatFromZToVec(0, sin25, cos25) },
+      { id: "fin_px", positionMm: [43, 0, 88], quatWxyz: Q_ID },
+      { id: "fin_nx", positionMm: [-43, 0, 88], quatWxyz: Q_ID },
+      { id: "fin_py", positionMm: [0, 43, 88], quatWxyz: quatAroundZ(Math.PI / 2) },
+      { id: "fin_ny", positionMm: [0, -43, 88], quatWxyz: quatAroundZ(Math.PI / 2) },
+    ],
+  });
+
+  const pkgLeg = buildPrimitivePartPackage({
+    manufacturer: "构元空天",
+    model: "碳纤维着陆支撑腿",
+    revision: "F9",
+    primitive: { shape: "box", widthMm: 8, depthMm: 10, heightMm: 94, finish: "anodized_black" },
+    input: { positionMm: [0, 0, 47], quatWxyz: Q_ID },
+    behavior: { kind: "moving_table", massKg: 0.045 },
+  });
+
+  const pkgGridFin = buildPrimitivePartPackage({
+    manufacturer: "构元空天",
+    model: "钛合金气动栅格翼",
+    revision: "F9",
+    primitive: { shape: "box", widthMm: 22, depthMm: 22, heightMm: 4, finish: "steel" },
+    behavior: { kind: "moving_table", massKg: 0.028 },
+  });
+
+  const pkgNozzle = buildPrimitivePartPackage({
+    manufacturer: "构元空天",
+    model: "梅林矢量发动机喷管 (TVC)",
+    revision: "F9",
+    primitive: { shape: "cone", radiusBottomMm: 26, radiusTopMm: 12, lengthMm: 44, axis: "z", finish: "anodized_black" },
+    input: { positionMm: [0, 0, 22], quatWxyz: Q_ID },
+    joint: { type: "hinge", axis: [0, 1, 0], unit: "deg", range: [-15, 15] },
+    behavior: { kind: "moving_table", massKg: 0.14 },
+  });
+
+  const pkgInterstage = buildPrimitivePartPackage({
+    manufacturer: "构元空天",
+    model: "碳纤维复合材料级间段",
+    revision: "F9",
+    primitive: { shape: "cylinder", radiusMm: 33, lengthMm: 34, axis: "z", finish: "anodized_black" },
+    input: { positionMm: [0, 0, -17], quatWxyz: Q_ID },
+    behavior: { kind: "moving_table", massKg: 0.12 },
+  });
+
+  const pkgUpper = buildPrimitivePartPackage({
+    manufacturer: "构元空天",
+    model: "二级真空推进舱贮箱",
+    revision: "F9",
+    primitive: { shape: "cylinder", radiusMm: 32, lengthMm: 90, axis: "z", finish: "aerospace_white" },
+    input: { positionMm: [0, 0, -45], quatWxyz: Q_ID },
+    behavior: { kind: "moving_table", massKg: 0.24 },
+  });
+
+  const pkgSat = buildPrimitivePartPackage({
+    manufacturer: "构元空天",
+    model: "金色通信卫星载荷球舱",
+    revision: "F9",
+    primitive: { shape: "sphere", radiusMm: 17, finish: "brass" },
+    input: { positionMm: [0, 0, -18], quatWxyz: Q_ID },
+    behavior: { kind: "moving_table", massKg: 0.06 },
+  });
+
+  const pkgFairing = buildPrimitivePartPackage({
+    manufacturer: "构元空天",
+    model: "可分离气动整流罩",
+    revision: "F9",
+    primitive: { shape: "cone", radiusBottomMm: 33, radiusTopMm: 2, lengthMm: 94, axis: "z", finish: "aerospace_white" },
+    input: { positionMm: [0, 0, -47], quatWxyz: Q_ID },
+    behavior: { kind: "moving_table", massKg: 0.14 },
+  });
+
+  const ws = [pkgCore, pkgLeg, pkgGridFin, pkgNozzle, pkgInterstage, pkgUpper, pkgSat, pkgFairing].reduce(
+    installPackage,
+    emptyWorkspace(),
+  );
+
+  const assembly = parseMechanicalAssembly({
+    schemaVersion: 1,
+    kind: "mechanical-assembly",
+    id: "archetype-reusable-rocket",
+    name: "猎鹰级可回收矢量推力火箭",
+    baseMobility: "free",
+    nodes: [
+      { id: "core_stage", label: "一级可回收芯级", packageKey: packageKey(pkgCore), parent: null, explodeStep: 0 },
+      { id: "leg_1", label: "着陆支腿 #1", packageKey: packageKey(pkgLeg), parent: { node: "core_stage", mount: "leg_px" }, explodeStep: 1, explodeVectorMm: [45, 0, -25] },
+      { id: "leg_2", label: "着陆支腿 #2", packageKey: packageKey(pkgLeg), parent: { node: "core_stage", mount: "leg_nx" }, explodeStep: 1, explodeVectorMm: [-45, 0, -25] },
+      { id: "leg_3", label: "着陆支腿 #3", packageKey: packageKey(pkgLeg), parent: { node: "core_stage", mount: "leg_py" }, explodeStep: 1, explodeVectorMm: [0, 45, -25] },
+      { id: "leg_4", label: "着陆支腿 #4", packageKey: packageKey(pkgLeg), parent: { node: "core_stage", mount: "leg_ny" }, explodeStep: 1, explodeVectorMm: [0, -45, -25] },
+      { id: "fin_1", label: "钛栅格翼 #1", packageKey: packageKey(pkgGridFin), parent: { node: "core_stage", mount: "fin_px" }, explodeStep: 1, explodeVectorMm: [35, 0, 0] },
+      { id: "fin_2", label: "钛栅格翼 #2", packageKey: packageKey(pkgGridFin), parent: { node: "core_stage", mount: "fin_nx" }, explodeStep: 1, explodeVectorMm: [-35, 0, 0] },
+      { id: "fin_3", label: "钛栅格翼 #3", packageKey: packageKey(pkgGridFin), parent: { node: "core_stage", mount: "fin_py" }, explodeStep: 1, explodeVectorMm: [0, 35, 0] },
+      { id: "fin_4", label: "钛栅格翼 #4", packageKey: packageKey(pkgGridFin), parent: { node: "core_stage", mount: "fin_ny" }, explodeStep: 1, explodeVectorMm: [0, -35, 0] },
+      {
+        id: "tvc_nozzle",
+        label: "梅林矢量火箭喷管",
+        packageKey: packageKey(pkgNozzle),
+        parent: { node: "core_stage", mount: "nozzle_mount" },
+        jointMode: "actuated",
+        thruster: { maxForceN: 95, direction: [0, 0, 1], label: "梅林矢量引擎主推力" },
+        explodeStep: 2,
+        explodeVectorMm: [0, 0, -75],
+      },
+      { id: "interstage", label: "复合材料级间段", packageKey: packageKey(pkgInterstage), parent: { node: "core_stage", mount: "interstage_mount" }, explodeStep: 1, explodeVectorMm: [0, 0, 55] },
+      { id: "upper_stage", label: "二级真空推进段", packageKey: packageKey(pkgUpper), parent: { node: "interstage", mount: "top" }, explodeStep: 2, explodeVectorMm: [0, 0, 95] },
+      { id: "payload_sat", label: "金色通信卫星载荷", packageKey: packageKey(pkgSat), parent: { node: "upper_stage", mount: "top" }, explodeStep: 3, explodeVectorMm: [0, 0, 120] },
+      { id: "fairing_cone", label: "气动卫星整流罩", packageKey: packageKey(pkgFairing), parent: { node: "upper_stage", mount: "top" }, explodeStep: 4, explodeVectorMm: [0, 0, 185] },
+    ],
+    output: { node: "fairing_cone", mount: "top" },
+    commands: { tvc_nozzle: 0 },
+  });
+
+  return { workspace: { ...ws, mechanisms: [assembly] }, assembly };
+}
+
+/**
+ * 旗舰②：共轴双旋翼救援直升机（精确 COM 配平 + 上下反向耦合四叶旋翼 + 周期倾转巡航）
+ */
+export function buildRescueHelicopterTemplate(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
+  const pkgCabin = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "双发轻型救援机身",
+    revision: "H2",
+    primitive: { shape: "box", widthMm: 148, depthMm: 56, heightMm: 46, finish: "spindle_red" },
+    behavior: { kind: "moving_table", massKg: 0.42 },
+    extraOutputs: [
+      { id: "cockpit_mount", positionMm: [68, 0, 2], quatWxyz: Q_ID },
+      { id: "tail_mount", positionMm: [-68, 0, 8], quatWxyz: Q_ID },
+      { id: "mast_mount", positionMm: [0, 0, 32], quatWxyz: Q_ID },
+      { id: "skid_l_mount", positionMm: [0, 44, -44], quatWxyz: Q_ID },
+      { id: "skid_r_mount", positionMm: [0, -44, -44], quatWxyz: Q_ID },
+      { id: "strut_l_mount", positionMm: [0, 34, -30], quatWxyz: quatFromZToVec(0, 0.45, 0.89) },
+      { id: "strut_r_mount", positionMm: [0, -34, -30], quatWxyz: quatFromZToVec(0, -0.45, 0.89) },
+    ],
+  });
+
+  const pkgCanopy = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "全景气泡风挡座舱",
+    revision: "H2",
+    primitive: { shape: "sphere", radiusMm: 27, finish: "workpiece_alloy" },
+    behavior: { kind: "moving_table", massKg: 0.22 },
+  });
+
+  const pkgTailBoom = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "航空白尾梁管桁",
+    revision: "H2",
+    primitive: { shape: "extrusion_profile", series: "2020", lengthMm: 136, axis: "x", finish: "aerospace_white" },
+    input: { positionMm: [68, 0, 0], quatWxyz: Q_ID },
+    behavior: { kind: "moving_table", massKg: 0.08 },
+    extraOutputs: [{ id: "fin_mount", positionMm: [-62, 0, 22], quatWxyz: Q_ID }],
+  });
+
+  const pkgTailFin = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "高置垂直尾翼安定面",
+    revision: "H2",
+    primitive: { shape: "box", widthMm: 28, depthMm: 6, heightMm: 44, finish: "sensor_amber" },
+    behavior: { kind: "moving_table", massKg: 0.022 },
+  });
+
+  const pkgSkid = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "管式雪橇着陆滑撬",
+    revision: "H2",
+    primitive: { shape: "box", widthMm: 162, depthMm: 8, heightMm: 8, finish: "steel" },
+    behavior: { kind: "moving_table", massKg: 0.055 },
+  });
+
+  const pkgStrut = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "斜撑减震起落支柱",
+    revision: "H2",
+    primitive: { shape: "box", widthMm: 10, depthMm: 8, heightMm: 36, finish: "steel" },
+    behavior: { kind: "moving_table", massKg: 0.025 },
+  });
+
+  const pkgSwashplate = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "共轴斜盘倾转飞控毂",
+    revision: "H2",
+    primitive: { shape: "cylinder", radiusMm: 14, lengthMm: 24, axis: "z", finish: "steel" },
+    joint: { type: "hinge", axis: [0, 1, 0], unit: "deg", range: [-12, 12] },
+    behavior: { kind: "moving_table", massKg: 0.08 },
+    extraOutputs: [{ id: "upper_mast", positionMm: [0, 0, 34], quatWxyz: Q_ID }],
+  });
+
+  const pkgLowerBlade = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "下层高刚性旋翼主桨叶",
+    revision: "H2",
+    primitive: { shape: "box", widthMm: 256, depthMm: 22, heightMm: 5, finish: "anodized_black" },
+    joint: { type: "hinge", axis: [0, 0, 1], unit: "deg", range: [-36000, 36000] },
+    behavior: { kind: "moving_table", massKg: 0.04 },
+    extraOutputs: [{ id: "cross_mount", positionMm: [0, 0, 0], quatWxyz: quatAroundZ(Math.PI / 2) }],
+  });
+
+  const pkgUpperBlade = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "上层共轴反向旋翼桨叶",
+    revision: "H2",
+    primitive: { shape: "box", widthMm: 236, depthMm: 20, heightMm: 5, finish: "aerospace_white" },
+    joint: { type: "hinge", axis: [0, 0, 1], unit: "deg", range: [-36000, 36000] },
+    behavior: { kind: "moving_table", massKg: 0.04 },
+    extraOutputs: [{ id: "cross_mount", positionMm: [0, 0, 0], quatWxyz: quatAroundZ(Math.PI / 2) }],
+  });
+
+  const pkgCrossBladeDark = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "下旋翼正交副桨叶",
+    revision: "H2",
+    primitive: { shape: "box", widthMm: 256, depthMm: 22, heightMm: 5, finish: "anodized_black" },
+    behavior: { kind: "moving_table", massKg: 0.04 },
+  });
+
+  const pkgCrossBladeWhite = buildPrimitivePartPackage({
+    manufacturer: "构元航空",
+    model: "上旋翼正交副桨叶",
+    revision: "H2",
+    primitive: { shape: "box", widthMm: 236, depthMm: 20, heightMm: 5, finish: "aerospace_white" },
+    behavior: { kind: "moving_table", massKg: 0.04 },
+  });
+
+  const ws = [
+    pkgCabin,
+    pkgCanopy,
+    pkgTailBoom,
+    pkgTailFin,
+    pkgSkid,
+    pkgStrut,
+    pkgSwashplate,
+    pkgLowerBlade,
+    pkgUpperBlade,
+    pkgCrossBladeDark,
+    pkgCrossBladeWhite,
+  ].reduce(installPackage, emptyWorkspace());
+
+  const assembly = parseMechanicalAssembly({
+    schemaVersion: 1,
+    kind: "mechanical-assembly",
+    id: "archetype-rescue-helicopter",
+    name: "共轴双旋翼救援直升机",
+    baseMobility: "free",
+    nodes: [
+      { id: "cabin_body", label: "救援直升机主体舱", packageKey: packageKey(pkgCabin), parent: null, explodeStep: 0 },
+      { id: "cockpit_glass", label: "全景风挡球舱", packageKey: packageKey(pkgCanopy), parent: { node: "cabin_body", mount: "cockpit_mount" }, explodeStep: 1, explodeVectorMm: [50, 0, 10] },
+      { id: "tail_boom", label: "尾梁桁架", packageKey: packageKey(pkgTailBoom), parent: { node: "cabin_body", mount: "tail_mount" }, explodeStep: 1, explodeVectorMm: [-65, 0, 0] },
+      { id: "tail_fin", label: "垂尾安定面", packageKey: packageKey(pkgTailFin), parent: { node: "tail_boom", mount: "fin_mount" }, explodeStep: 2, explodeVectorMm: [-35, 0, 40] },
+      { id: "skid_l", label: "左雪橇滑撬", packageKey: packageKey(pkgSkid), parent: { node: "cabin_body", mount: "skid_l_mount" }, explodeStep: 1, explodeVectorMm: [0, 35, -30] },
+      { id: "skid_r", label: "右雪橇滑撬", packageKey: packageKey(pkgSkid), parent: { node: "cabin_body", mount: "skid_r_mount" }, explodeStep: 1, explodeVectorMm: [0, -35, -30] },
+      { id: "strut_l", label: "左支撑支柱", packageKey: packageKey(pkgStrut), parent: { node: "cabin_body", mount: "strut_l_mount" }, explodeStep: 1, explodeVectorMm: [0, 25, -15] },
+      { id: "strut_r", label: "右支撑支柱", packageKey: packageKey(pkgStrut), parent: { node: "cabin_body", mount: "strut_r_mount" }, explodeStep: 1, explodeVectorMm: [0, -25, -15] },
+      {
+        id: "swashplate_tilt",
+        label: "倾斜盘总距飞控毂",
+        packageKey: packageKey(pkgSwashplate),
+        parent: { node: "cabin_body", mount: "mast_mount" },
+        jointMode: "actuated",
+        thruster: { maxForceN: 60, direction: [0, 0, 1], label: "共轴双旋翼总距升力" },
+        explodeStep: 2,
+        explodeVectorMm: [0, 0, 45],
+      },
+      {
+        id: "lower_rotor",
+        label: "下旋翼四叶组 (顺时针)",
+        packageKey: packageKey(pkgLowerBlade),
+        parent: { node: "swashplate_tilt", mount: "top" },
+        jointMode: "velocity",
+        explodeStep: 3,
+        explodeVectorMm: [0, 0, 60],
+      },
+      {
+        id: "lower_rotor_cross",
+        label: "下旋翼正交副叶",
+        packageKey: packageKey(pkgCrossBladeDark),
+        parent: { node: "lower_rotor", mount: "cross_mount" },
+        explodeStep: 3,
+        explodeVectorMm: [0, 0, 60],
+      },
+      {
+        id: "upper_rotor",
+        label: "上旋翼四叶组 (反扭逆转)",
+        packageKey: packageKey(pkgUpperBlade),
+        parent: { node: "swashplate_tilt", mount: "upper_mast" },
+        jointMode: "velocity",
+        coupledTo: { path: "lower_rotor", ratio: -1 },
+        explodeStep: 4,
+        explodeVectorMm: [0, 0, 95],
+      },
+      {
+        id: "upper_rotor_cross",
+        label: "上旋翼正交副叶",
+        packageKey: packageKey(pkgCrossBladeWhite),
+        parent: { node: "upper_rotor", mount: "cross_mount" },
+        explodeStep: 4,
+        explodeVectorMm: [0, 0, 95],
+      },
+    ],
+    output: { node: "cabin_body", mount: "center" },
+    commands: { swashplate_tilt: 0, lower_rotor: 0 },
+  });
+
+  return { workspace: { ...ws, mechanisms: [assembly] }, assembly };
+}
+
+/**
+ * 旗舰③：东方明珠三级旋转观光塔（三斜巨柱 + 大小双球 + 98m环廊/267m旋转餐厅/350m太空舱）
+ */
+export function buildOrientalPearlTemplate(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
+  const angles = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3] as const;
+
+  const pkgPodium = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "外滩圆形承台基座",
+    revision: "SH",
+    primitive: { shape: "cylinder", radiusMm: 96, lengthMm: 18, axis: "z", finish: "anodized_black" },
+    behavior: { kind: "moving_table", massKg: 4.5 },
+    extraOutputs: [
+      { id: "core_mount", positionMm: [0, 0, 9], quatWxyz: Q_ID },
+      ...angles.map((phi, i) => ({
+        id: `col_mount_${i + 1}`,
+        positionMm: [64 * Math.cos(phi), 64 * Math.sin(phi), 9] as [number, number, number],
+        quatWxyz: quatFromZToVec(-44 * Math.cos(phi), -44 * Math.sin(phi), 166),
+      })),
+    ],
+  });
+
+  const pkgTripodCol = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "斜向太空桁架巨柱",
+    revision: "SH",
+    primitive: { shape: "cylinder", radiusMm: 10, lengthMm: 172, axis: "z", finish: "aluminum" },
+    input: { positionMm: [0, 0, -86], quatWxyz: Q_ID },
+    behavior: { kind: "moving_table", massKg: 0.45 },
+  });
+
+  const pkgCoreTube = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "中心垂直电梯核心筒",
+    revision: "SH",
+    primitive: { shape: "tube", outerRadiusMm: 14, innerRadiusMm: 9, lengthMm: 390, axis: "z", finish: "aluminum" },
+    input: { positionMm: [0, 0, -195], quatWxyz: Q_ID },
+    behavior: { kind: "moving_table", massKg: 0.9 },
+    extraOutputs: [
+      { id: "orbit_deck_mount", positionMm: [0, 0, -85], quatWxyz: Q_ID },
+      { id: "lower_pearl_mount", positionMm: [0, 0, -28], quatWxyz: Q_ID },
+      { id: "restaurant_mount", positionMm: [0, 0, 65], quatWxyz: Q_ID },
+      { id: "upper_pearl_mount", positionMm: [0, 0, 115], quatWxyz: Q_ID },
+      { id: "space_capsule_mount", positionMm: [0, 0, 181], quatWxyz: Q_ID },
+    ],
+  });
+
+  const pkgLowerPearl = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "90m 璀璨下球体主体",
+    revision: "SH",
+    primitive: { shape: "sphere", radiusMm: 46, finish: "pearl_crimson" },
+    behavior: { kind: "moving_table", massKg: 0.65 },
+  });
+
+  const pkgUpperPearl = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "263m 主观光球体",
+    revision: "SH",
+    primitive: { shape: "sphere", radiusMm: 33, finish: "pearl_crimson" },
+    behavior: { kind: "moving_table", massKg: 0.42 },
+  });
+
+  const pkgOrbitRing = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "98m 空中环形观光转盘",
+    revision: "SH",
+    primitive: { shape: "cylinder", radiusMm: 52, lengthMm: 10, axis: "z", finish: "steel" },
+    joint: { type: "hinge", axis: [0, 0, 1], unit: "deg", range: [-36000, 36000] },
+    behavior: { kind: "moving_table", massKg: 0.16 },
+    extraOutputs: [
+      { id: "pod_1", positionMm: [54, 0, 0], quatWxyz: Q_ID },
+      { id: "pod_2", positionMm: [-54, 0, 0], quatWxyz: Q_ID },
+      { id: "pod_3", positionMm: [0, 54, 0], quatWxyz: Q_ID },
+      { id: "pod_4", positionMm: [0, -54, 0], quatWxyz: Q_ID },
+    ],
+  });
+
+  const pkgObsPod = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "悬空观景旋转子球舱",
+    revision: "SH",
+    primitive: { shape: "sphere", radiusMm: 11, finish: "pearl_crimson" },
+    behavior: { kind: "moving_table", massKg: 0.03 },
+  });
+
+  const pkgRestaurantDeck = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "267m 金色空中旋转餐厅",
+    revision: "SH",
+    primitive: { shape: "cylinder", radiusMm: 40, lengthMm: 14, axis: "z", finish: "brass" },
+    joint: { type: "hinge", axis: [0, 0, 1], unit: "deg", range: [-36000, 36000] },
+    behavior: { kind: "moving_table", massKg: 0.14 },
+    extraOutputs: [
+      { id: "bay_px", positionMm: [42, 0, 0], quatWxyz: Q_ID },
+      { id: "bay_nx", positionMm: [-42, 0, 0], quatWxyz: Q_ID },
+    ],
+  });
+
+  const pkgGlassBay = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "全景玻璃挑窗包厢",
+    revision: "SH",
+    primitive: { shape: "box", widthMm: 12, depthMm: 18, heightMm: 10, finish: "workpiece_alloy" },
+    behavior: { kind: "moving_table", massKg: 0.025 },
+  });
+
+  const pkgSpaceCapsule = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "350m 太空舱旋转顶球",
+    revision: "SH",
+    primitive: { shape: "sphere", radiusMm: 20, finish: "aerospace_white" },
+    joint: { type: "hinge", axis: [0, 0, 1], unit: "deg", range: [-36000, 36000] },
+    behavior: { kind: "moving_table", massKg: 0.1 },
+    extraOutputs: [
+      { id: "beacon_px", positionMm: [22, 0, 0], quatWxyz: Q_ID },
+      { id: "beacon_nx", positionMm: [-22, 0, 0], quatWxyz: Q_ID },
+    ],
+  });
+
+  const pkgBeaconPod = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "航标激光雷达吊舱",
+    revision: "SH",
+    primitive: { shape: "sphere", radiusMm: 7, finish: "sensor_amber" },
+    behavior: { kind: "moving_table", massKg: 0.02 },
+  });
+
+  const pkgSpire = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "468m 电视广播发射天线桅杆",
+    revision: "SH",
+    primitive: { shape: "cone", radiusBottomMm: 11, radiusTopMm: 1.5, lengthMm: 135, axis: "z", finish: "brass" },
+    input: { positionMm: [0, 0, -67.5], quatWxyz: Q_ID },
+    behavior: { kind: "moving_table", massKg: 0.12 },
+  });
+
+  const ws = [
+    pkgPodium,
+    pkgTripodCol,
+    pkgCoreTube,
+    pkgLowerPearl,
+    pkgUpperPearl,
+    pkgOrbitRing,
+    pkgObsPod,
+    pkgRestaurantDeck,
+    pkgGlassBay,
+    pkgSpaceCapsule,
+    pkgBeaconPod,
+    pkgSpire,
+  ].reduce(installPackage, emptyWorkspace());
+
+  const assembly = parseMechanicalAssembly({
+    schemaVersion: 1,
+    kind: "mechanical-assembly",
+    id: "archetype-oriental-pearl",
+    name: "东方明珠三级旋转观光塔",
+    baseMobility: "fixed",
+    nodes: [
+      { id: "bund_podium", label: "外滩圆形广场基座", packageKey: packageKey(pkgPodium), parent: null, explodeStep: 0 },
+      { id: "mega_col_1", label: "东侧斜撑巨柱", packageKey: packageKey(pkgTripodCol), parent: { node: "bund_podium", mount: "col_mount_1" }, explodeStep: 1, explodeVectorMm: [55, 0, 20] },
+      { id: "mega_col_2", label: "西北斜撑巨柱", packageKey: packageKey(pkgTripodCol), parent: { node: "bund_podium", mount: "col_mount_2" }, explodeStep: 1, explodeVectorMm: [-32, 48, 20] },
+      { id: "mega_col_3", label: "西南斜撑巨柱", packageKey: packageKey(pkgTripodCol), parent: { node: "bund_podium", mount: "col_mount_3" }, explodeStep: 1, explodeVectorMm: [-32, -48, 20] },
+      { id: "core_tube", label: "全高度电梯核心井筒", packageKey: packageKey(pkgCoreTube), parent: { node: "bund_podium", mount: "core_mount" }, explodeStep: 1, explodeVectorMm: [0, 0, 50] },
+      {
+        id: "lower_orbit_ring",
+        label: "① 98m 观景旋转环廊",
+        packageKey: packageKey(pkgOrbitRing),
+        parent: { node: "core_tube", mount: "orbit_deck_mount" },
+        jointMode: "velocity",
+        explodeStep: 2,
+        explodeVectorMm: [0, 0, -35],
+      },
+      { id: "orbit_pod_1", label: "观景卫星舱 #1", packageKey: packageKey(pkgObsPod), parent: { node: "lower_orbit_ring", mount: "pod_1" }, explodeStep: 3, explodeVectorMm: [30, 0, 0] },
+      { id: "orbit_pod_2", label: "观景卫星舱 #2", packageKey: packageKey(pkgObsPod), parent: { node: "lower_orbit_ring", mount: "pod_2" }, explodeStep: 3, explodeVectorMm: [-30, 0, 0] },
+      { id: "orbit_pod_3", label: "观景卫星舱 #3", packageKey: packageKey(pkgObsPod), parent: { node: "lower_orbit_ring", mount: "pod_3" }, explodeStep: 3, explodeVectorMm: [0, 30, 0] },
+      { id: "orbit_pod_4", label: "观景卫星舱 #4", packageKey: packageKey(pkgObsPod), parent: { node: "lower_orbit_ring", mount: "pod_4" }, explodeStep: 3, explodeVectorMm: [0, -30, 0] },
+      { id: "lower_pearl", label: "90m 璀璨下球体", packageKey: packageKey(pkgLowerPearl), parent: { node: "core_tube", mount: "lower_pearl_mount" }, explodeStep: 2, explodeVectorMm: [-70, 0, 0] },
+      {
+        id: "sky_restaurant_deck",
+        label: "② 267m 空中旋转餐厅",
+        packageKey: packageKey(pkgRestaurantDeck),
+        parent: { node: "core_tube", mount: "restaurant_mount" },
+        jointMode: "velocity",
+        explodeStep: 3,
+        explodeVectorMm: [65, 0, 20],
+      },
+      { id: "rest_bay_a", label: "全景旋转挑窗 A", packageKey: packageKey(pkgGlassBay), parent: { node: "sky_restaurant_deck", mount: "bay_px" }, explodeStep: 4, explodeVectorMm: [25, 0, 0] },
+      { id: "rest_bay_b", label: "全景旋转挑窗 B", packageKey: packageKey(pkgGlassBay), parent: { node: "sky_restaurant_deck", mount: "bay_nx" }, explodeStep: 4, explodeVectorMm: [-25, 0, 0] },
+      { id: "upper_pearl", label: "263m 主观光上球体", packageKey: packageKey(pkgUpperPearl), parent: { node: "core_tube", mount: "upper_pearl_mount" }, explodeStep: 3, explodeVectorMm: [0, 65, 35] },
+      {
+        id: "space_capsule_rotor",
+        label: "③ 350m 太空舱旋转层",
+        packageKey: packageKey(pkgSpaceCapsule),
+        parent: { node: "core_tube", mount: "space_capsule_mount" },
+        jointMode: "velocity",
+        explodeStep: 4,
+        explodeVectorMm: [0, 0, 60],
+      },
+      { id: "space_beacon_a", label: "太空舱航标吊舱 A", packageKey: packageKey(pkgBeaconPod), parent: { node: "space_capsule_rotor", mount: "beacon_px" }, explodeStep: 5, explodeVectorMm: [25, 0, 0] },
+      { id: "space_beacon_b", label: "太空舱航标吊舱 B", packageKey: packageKey(pkgBeaconPod), parent: { node: "space_capsule_rotor", mount: "beacon_nx" }, explodeStep: 5, explodeVectorMm: [-25, 0, 0] },
+      { id: "antenna_spire", label: "468m 广播电视发射天线", packageKey: packageKey(pkgSpire), parent: { node: "core_tube", mount: "top" }, explodeStep: 5, explodeVectorMm: [0, 0, 110] },
+    ],
+    output: { node: "antenna_spire", mount: "top" },
+    commands: { lower_orbit_ring: 0, sky_restaurant_deck: 0, space_capsule_rotor: 0 },
+  });
+
+  return { workspace: { ...ws, mechanisms: [assembly] }, assembly };
+}
+
+/**
+ * 经典①：四轮差速越障探索车（freejoint 自由底盘 + 4× 橡胶驱动轮）
  */
 export function buildFourWheelRoverTemplate(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
   const pkgChassis = buildPrimitivePartPackage({
@@ -106,7 +694,7 @@ export function buildFourWheelRoverTemplate(): { workspace: TwinWorkspace; assem
 }
 
 /**
- * 样机②：二指摩擦夹爪取物机械臂（Z 向升降臂 + 对夹同步防滑胶指）
+ * 经典②：二指摩擦夹爪取物机械臂（Z 向升降臂 + 对夹同步防滑胶指）
  */
 export function buildGripperPickArmTemplate(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
   const pkgBase = buildPrimitivePartPackage({
@@ -211,7 +799,7 @@ export function buildGripperPickArmTemplate(): { workspace: TwinWorkspace; assem
 }
 
 /**
- * 样机③：闭链四连杆曲柄摇杆机构（满足 Grashof 整周曲柄条件 + connect 球铰闭环）
+ * 经典③：闭链四连杆曲柄摇杆机构（满足 Grashof 整周曲柄条件 + connect 球铰闭环）
  */
 export function buildFourBarLinkageTemplate(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
   const pkgBase = buildPrimitivePartPackage({
@@ -328,7 +916,7 @@ export function buildFourBarLinkageTemplate(): { workspace: TwinWorkspace; assem
 }
 
 /**
- * 样机④：弹簧减震摆臂测试台（无源摇臂 + 斜拉空间弹簧阻尼器）
+ * 经典④：弹簧减震摆臂测试台（无源摇臂 + 斜拉空间弹簧阻尼器）
  */
 export function buildSpringSuspensionTemplate(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
   const pkgBase = buildPrimitivePartPackage({
@@ -429,6 +1017,12 @@ export function loadUniversalArchetype(id: UniversalArchetypeId): {
   assembly: MechanicalAssembly;
 } {
   switch (id) {
+    case "reusable-tvc-rocket":
+      return buildReusableRocketTemplate();
+    case "rescue-helicopter":
+      return buildRescueHelicopterTemplate();
+    case "oriental-pearl-tower":
+      return buildOrientalPearlTemplate();
     case "four-wheel-rover":
       return buildFourWheelRoverTemplate();
     case "gripper-pick-arm":

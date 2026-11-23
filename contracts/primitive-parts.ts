@@ -10,6 +10,8 @@ export const primitiveFinishSchema = z.enum([
   "workpiece_alloy",
   "sensor_amber",
   "rubber_grip",
+  "aerospace_white",
+  "pearl_crimson",
 ]);
 export type PrimitiveFinish = z.infer<typeof primitiveFinishSchema>;
 
@@ -115,6 +117,19 @@ export const primitivePartSchema = z.discriminatedUnion("shape", [
     ...finishField,
   }),
   z.strictObject({
+    shape: z.literal("sphere"),
+    radiusMm: pos,
+    ...finishField,
+  }),
+  z.strictObject({
+    shape: z.literal("cone"),
+    radiusBottomMm: pos,
+    radiusTopMm: z.number("请填写非负顶面半径").finite().nonnegative().max(20_000, "尺寸超出单件限制"),
+    lengthMm: pos,
+    axis: axisDirSchema,
+    ...finishField,
+  }),
+  z.strictObject({
     shape: z.literal("external_mesh"),
     modelId: z.string().regex(/^[a-f0-9]{64}$/, "外部网格需要模型包 SHA-256"),
     meshPath: z.string().trim().min(1).max(512),
@@ -139,8 +154,10 @@ export const PRIMITIVE_SHAPE_LABELS: Record<
   { readonly group: "geometry" | "industrial" | "mesh"; readonly label: string; readonly hint: string }
 > = {
   box: { group: "geometry", label: "长方体 / 实体块", hint: "机架块、垫块、工件毛坯、安装基座" },
-  cylinder: { group: "geometry", label: "实心圆柱 / 销轴", hint: "光轴、立柱、定位销、联轴器" },
-  tube: { group: "geometry", label: "空心管 / 套筒", hint: "导套、隔离套管、支撑立管" },
+  cylinder: { group: "geometry", label: "实心圆柱 / 销轴", hint: "光轴、立柱、定位销、联轴器、火箭贮箱" },
+  sphere: { group: "geometry", label: "高精度球体 / 观景舱", hint: "东方明珠观光球体、直升机球形风挡、卫星胶囊" },
+  cone: { group: "geometry", label: "圆锥 / 圆台 / 喷管", hint: "火箭整流罩头锥、扩张引擎喷管、明珠发射塔尖" },
+  tube: { group: "geometry", label: "空心管 / 套筒", hint: "导套、隔离套管、核心井筒、支撑立管" },
   plate: { group: "geometry", label: "带安装孔平板", hint: "底座端板、Y 轴鞍座板、X 轴 T 型槽工作台、Z 轴滑板" },
   angle_bracket: { group: "geometry", label: "L 型角件 / 加强筋板", hint: "立柱加固三角板、直角安装托架" },
   extrusion_profile: { group: "industrial", label: "工业铝型材 (2020~4080)", hint: "机架纵梁、横梁、龙门立柱（带开槽截面）" },
@@ -190,6 +207,14 @@ export function primitiveBoundingBoxMm(spec: PrimitivePartSpec): [number, number
       return [spec.bodyDiameterMm, spec.bodyDiameterMm, spec.bodyLengthMm + spec.toolStickoutMm];
     case "bearing_pillow":
       return [spec.widthMm, spec.depthMm, spec.heightMm];
+    case "sphere": {
+      const d = spec.radiusMm * 2;
+      return [d, d, d];
+    }
+    case "cone": {
+      const maxD = Math.max(spec.radiusBottomMm, spec.radiusTopMm) * 2;
+      return alignAlongAxis(spec.axis, spec.lengthMm, maxD, maxD);
+    }
     case "external_mesh":
       return [...spec.approxBoundsMm];
   }

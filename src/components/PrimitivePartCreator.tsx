@@ -30,11 +30,15 @@ const FINISH_OPTIONS: Array<{ value: PrimitiveFinish; label: string }> = [
   { value: "workpiece_alloy", label: "切削毛坯绿" },
   { value: "sensor_amber", label: "传感器琥珀色" },
   { value: "rubber_grip", label: "高摩擦橡胶/防滑垫" },
+  { value: "aerospace_white", label: "航天白瓷/复合材料" },
+  { value: "pearl_crimson", label: "明珠璀璨洋红" },
 ];
 
 const DEFAULT_NAMES: Record<ShapeKind, string> = {
   box: "实体安装块",
   cylinder: "光轴定位销",
+  sphere: "明珠太空球舱",
+  cone: "整流罩 / 火箭喷管",
   tube: "空心支撑套筒",
   plate: "带孔滑台板",
   angle_bracket: "L型加强角件",
@@ -124,6 +128,10 @@ export default function PrimitivePartCreator({
       setDimA("62"); setDimB("135"); setDimE("10"); setDimD("38"); setFinish("spindle_red");
     } else if (next === "bearing_pillow") {
       setDimA("24"); setDimB("44"); setDimC("36"); setDimD("12"); setFinish("steel");
+    } else if (next === "sphere") {
+      setDimA("42"); setFinish("pearl_crimson");
+    } else if (next === "cone") {
+      setDimA("90"); setDimB("32"); setDimC("4"); setFinish("aerospace_white");
     } else {
       setDimA("100"); setDimB("80"); setDimC("60"); setFinish("aluminum");
     }
@@ -249,6 +257,22 @@ export default function PrimitivePartCreator({
             finish,
           };
           break;
+        case "sphere":
+          spec = { shape, radiusMm: parsePos(dimA, "球体半径"), finish };
+          break;
+        case "cone": {
+          const rTop = Number(dimC);
+          if (!Number.isFinite(rTop) || rTop < 0) throw new Error("顶半径必须填写大于等于 0 的数值。");
+          spec = {
+            shape,
+            lengthMm: parsePos(dimA, "椎体高度"),
+            radiusBottomMm: parsePos(dimB, "底面半径"),
+            radiusTopMm: rTop,
+            axis,
+            finish,
+          };
+          break;
+        }
         case "external_mesh":
           if (!extModelId || !extMeshPath) {
             throw new Error("请先上传 .stl / .obj / .glb 三维网格文件。");
@@ -380,7 +404,7 @@ export default function PrimitivePartCreator({
           </label>
         )}
 
-        {(shape === "cylinder" || shape === "tube" || shape === "extrusion_profile" || shape === "linear_rail_block" || shape === "lead_screw" || shape === "servo_motor_body" || shape === "bearing_pillow") && (
+        {(shape === "cylinder" || shape === "tube" || shape === "cone" || shape === "extrusion_profile" || shape === "linear_rail_block" || shape === "lead_screw" || shape === "servo_motor_body" || shape === "bearing_pillow") && (
           <label>
             <span className="field-label">延伸主轴向</span>
             <select
@@ -425,6 +449,7 @@ export default function PrimitivePartCreator({
         <label>
           <span className="field-label">
             {shape === "box" || shape === "plate" || shape === "external_mesh" ? "宽 X (mm)"
+              : shape === "sphere" ? "球半径 R (mm)"
               : shape === "angle_bracket" ? "角件宽 X (mm)"
               : shape === "linear_rail_block" ? "导轨总长 (mm)"
               : shape === "servo_motor_body" ? "法兰方宽 (mm)"
@@ -435,11 +460,12 @@ export default function PrimitivePartCreator({
           <Input className="h-8 text-xs" value={dimA} onChange={(e) => setDimA(e.target.value)} />
         </label>
 
-        {shape !== "extrusion_profile" && (
+        {shape !== "extrusion_profile" && shape !== "sphere" && (
           <label>
             <span className="field-label">
               {shape === "box" || shape === "plate" || shape === "bearing_pillow" || shape === "external_mesh" ? "深 Y (mm)"
                 : shape === "cylinder" ? "半径 (mm)"
+                : shape === "cone" ? "底半径 (mm)"
                 : shape === "tube" ? "外半径 (mm)"
                 : shape === "angle_bracket" ? "底腿长 A (mm)"
                 : shape === "linear_rail_block" ? "导轨宽 (mm)"
@@ -451,10 +477,11 @@ export default function PrimitivePartCreator({
           </label>
         )}
 
-        {(shape === "box" || shape === "tube" || shape === "plate" || shape === "angle_bracket" || shape === "linear_rail_block" || shape === "bearing_pillow" || shape === "external_mesh") && (
+        {(shape === "box" || shape === "tube" || shape === "cone" || shape === "plate" || shape === "angle_bracket" || shape === "linear_rail_block" || shape === "bearing_pillow" || shape === "external_mesh") && (
           <label>
             <span className="field-label">
               {shape === "box" || shape === "bearing_pillow" || shape === "external_mesh" ? "高 Z (mm)"
+                : shape === "cone" ? "顶半径 (mm)"
                 : shape === "plate" ? "厚度 Z (mm)"
                 : shape === "tube" ? "内半径 (mm)"
                 : shape === "angle_bracket" ? "立腿高 B (mm)"

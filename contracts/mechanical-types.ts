@@ -30,6 +30,11 @@ const nodes = z.array(z.strictObject({
   explodeStep: z.number().int().min(0).max(16).optional(),
   explodeVectorMm: vec3("请给出爆炸偏移的 X、Y、Z 毫米分量").optional(),
   jointMode: z.enum(["actuated", "passive", "velocity"]).optional(),
+  thruster: z.strictObject({
+    maxForceN: z.number().finite().positive().max(50_000),
+    direction: vec3("请给出推力在部件本地坐标中的方向").refine(nonzero, "推力方向不能为零").optional(),
+    label: z.string().trim().min(1).max(80).optional(),
+  }).optional(),
   coupledTo: z.strictObject({
     path: z.string().trim().min(1).max(240),
     ratio: finite,
