@@ -1,4 +1,5 @@
 import { Matrix4, Quaternion, Vector3 } from "three";
+import { resolveFeedPartRatings } from "./device-model-binding";
 import { inspectMechanicalAssembly, type MechanicalAssembly, type MechanicalFrame, type MechanicalPart } from "./mechanical-assembly";
 import { primitiveBoundingBoxMm } from "./primitive-parts";
 import type { RuntimeTrace, TwinSystemAssembly } from "./system-twin";
@@ -416,23 +417,47 @@ export function solveArticulatedAssembly(
   };
 }
 
+function normalizeAxisToken(token: string): string {
+  return token.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function extractAxisLetter(token: string): string | null {
+  const m = normalizeAxisToken(token).match(/(?:^|_)([xyz])(?:_|$)/);
+  return m ? m[1]! : null;
+}
+
 /**
- * 将机电控闭环仿真单帧位置映射到机械装配中的移动关节指令（coupledTo 丝杠等自动随动旋转）。
+ * 将机电控闭环仿真单帧位置映射到机械装配中的可动关节指令（过滤固定基座并精确匹配 coupledTo 丝杠主轴）。
  */
 export function mapSystemTraceFrameToCommands(
   assembly: MechanicalAssembly,
   frame: RuntimeTrace["frames"][number] | undefined,
+  workspace?: TwinWorkspace,
 ): Record<string, number> {
   const axisEntries = frame?.axes ? Object.entries(frame.axes) : [];
   if (!axisEntries.length) return {};
   const out: Record<string, number> = {};
-  const movableCandidates = assembly.nodes.filter((n) => !n.coupledTo);
+  const pkgMap = workspace ? new Map(workspace.packages.map((p) => [packageKey(p), p])) : null;
+  const movableCandidates = assembly.nodes.filter((n) => {
+    if (n.coupledTo) return false;
+    const pkg = pkgMap?.get(n.packageKey);
+    if (pkg?.mechanics) {
+      return pkg.mechanics.kind === "part" ? pkg.mechanics.joint.type !== "fixed" : true;
+    }
+    return n.parent !== null && !/(_base|^base|_rail|_motor|_bearing|_sensor|_pillar|_gusset|_plate)$/i.test(n.id);
+  });
 
   for (let i = 0; i < axisEntries.length; i++) {
     const [axisKey, ax] = axisEntries[i]!;
-    const axisTag = axisKey.toLowerCase();
+    const normAxis = normalizeAxisToken(axisKey);
+    const axisLetter = extractAxisLetter(axisKey);
     const matched =
-      movableCandidates.find((n) => n.id.toLowerCase() === axisTag || n.id.toLowerCase().includes(axisTag))
+      movableCandidates.find((n) => normalizeAxisToken(n.id) === normAxis)
+      ?? (axisLetter ? movableCandidates.find((n) => extractAxisLetter(n.id) === axisLetter) : undefined)
+      ?? movableCandidates.find((n) => {
+        const normNode = normalizeAxisToken(n.id);
+        return normNode.includes(normAxis) || normAxis.includes(normNode);
+      })
       ?? movableCandidates[i];
     if (matched) {
       out[matched.id] = ax.positionMm;
@@ -737,14 +762,48 @@ export function buildComposableMiloMillTemplate(): { workspace: TwinWorkspace; a
 /**
  * 为机电控闭环系统构建配套的单轴可动与三维爆炸模组视图（随 RuntimeTrace 轨迹实时联动）。
  */
-export function buildComposableFeedModuleTemplate(sys?: TwinSystemAssembly): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
+export function buildComposableFeedModuleTemplate(
+  sys?: TwinSystemAssembly,
+  sourceWorkspace?: TwinWorkspace,
+): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
   const firstAxis = sys?.axes[0];
   const firstCtrl = sys?.controllers[0];
   const firstSensor = sys?.sensors[0];
   const triggerMm = firstSensor?.triggerPositionMm ?? 115;
   const targetMm = firstCtrl?.targetMm ?? 120;
   const maxTravel = Math.max(220, Math.abs(targetMm) + 80, Math.abs(triggerMm) + 60);
-  const screwLead = firstAxis?.overrideLeadMmPerRev ?? 10;
+
+  let screwLead = firstAxis?.overrideLeadMmPerRev;
+  if (!(screwLead && screwLead > 0) && firstAxis && sourceWorkspace) {
+    const screwPkg = sourceWorkspace.packages.find((p) => packageKey(p) === firstAxis.screwKey);
+    if (screwPkg) {
+      try {
+        const ratings = resolveFeedPartRatings(screwPkg);
+        if (ratings.kind === "lead-screw" && ratings.leadMmPerRev > 0) {
+          screwLead = ratings.leadMmPerRev;
+        }
+      } catch {
+        // fallback below
+      }
+    }
+  }
+  const resolvedLeadMm = screwLead && screwLead > 0 ? screwLead : 10;
+
+  let tableMassKg = firstAxis?.overrideTableMassKg;
+  if (!(tableMassKg && tableMassKg > 0) && firstAxis && sourceWorkspace) {
+    const tablePkg = sourceWorkspace.packages.find((p) => packageKey(p) === firstAxis.tableKey);
+    if (tablePkg) {
+      try {
+        const ratings = resolveFeedPartRatings(tablePkg);
+        if (ratings.kind === "moving-table" && ratings.massKg > 0) {
+          tableMassKg = ratings.massKg;
+        }
+      } catch {
+        // fallback below
+      }
+    }
+  }
+  const resolvedMassKg = tableMassKg && tableMassKg > 0 ? tableMassKg : 8;
 
   const pkgBase = buildPrimitivePartPackage({
     model: "单轴模组4080基座型材",
@@ -773,15 +832,15 @@ export function buildComposableFeedModuleTemplate(sys?: TwinSystemAssembly): { w
     primitive: { shape: "plate", widthMm: 95, depthMm: 86, thicknessMm: 16, finish: "aluminum" },
     input: { positionMm: [0, 0, -8], quatWxyz: Q_ID },
     joint: { type: "slide", axis: [1, 0, 0], unit: "mm", range: [-Math.max(150, maxTravel / 2), Math.max(200, maxTravel)] },
-    behavior: { kind: "moving_table", massKg: firstAxis?.overrideTableMassKg ?? 8 },
+    behavior: { kind: "moving_table", massKg: resolvedMassKg },
   });
 
   const pkgScrew = buildPrimitivePartPackage({
-    model: `进给滚珠丝杠-${screwLead}mm`,
+    model: `进给滚珠丝杠-${resolvedLeadMm}mm`,
     revision: "P1",
-    primitive: { shape: "lead_screw", diameterMm: 14, lengthMm: maxTravel + 60, leadMm: screwLead, axis: "x", finish: "steel" },
+    primitive: { shape: "lead_screw", diameterMm: 14, lengthMm: maxTravel + 60, leadMm: resolvedLeadMm, axis: "x", finish: "steel" },
     joint: { type: "hinge", axis: [1, 0, 0], unit: "deg", range: [-36000, 36000] },
-    behavior: { kind: "lead_screw", leadMmPerRev: screwLead },
+    behavior: { kind: "lead_screw", leadMmPerRev: resolvedLeadMm },
   });
 
   const pkgMotor = buildPrimitivePartPackage({
@@ -811,7 +870,7 @@ export function buildComposableFeedModuleTemplate(sys?: TwinSystemAssembly): { w
     nodes: [
       { id: "axis_base", label: "模组铝型材底座", packageKey: packageKey(pkgBase), parent: null, explodeStep: 0 },
       { id: "axis_rail", label: "线性导轨滑块", packageKey: packageKey(pkgRail), parent: { node: "axis_base", mount: "rail_mount" }, explodeStep: 1, explodeVectorMm: [0, 0, 48] },
-      { id: "axis_screw", label: `滚珠丝杠（导程 ${screwLead} mm）`, packageKey: packageKey(pkgScrew), parent: { node: "axis_base", mount: "screw_mount" }, explodeStep: 1, explodeVectorMm: [0, 60, 35], coupledTo: { path: "axis_x", ratio: 360 / screwLead } },
+      { id: "axis_screw", label: `滚珠丝杠（导程 ${resolvedLeadMm} mm）`, packageKey: packageKey(pkgScrew), parent: { node: "axis_base", mount: "screw_mount" }, explodeStep: 1, explodeVectorMm: [0, 60, 35], coupledTo: { path: "axis_x", ratio: 360 / resolvedLeadMm } },
       { id: "axis_motor", label: "伺服驱动电机", packageKey: packageKey(pkgMotor), parent: { node: "axis_base", mount: "motor_mount" }, explodeStep: 2, explodeVectorMm: [-75, 0, 0] },
       { id: "axis_bearing", label: "尾端轴承支座", packageKey: packageKey(pkgBearing), parent: { node: "axis_base", mount: "bearing_mount" }, explodeStep: 2, explodeVectorMm: [70, 0, 0] },
       { id: "limit_sensor", label: "限位开关传感器", packageKey: packageKey(pkgSensor), parent: { node: "axis_base", mount: "sensor_mount" }, explodeStep: 2, explodeVectorMm: [0, -55, 30] },

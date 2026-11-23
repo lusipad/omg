@@ -206,6 +206,70 @@ describe("标准化三维基本件、多分支可动机构与层级爆炸视图"
     expect(drivenSolve.coupledControls.find((c) => c.path === "axis_screw")?.value).toBeCloseTo(88.5 * 36, 6);
   });
 
+  it("连字符轴 ID（如 axis-x）与 5 mm 导程设备包在驱动三维丝杠模组时不误写底座且转角精确匹配", () => {
+    const screwPkg = buildPrimitivePartPackage({
+      model: "BNK1005",
+      revision: "1",
+      primitive: { shape: "lead_screw", diameterMm: 10, lengthMm: 300, leadMm: 5, axis: "x" },
+      behavior: { kind: "lead_screw", leadMmPerRev: 5 },
+    });
+    const screwKey = packageKey(screwPkg);
+    const sys = {
+      schemaVersion: 1 as const,
+      kind: "twin-system" as const,
+      id: "closed-loop-feed",
+      name: "X 轴闭环",
+      commStepMs: 1,
+      axes: [{
+        id: "axis-x",
+        name: "X 轴送料模组",
+        driveKey: "drive",
+        motorKey: "motor",
+        screwKey,
+        tableKey: "table",
+        provenance: "confirmed" as const,
+      }],
+      sensors: [],
+      diChannels: [],
+      controllers: [{ id: "ctrl-x", axisId: "axis-x", targetMm: 20, cruiseVelocityMmS: 100, provenance: "confirmed" as const }],
+      wires: [],
+    };
+    const ws = { ...emptyWorkspace(), packages: [screwPkg] };
+    const { workspace, assembly } = buildComposableFeedModuleTemplate(sys, ws);
+    const screwNode = assembly.nodes.find((n) => n.id === "axis_screw")!;
+    expect(screwNode.label).toContain("5 mm");
+    expect(screwNode.coupledTo?.ratio).toBeCloseTo(72, 6);
+
+    const cmds = mapSystemTraceFrameToCommands(assembly, {
+      timeMs: 600,
+      tipPoseMm: [16.734, 0, 0],
+      axes: {
+        "axis-x": {
+          axisId: "axis-x",
+          commandMm: 20,
+          positionMm: 16.734,
+          velocityMmS: 0,
+          motorTorqueNm: 0,
+          axialForceN: 0,
+          angleDeg: 1204.848,
+          speedRpm: 0,
+          worldPoseMm: [16.734, 0, 0],
+          stopLatched: true,
+        },
+      },
+      sensorTriggered: {},
+      sensorVoltageV: {},
+      diState: {},
+      controllerInputs: {},
+    }, workspace);
+
+    expect(cmds.axis_base).toBeUndefined();
+    expect(cmds.axis_x).toBe(16.734);
+
+    const solved = solveArticulatedAssembly(workspace, assembly, { commandOverrides: cmds });
+    expect(solved.coupledControls.find((c) => c.path === "axis_screw")?.value).toBeCloseTo(16.734 * 72, 6);
+  });
+
   it("子装配提取会剥离跨子树耦合，并完整接入示例库机制加载与工程加入", async () => {
     const { workspace, assembly } = buildComposableMiloMillTemplate();
     const pkgMap = new Map(workspace.packages.map((p) => [packageKey(p), p]));

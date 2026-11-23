@@ -467,28 +467,61 @@ export default function TwinStudio() {
     go({ view: "workbench", target: `system:${sys.id}` }, `已保存机电控系统“${sys.name}”。`, target === "system-new");
   }
 
+  const resourceCount =
+    workspace.packages.length +
+    (workspace.catalog?.models.length ?? 0) +
+    (workspace.catalog?.materials.length ?? 0) +
+    (workspace.systems?.length ?? 0) +
+    (workspace.mechanisms?.length ?? 0) +
+    (workspace.assemblies?.length ?? 0) +
+    (workspace.factories?.length ?? 0);
+
   return (
     <ImportStartContext.Provider value={intake.events}><CncProgramImportContext.Provider value={setCncReceiver}><div className={showSandbox ? "flex h-[100dvh] flex-col overflow-hidden bg-background" : "min-h-screen bg-background"}>
-      {!showSandbox && <header className="border-b bg-card/65">
-        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 sm:px-8 lg:gap-x-8">
+      {!showSandbox && <header className="sticky top-0 z-20 border-b bg-card/90 backdrop-blur">
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-6">
           <div className="flex shrink-0 items-center gap-2">
-            <CircuitBoard className="size-6 text-primary" strokeWidth={1.7} /><span className="text-base font-semibold tracking-wide">构元</span>
-            <span className="sr-only text-sm text-muted-foreground min-[430px]:not-sr-only min-[430px]:ml-1 min-[430px]:border-l min-[430px]:pl-3">专业工程模式</span>
+            <CircuitBoard className="size-5 text-primary" strokeWidth={1.8} />
+            <span className="text-sm font-semibold tracking-wide sm:text-base">构元</span>
+            <span className="hidden rounded border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary sm:inline-block">
+              专业工程台
+            </span>
           </div>
-          <nav aria-label="工作台主导航" className="order-last flex w-full min-w-0 items-center gap-0.5 lg:order-none lg:w-auto lg:gap-1">
-            {destinations.map(({ route: destination, label, icon: Icon }) => <Link key={destination.view} to={studioHref(destination.view === "workbench" && remembered ? { view: "workbench", target: remembered } : destination)}
-              aria-current={route.view === destination.view ? "page" : undefined}
-              className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-md px-1.5 py-2 text-sm font-medium sm:flex-none sm:gap-1.5 sm:px-3 ${route.view === destination.view ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
-              <Icon className="size-4" />{label}
-            </Link>)}
+          <nav aria-label="工作台主导航" className="order-last flex w-full min-w-0 items-center gap-1 rounded-md border bg-background/70 p-0.5 lg:order-none lg:w-auto">
+            {destinations.map(({ route: destination, label, icon: Icon }) => {
+              const active = route.view === destination.view;
+              const badge = destination.view === "resources"
+                ? (resourceCount > 0 ? resourceCount : undefined)
+                : destination.view === "workbench"
+                  ? (targets.length > 0 ? targets.length : undefined)
+                  : undefined;
+              return (
+                <Link
+                  key={destination.view}
+                  to={studioHref(destination.view === "workbench" && remembered ? { view: "workbench", target: remembered } : destination)}
+                  aria-current={active ? "page" : undefined}
+                  className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded px-2 py-1.5 text-xs font-medium transition-colors sm:flex-none sm:px-3 ${
+                    active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="size-3.5 shrink-0" />
+                  <span>{label}</span>
+                  {badge !== undefined && (
+                    <span className={`mono rounded px-1 text-[10px] ${active ? "bg-background/20 text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                      {badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" variant="secondary" asChild>
-              <Link to={studioHref({ view: "sandbox" })}><Blocks />返回积木工坊</Link>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <Button size="sm" variant="secondary" className="h-8 gap-1.5 px-2.5 text-xs" asChild>
+              <Link to={studioHref({ view: "sandbox" })}><Blocks className="size-3.5" />返回造物台</Link>
             </Button>
-            {!browsingResources && <Button size="sm" variant="outline" onClick={() => importInput.current?.click()}><Upload />导入文件</Button>}
+            {!browsingResources && <Button size="sm" variant="outline" className="h-8 gap-1.5 px-2.5 text-xs" onClick={() => importInput.current?.click()}><Upload className="size-3.5" />导入文件</Button>}
             <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button size="sm" variant="outline"><FolderOpen />工程文件<ChevronDown /></Button></DropdownMenuTrigger>
+              <DropdownMenuTrigger asChild><Button size="sm" variant="outline" className="h-8 gap-1 px-2.5 text-xs"><FolderOpen className="size-3.5" />工程文件<ChevronDown className="size-3.5" /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>{session.warning ? "当前会话的工程" : "当前工程 · 本机保存"}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -498,8 +531,8 @@ export default function TwinStudio() {
               </DropdownMenuContent>
             </DropdownMenu>
             {IS_PAGES
-              ? <a href="https://github.com/lusipad/omg" aria-label="项目源码" title="项目源码" className="rounded p-1.5 text-muted-foreground hover:text-foreground"><Github className="size-4" /></a>
-              : <Link to="/" aria-label="返回客户项目" title="返回客户项目" className="rounded p-1.5 text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /></Link>}
+              ? <a href="https://github.com/lusipad/omg" aria-label="项目源码" title="项目源码" className="rounded p-1.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground"><Github className="size-4" /></a>
+              : <Link to="/" aria-label="返回客户项目" title="返回客户项目" className="rounded p-1.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground"><ArrowLeft className="size-4" /></Link>}
             <input ref={importInput} className="hidden" aria-label="工作台统一导入文件" type="file" multiple accept={WORKBENCH_FILE_ACCEPT} onChange={(event) => {
               const files = Array.from(event.currentTarget.files ?? []);
               event.currentTarget.value = "";
@@ -508,7 +541,7 @@ export default function TwinStudio() {
           </div>
         </div>
       </header>}
-      <main className={showSandbox ? "page-enter flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-2.5" : "page-enter mx-auto max-w-[1440px] space-y-4 px-4 pb-12 pt-5 sm:px-8 sm:pt-7"}>
+      <main className={showSandbox ? "page-enter flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-2.5" : "page-enter mx-auto max-w-[1440px] space-y-3.5 px-4 pb-10 pt-4 sm:px-6"}>
         {showSandbox && (
           <Suspense fallback={<p role="status" className="p-6 text-sm text-muted-foreground">正在加载构元积木工坊…</p>}>
             <SandboxBuilderStudio

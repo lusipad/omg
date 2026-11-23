@@ -265,39 +265,34 @@ export function VisionIntakePanel({ workspace, onApply, onBrowseRegistry }: Visi
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="space-y-1">
-          <p className="text-sm font-medium text-foreground">
-            拍电机铭牌、丝杠参数表或手绘接线草图，自动识别并绑定可仿真模型
-          </p>
-          <p className="text-xs text-muted-foreground">
-            照片未写出的关键参数绝不猜值，而是标记为待补全（pending）；待补全项在装配工作台内直接填写后即可解锁闭环仿真。
-          </p>
-        </div>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          拍电机铭牌、丝杠参数表或手绘接线草图自动提取；未标出参数标记为「待补全」，绝不编造。
+        </p>
         {onBrowseRegistry && (
-          <Button size="sm" variant="ghost" onClick={onBrowseRegistry}>
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onBrowseRegistry}>
             查看可绑定模型清单
           </Button>
         )}
       </div>
 
       {/* 2 built-in 1-click presets so GitHub Pages / zero-API users can try immediately */}
-      <div className="grid gap-2.5 md:grid-cols-2">
+      <div className="grid gap-2 md:grid-cols-2">
         {VISION_DEMO_PRESETS.map((preset) => (
           <button
             key={preset.id}
             type="button"
             onClick={() => runDemoPreset(preset.id)}
-            className="flex items-center gap-3 rounded-lg border bg-background/60 p-3 text-left transition-colors hover:border-primary/50 hover:bg-accent/40"
+            className="flex items-center gap-2.5 rounded-lg border bg-background/60 p-2.5 text-left transition-colors hover:border-primary/50 hover:bg-accent/40"
           >
             <DemoThumb id={preset.id} />
-            <div className="min-w-0 flex-1 space-y-1">
+            <div className="min-w-0 flex-1 space-y-0.5">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                 <Sparkles className="size-3.5 shrink-0 text-primary" />
                 <span className="truncate">{preset.title}</span>
               </div>
-              <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+              <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
                 {preset.subtitle}
               </p>
               <span className="inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
@@ -310,7 +305,7 @@ export function VisionIntakePanel({ workspace, onApply, onBrowseRegistry }: Visi
 
       {/* Photo dropzone */}
       <div
-        className={`rounded-lg border-2 border-dashed p-4 transition-colors ${
+        className={`rounded-lg border border-dashed p-3 transition-colors ${
           dragging ? "border-primary bg-primary/5" : "border-border/80 bg-background/40"
         }`}
         onDragOver={(e) => {
@@ -387,34 +382,35 @@ export function VisionIntakePanel({ workspace, onApply, onBrowseRegistry }: Visi
       {/* Goal + Analyze / Offline Prompt Controls */}
       <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
         <label className="space-y-1">
-          <span className="field-label">本次装配/仿真意图（可选，帮助模型聚焦接线与行程标注）</span>
+          <span className="field-label">本次装配/仿真意图（可选）</span>
           <Input
-            placeholder="例如：这是 X 轴伺服+滚珠丝杠单轴测试台，需要限位急停闭环仿真"
+            className="h-8 text-xs"
+            placeholder="例如：X 轴伺服+滚珠丝杠单轴台，需限位急停闭环仿真"
             value={userGoal}
             onChange={(e) => setUserGoal(e.target.value)}
           />
         </label>
         <div className="flex flex-wrap gap-2">
           {serverAiReady && (
-            <Button onClick={() => void analyzeOnline()} disabled={!photos.length || busy}>
+            <Button size="sm" onClick={() => void analyzeOnline()} disabled={!photos.length || busy}>
               <Upload />
               {busy ? "正在识别照片..." : "AI 识别照片并构建"}
             </Button>
           )}
-          <Button variant={serverAiReady ? "outline" : "secondary"} onClick={() => void copyVisionPrompt()}>
+          <Button size="sm" variant={serverAiReady ? "outline" : "secondary"} onClick={() => void copyVisionPrompt()}>
             {copiedPrompt ? <Check /> : <Copy />}
-            {copiedPrompt ? "已复制视觉识别提示词" : "复制视觉识别提示词（静态/外部AI用）"}
+            {copiedPrompt ? "已复制提示词" : "复制视觉提示词（外部 AI 用）"}
           </Button>
         </div>
       </div>
 
-      <details className="rounded-md border bg-background/50 px-3 py-2 text-xs" open={IS_PAGES || !serverAiReady}>
-        <summary className="cursor-pointer font-medium text-muted-foreground">
+      <details className="rounded-md border bg-background/50 px-3 py-2 text-xs">
+        <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
           {IS_PAGES
-            ? "当前为 GitHub Pages 纯静态站点：可先点上方「试玩」按钮，或粘贴外部多模态 AI（GPT-4o/Gemini/Claude）输出的 JSON 并校验入库"
+            ? "展开粘贴外部多模态 AI（GPT-4o / Gemini / Claude）识别 JSON 并校验入库"
             : serverAiReady
-              ? "或粘贴外部多模态 AI 返回的 JSON 直接入库"
-              : "服务端未配置视觉模型 API 时：复制提示词到支持看图的 AI，再粘贴 JSON 校验入库"}
+              ? "或展开粘贴外部多模态 AI 返回的 JSON 直接入库"
+              : "未配置服务端视觉模型：展开粘贴外部看图 AI 返回的 JSON 校验入库"}
         </summary>
         <div className="mt-2.5 space-y-2">
           <Textarea
@@ -494,7 +490,7 @@ export function VisionIntakePanel({ workspace, onApply, onBrowseRegistry }: Visi
               <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px]">
                 {lastResult.pendingItems.map((item, idx) => (
                   <li key={`${item.packageKey}-${item.parameterKey}-${idx}`}>
-                    <strong>{item.deviceLabel}</strong> — {item.label}（{item.parameterKey} / {item.unit}）：{item.reason}
+                    <strong>{item.deviceLabel}</strong> — {item.label}（单位：{item.unit}）：{item.reason}
                   </li>
                 ))}
               </ul>

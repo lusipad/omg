@@ -188,6 +188,7 @@ export default function MechanicalAssemblyBench({
   workspace,
   assembly,
   initialPackageKey,
+  trial = false,
   onTrialReady,
   onSave,
   onInstallBundle,
@@ -204,6 +205,7 @@ export default function MechanicalAssemblyBench({
 
   const [creatorOpen, setCreatorOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState("");
+  const [showAllNodes, setShowAllNodes] = useState(false);
   const [driveSystemId, setDriveSystemId] = useState(() => workspace.systems?.[0]?.id ?? "");
   const [systemTrace, setSystemTrace] = useState<RuntimeTrace | null>(null);
   const [systemFrameIdx, setSystemFrameIdx] = useState(0);
@@ -434,30 +436,110 @@ export default function MechanicalAssemblyBench({
     }
   }
 
-  return <section className="min-w-0 space-y-4" aria-label="机械装配编辑器">
-    <section className="surface space-y-3 p-4 sm:p-5">
+  const treeRows = useMemo(() => {
+    const byKey = new Map(d.nodes.map((n) => [n.key, n]));
+    const childrenByParent = new Map<string, EditNode[]>();
+    const roots: EditNode[] = [];
+    for (const n of d.nodes) {
+      const parentKey = n.parent ? nodeOf(d, n.parent.node)?.key : undefined;
+      if (!parentKey || !byKey.has(parentKey)) roots.push(n);
+      else {
+        const list = childrenByParent.get(parentKey) ?? [];
+        list.push(n);
+        childrenByParent.set(parentKey, list);
+      }
+    }
+    const ordered: Array<{ node: EditNode; depth: number }> = [];
+    const visited = new Set<string>();
+    function walk(node: EditNode, depth: number) {
+      if (visited.has(node.key)) return;
+      visited.add(node.key);
+      ordered.push({ node, depth });
+      for (const child of childrenByParent.get(node.key) ?? []) walk(child, depth + 1);
+    }
+    for (const root of roots) walk(root, 0);
+    for (const n of d.nodes) if (!visited.has(n.key)) ordered.push({ node: n, depth: 0 });
+    return ordered;
+  }, [d]);
+
+  const activeNode = d.nodes.find((n) => n.id === selectedNodeId) ?? d.nodes[0];
+
+  function renderNodeEditor(n: EditNode) {
+    const parent = n.parent ? nodeOf(d, n.parent.node) : undefined, ports = mounts(parent && packages.get(parent.packageKey));
+    const next = children(d, n.key), pkg = packages.get(n.packageKey);
+    const linkedRows = materials.filter(r => r.binding?.kind === "device" && r.binding.key === n.packageKey);
+    return <article key={n.key} aria-label={`机械实例 ${n.id}`} className="surface-inset space-y-3 p-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">{n.label || n.id}</p>
+          <p className="mono text-[11px] text-muted-foreground">实例标识：{n.id}</p>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          <Button size="sm" variant="ghost" disabled={!canMoveUp(d, n)} onClick={() => edit(moveUp(d, n, packages))}><ArrowUp />上移</Button>
+          <Button size="sm" variant="ghost" disabled={next.length !== 1 || !canMoveUp(d, next[0])} onClick={() => edit(moveUp(d, next[0], packages))}><ArrowDown />下移</Button>
+          <Button size="sm" variant="ghost" disabled={d.nodes.length === 1} onClick={() => remove(n)}><Trash2 />移除</Button>
+        </div>
+      </div>
+      <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(7rem,0.7fr)_minmax(0,1.6fr)]">
+        <label className="min-w-0"><span className="field-label">实例标识</span><Input value={n.id} maxLength={80} onChange={e => update(n.key, { id: e.target.value })} /></label>
+        <label className="min-w-0"><span className="field-label">设备包</span>
+          <select aria-label="设备包" className={selectClass} value={n.packageKey} onChange={e => selectPackage(n, e.target.value)}>
+            <option value="">选择机械零件或子装配</option>
+            {n.packageKey && !pkg?.mechanics && <option value={n.packageKey}>{pkg ? describe(pkg) : n.packageKey}（机械接口待补）</option>}
+            {available.map(p => <option value={packageKey(p)} key={packageKey(p)}>{describe(p)}{p.mechanics?.kind === "assembly" ? "（子装配）" : ""}</option>)}
+          </select></label>
+      </div>
+      <div className="grid min-w-0 gap-3 sm:grid-cols-3">
+        <label className="min-w-0"><span className="field-label">父实例</span><select aria-label="父实例" className={selectClass} value={parent?.key ?? n.parent?.node ?? ""}
+          onChange={e => { const target = nodeOf(d, e.target.value); update(n.key, { parent: target ? { node: target.key, mount: chooseMount(packages.get(target.packageKey), n.parent?.mount) } : null }); }}>
+          <option value="">固定基底</option>
+          {n.parent && (!parent || parent.key === n.key) && <option value={parent?.key ?? n.parent.node}>{idOf(d, n.parent.node) || "未指定"}（父实例待修复）</option>}
+          {d.nodes.filter(p => p.key !== n.key).map(p => <option key={p.key} value={p.key}>{p.label || p.id}</option>)}
+        </select></label>
+        <label className="min-w-0"><span className="field-label">父安装点</span><select aria-label="父安装点" className={selectClass} disabled={!n.parent}
+          value={n.parent?.mount ?? ""} onChange={e => { if (n.parent) update(n.key, { parent: { ...n.parent, mount: e.target.value } }); }}>
+          <option value="">{n.parent ? "请选择安装点" : "固定基底"}</option>
+          {n.parent?.mount && !ports.includes(n.parent.mount) && <option value={n.parent.mount}>{n.parent.mount}（待核对）</option>}
+          {ports.map(id => <option key={id}>{id}</option>)}
+        </select></label>
+        <label className="min-w-0"><span className="field-label">BOM 物料（可选）</span><select aria-label="BOM 物料（可选）" className={selectClass} value={n.materialId ?? ""}
+          onChange={e => update(n.key, { materialId: e.target.value || undefined })}>
+          <option value="">不关联物料行</option>
+          {n.materialId && !linkedRows.some(r => r.id === n.materialId) && <option value={n.materialId}>{materials.find(r => r.id === n.materialId)?.name ?? n.materialId}（绑定待核对）</option>}
+          {linkedRows.map(r => <option value={r.id} key={r.id}>{r.name} · {r.quantity} {r.unit ?? "件"}{r.source && ` · ${r.source}`} · {r.id}</option>)}
+        </select></label>
+      </div>
+    </article>;
+  }
+
+  return <section className="min-w-0 space-y-3.5" aria-label="机械装配编辑器">
+    <section className="surface space-y-3 p-4" aria-label="机械装配设置">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Layers className="size-4 text-primary" />
-          <h3 className="text-base font-semibold">{assembly ? "机械装配设置" : "新建三维基本件可动装配"}</h3>
+          <h3 className="text-sm font-semibold sm:text-base">{assembly ? "机械装配设置" : "新建三维基本件可动装配"}</h3>
         </div>
         <a target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline" href="https://github.com/lusipad/omg/blob/main/docs/机械安装点与子装配.md">机械安装点与子装配<ExternalLink className="size-3" /></a>
       </div>
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <label className="min-w-60 flex-1"><span className="field-label">装配名称</span><Input maxLength={160} value={d.name} onChange={e => edit({ ...d, name: e.target.value })} /></label>
+        <label className="min-w-56 flex-1"><span className="field-label">装配名称</span><Input className="h-8 text-sm" maxLength={160} value={d.name} onChange={e => edit({ ...d, name: e.target.value })} /></label>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="secondary" onClick={() => setCreatorOpen(true)}>
             <PackagePlus />
             + 新建参数化基本件
           </Button>
-          <Button size="sm" variant="outline" onClick={() => loadComposablePreset("mill")}>
-            <Sparkles />
-            载入拼装式三轴铣床样板（23件·可动·爆炸图）
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => loadComposablePreset("feed")}>
-            <Cpu />
-            载入单轴丝杠模组
-          </Button>
+          {!trial && (
+            <>
+              <Button size="sm" variant="outline" onClick={() => loadComposablePreset("mill")}>
+                <Sparkles />
+                载入拼装式三轴铣床样板
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => loadComposablePreset("feed")}>
+                <Cpu />
+                载入单轴丝杠模组
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -546,49 +628,66 @@ export default function MechanicalAssemblyBench({
         </Suspense>
       </DialogContent>
     </Dialog>
-    <section className="surface space-y-3 p-4 sm:p-5" aria-label="设备实例与安装关系">
-      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-base font-semibold">设备实例与安装关系</h3>
-        <Button size="sm" variant="outline" disabled={d.nodes.length >= MECHANICAL_LIMITS.nodes} onClick={add}><Plus />添加实例</Button></div>
-      <p className="text-xs leading-5 text-muted-foreground">新实例默认接在当前输出。选择父实例及安装点可创建分支，串联段可直接上移或下移。</p>
-      {d.nodes.map(n => {
-        const parent = n.parent ? nodeOf(d, n.parent.node) : undefined, ports = mounts(parent && packages.get(parent.packageKey));
-        const next = children(d, n.key), pkg = packages.get(n.packageKey);
-        const linkedRows = materials.filter(r => r.binding?.kind === "device" && r.binding.key === n.packageKey);
-        return <article key={n.key} aria-label={`机械实例 ${n.id}`} className="surface-inset space-y-3 p-3">
-          <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(7rem,0.7fr)_minmax(0,1.6fr)]">
-            <label className="min-w-0"><span className="field-label">实例标识</span><Input value={n.id} maxLength={80} onChange={e => update(n.key, { id: e.target.value })} /></label>
-            <label className="min-w-0"><span className="field-label">设备包</span>
-              <select aria-label="设备包" className={selectClass} value={n.packageKey} onChange={e => selectPackage(n, e.target.value)}>
-                <option value="">选择机械零件或子装配</option>
-                {n.packageKey && !pkg?.mechanics && <option value={n.packageKey}>{pkg ? describe(pkg) : n.packageKey}（机械接口待补）</option>}
-                {available.map(p => <option value={packageKey(p)} key={packageKey(p)}>{describe(p)}{p.mechanics?.kind === "assembly" ? "（子装配）" : ""}</option>)}
-              </select></label>
+    <section className="surface space-y-3 p-4" aria-label="设备实例与安装关系">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
+        <div>
+          <h3 className="text-sm font-semibold sm:text-base">
+            结构树与零件安装检查器 <span className="mono ml-1 text-xs text-muted-foreground">({d.nodes.length} 个实例)</span>
+          </h3>
+          <p className="text-[11px] text-muted-foreground">点击左侧结构树或上方三维视图中的任意零件，即可单独检查并修改其安装点与设备包。</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setShowAllNodes((v) => !v)}>
+            {showAllNodes ? "切回主从结构树视图" : "展开全部实例表单"}
+          </Button>
+          <Button size="sm" variant="outline" className="h-8 text-xs" disabled={d.nodes.length >= MECHANICAL_LIMITS.nodes} onClick={add}>
+            <Plus />添加实例
+          </Button>
+        </div>
+      </div>
+
+      {showAllNodes ? (
+        <div className="space-y-2.5">{d.nodes.map(renderNodeEditor)}</div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-[minmax(15rem,21rem)_minmax(0,1fr)]">
+          <div className="surface-inset max-h-96 space-y-1 overflow-y-auto p-2 thin-scrollbar" role="listbox" aria-label="装配层级结构树">
+            {treeRows.map(({ node, depth }) => {
+              const pkg = packages.get(node.packageKey);
+              const jointType = node.coupledTo
+                ? "随动"
+                : pkg?.mechanics?.kind === "part"
+                  ? pkg.mechanics.joint.type === "slide"
+                    ? "移动"
+                    : pkg.mechanics.joint.type === "hinge"
+                      ? "转动"
+                      : "固定"
+                  : "结构";
+              const isSelected = activeNode?.key === node.key;
+              return (
+                <button
+                  key={node.key}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => setSelectedNodeId(node.id)}
+                  style={{ paddingLeft: `${8 + depth * 12}px` }}
+                  className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors ${
+                    isSelected ? "bg-primary/15 font-medium text-primary" : "text-foreground/85 hover:bg-muted/60"
+                  }`}
+                >
+                  <span className="min-w-0 truncate">{depth > 0 ? "↳ " : ""}{node.label || node.id}</span>
+                  <span className="shrink-0 rounded bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {jointType}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-          <div className="grid min-w-0 gap-3 sm:grid-cols-3">
-            <label className="min-w-0"><span className="field-label">父实例</span><select aria-label="父实例" className={selectClass} value={parent?.key ?? n.parent?.node ?? ""}
-              onChange={e => { const target = nodeOf(d, e.target.value); update(n.key, { parent: target ? { node: target.key, mount: chooseMount(packages.get(target.packageKey), n.parent?.mount) } : null }); }}>
-              <option value="">固定基底</option>
-              {n.parent && (!parent || parent.key === n.key) && <option value={parent?.key ?? n.parent.node}>{idOf(d, n.parent.node) || "未指定"}（父实例待修复）</option>}
-              {d.nodes.filter(p => p.key !== n.key).map(p => <option key={p.key} value={p.key}>{p.id}</option>)}
-            </select></label>
-            <label className="min-w-0"><span className="field-label">父安装点</span><select aria-label="父安装点" className={selectClass} disabled={!n.parent}
-              value={n.parent?.mount ?? ""} onChange={e => { if (n.parent) update(n.key, { parent: { ...n.parent, mount: e.target.value } }); }}>
-              <option value="">{n.parent ? "请选择安装点" : "固定基底"}</option>
-              {n.parent?.mount && !ports.includes(n.parent.mount) && <option value={n.parent.mount}>{n.parent.mount}（待核对）</option>}
-              {ports.map(id => <option key={id}>{id}</option>)}
-            </select></label>
-            <label className="min-w-0"><span className="field-label">BOM 物料（可选）</span><select aria-label="BOM 物料（可选）" className={selectClass} value={n.materialId ?? ""}
-              onChange={e => update(n.key, { materialId: e.target.value || undefined })}>
-              <option value="">不关联物料行</option>
-              {n.materialId && !linkedRows.some(r => r.id === n.materialId) && <option value={n.materialId}>{materials.find(r => r.id === n.materialId)?.name ?? n.materialId}（绑定待核对）</option>}
-              {linkedRows.map(r => <option value={r.id} key={r.id}>{r.name} · {r.quantity} {r.unit ?? "件"}{r.source && ` · ${r.source}`} · {r.id}</option>)}
-            </select></label>
+          <div className="min-w-0">
+            {activeNode ? renderNodeEditor(activeNode) : <p className="text-xs text-muted-foreground">暂无零件实例。</p>}
           </div>
-          <div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" disabled={!canMoveUp(d, n)} onClick={() => edit(moveUp(d, n, packages))}><ArrowUp />上移</Button>
-            <Button size="sm" variant="ghost" disabled={next.length !== 1 || !canMoveUp(d, next[0])} onClick={() => edit(moveUp(d, next[0], packages))}><ArrowDown />下移</Button>
-            <Button size="sm" variant="ghost" disabled={d.nodes.length === 1} onClick={() => remove(n)}><Trash2 />移除实例</Button></div>
-        </article>;
-      })}
+        </div>
+      )}
     </section>
     <section className="surface space-y-3 p-4 sm:p-5" aria-label="输出与关节指令"><h3 className="text-base font-semibold">输出与关节指令</h3>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -626,7 +725,12 @@ export default function MechanicalAssemblyBench({
       {state.notice && <p role="status" className="text-xs text-primary">{state.notice}</p>}
       {state.run && !run && <p className="text-xs text-muted-foreground">装配、指令或所需资料已变化，请重新计算。</p>}
     </div>
-    <MechanicalBundleControls key={d.id} workspace={workspace} assembly={checked.a} onInstallBundle={onInstallBundle} />
+    <details className="surface p-4 text-xs">
+      <summary className="cursor-pointer font-medium text-foreground">子装配打包导出与跨工程复用</summary>
+      <div className="mt-3">
+        <MechanicalBundleControls key={d.id} workspace={workspace} assembly={checked.a} onInstallBundle={onInstallBundle} />
+      </div>
+    </details>
     {run && <MechanicalPoseResults resolved={run.resolved} />}
   </section>;
 }

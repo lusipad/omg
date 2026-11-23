@@ -21,6 +21,7 @@ export interface ArticulatedAssemblyViewportProps {
   onSelectNode?: (nodeId: string) => void;
   onApplyCommands?: (commands: Record<string, number>) => void;
   compact?: boolean;
+  hideHeader?: boolean;
 }
 
 const formatNum = (v: number) => Number(v.toFixed(2)).toString();
@@ -35,6 +36,7 @@ export default function ArticulatedAssemblyViewport({
   onSelectNode,
   onApplyCommands,
   compact = false,
+  hideHeader = false,
 }: ArticulatedAssemblyViewportProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneCtxRef = useRef<{
@@ -332,19 +334,33 @@ export default function ArticulatedAssemblyViewport({
     }
 
     function fitCamera() {
-      const box = new THREE.Box3();
-      for (const node of solvedRef.current.nodes) {
-        box.expandByPoint(new THREE.Vector3(node.explodedPosMm[0], node.explodedPosMm[1], node.explodedPosMm[2]));
+      ctxPartsBoxUpdate();
+      const box = new THREE.Box3().setFromObject(partsGroup);
+      if (box.isEmpty()) {
+        for (const node of solvedRef.current.nodes) {
+          box.expandByPoint(new THREE.Vector3(node.explodedPosMm[0], node.explodedPosMm[1], node.explodedPosMm[2]));
+        }
       }
       if (box.isEmpty()) return;
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
-      const span = Math.max(size.x, size.y, size.z, 240);
+      const radius = Math.max(size.length() * 0.5, 110);
+      const vFovRad = (camera.fov * Math.PI) / 180;
+      const hFovRad = 2 * Math.atan(Math.tan(vFovRad / 2) * Math.max(camera.aspect, 0.75));
+      const minFov = Math.min(vFovRad, hFovRad);
+      const dist = Math.max((radius / Math.sin(minFov / 2)) * 1.12, Math.max(size.x, size.y, size.z) * 1.45);
+      const dir = new THREE.Vector3(0.68, -0.78, 0.52).normalize();
       controls.target.copy(center);
-      camera.position.set(center.x + span * 1.15, center.y - span * 1.35, center.z + span * 0.88);
+      camera.position.copy(center).addScaledVector(dir, dist);
+      camera.near = Math.max(1, dist * 0.01);
+      camera.far = Math.max(18_000, dist * 12);
       camera.updateProjectionMatrix();
       controls.update();
       paint();
+    }
+
+    function ctxPartsBoxUpdate() {
+      scene.updateMatrixWorld(true);
     }
 
     function resize() {
@@ -437,6 +453,8 @@ export default function ArticulatedAssemblyViewport({
     [workspace.packages],
   );
 
+  const fittedStampRef = useRef<string>("");
+
   useEffect(() => {
     const ctx = sceneCtxRef.current;
     if (!ctx) return;
@@ -475,7 +493,11 @@ export default function ArticulatedAssemblyViewport({
     }
 
     applyPosesAndPaint();
-  }, [structureKey, packagesMap, selectedId, selectNode, applyPosesAndPaint]);
+    if (fittedStampRef.current !== assemblyStamp) {
+      fittedStampRef.current = assemblyStamp;
+      ctx.fitCamera();
+    }
+  }, [structureKey, assemblyStamp, packagesMap, selectedId, selectNode, applyPosesAndPaint]);
 
   // Fast 60 FPS pose + explode updates with zero geometry rebuild
   useEffect(() => {
@@ -485,51 +507,61 @@ export default function ArticulatedAssemblyViewport({
   const selectedSolved = solved.nodes.find((n) => n.path === selectedId) ?? solved.nodes[0];
 
   return (
-    <section className="surface space-y-3 p-3 sm:p-4" aria-label="可动与三维爆炸交互视口">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
-        <div className="min-w-0">
-          <h3 className="flex items-center gap-2 text-sm font-semibold">
-            <Layers className="size-4 text-primary" />
-            <span>{assembly.name} · 三维可动装配与层级爆炸视图</span>
-          </h3>
-          <p className="text-[11px] text-muted-foreground">
-            共 {solved.nodes.length} 个实体部件 · {solved.activeControls.length} 个主动关节 · {solved.coupledControls.length} 个随动耦合副 · 拖动滑块可边爆炸边试动
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {!externalCommands && solved.activeControls.length > 0 && (
-            <Button
-              size="sm"
-              variant={autoDemo ? "default" : "outline"}
-              onClick={() => setAutoDemo((v) => !v)}
-            >
-              {autoDemo ? <Pause /> : <Play />}
-              {autoDemo ? "暂停联动演示" : "多轴联动演示"}
+    <section className={hideHeader ? "min-w-0 space-y-2.5" : "surface space-y-3 p-3 sm:p-4"} aria-label="可动与三维爆炸交互视口">
+      {!hideHeader && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
+          <div className="min-w-0">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <Layers className="size-4 text-primary" />
+              <span>{assembly.name} · 三维可动装配与层级爆炸视图</span>
+            </h3>
+            <p className="text-[11px] text-muted-foreground">
+              共 {solved.nodes.length} 个实体部件 · {solved.activeControls.length} 个主动关节 · {solved.coupledControls.length} 个随动耦合副 · 支持实时机械运动与层级拆解
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {!externalCommands && solved.activeControls.length > 0 && (
+              <Button
+                size="sm"
+                variant={autoDemo ? "default" : "outline"}
+                onClick={() => setAutoDemo((v) => !v)}
+              >
+                {autoDemo ? <Pause /> : <Play />}
+                {autoDemo ? "暂停联动演示" : "多轴联动演示"}
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => sceneCtxRef.current?.fitCamera()}>
+              <RotateCcw />
+              视角居中
             </Button>
-          )}
-          <Button size="sm" variant="outline" onClick={() => sceneCtxRef.current?.fitCamera()}>
-            <RotateCcw />
-            视角居中
-          </Button>
-          {!externalCommands && onApplyCommands && solved.activeControls.length > 0 && (
-            <Button size="sm" variant="secondary" onClick={() => onApplyCommands(localCommands)}>
-              <Save />
-              写入装配指令
-            </Button>
-          )}
+            {!externalCommands && onApplyCommands && solved.activeControls.length > 0 && (
+              <Button size="sm" variant="secondary" onClick={() => onApplyCommands(localCommands)}>
+                <Save />
+                写入装配指令
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {externalStatusLabel && (
-        <div className="rounded border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
-          <Sparkles className="mr-1.5 inline size-3.5" />
-          {externalStatusLabel}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
+          <div>
+            <Sparkles className="mr-1.5 inline size-3.5" />
+            {externalStatusLabel}
+          </div>
+          {hideHeader && (
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px] text-primary" onClick={() => sceneCtxRef.current?.fitCamera()}>
+              <RotateCcw className="size-3" />
+              视角居中
+            </Button>
+          )}
         </div>
       )}
 
       {/* Exploded View Control Strip */}
       <div className="surface-inset flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-xs">
-        <label className="flex min-w-48 flex-1 items-center gap-2">
+        <label className="flex min-w-44 flex-1 items-center gap-2">
           <span className="shrink-0 font-medium">三维爆炸展开</span>
           <input
             type="range"
@@ -544,13 +576,13 @@ export default function ArticulatedAssemblyViewport({
           <span className="mono w-10 text-right">{explodePct}%</span>
         </label>
         <div className="flex flex-wrap items-center gap-1">
-          <Button size="sm" variant={explodePct === 0 ? "secondary" : "ghost"} onClick={() => setExplodePct(0)}>
+          <Button size="sm" className="h-7 px-2 text-xs" variant={explodePct === 0 ? "secondary" : "ghost"} onClick={() => setExplodePct(0)}>
             收拢
           </Button>
-          <Button size="sm" variant={explodePct === 45 ? "secondary" : "ghost"} onClick={() => setExplodePct(45)}>
+          <Button size="sm" className="h-7 px-2 text-xs" variant={explodePct === 45 ? "secondary" : "ghost"} onClick={() => setExplodePct(45)}>
             半爆 45%
           </Button>
-          <Button size="sm" variant={explodePct === 100 ? "secondary" : "ghost"} onClick={() => setExplodePct(100)}>
+          <Button size="sm" className="h-7 px-2 text-xs" variant={explodePct === 100 ? "secondary" : "ghost"} onClick={() => setExplodePct(100)}>
             全爆 100%
           </Button>
         </div>
@@ -568,7 +600,7 @@ export default function ArticulatedAssemblyViewport({
             checked={showLabels}
             onChange={(e) => setShowLabels(e.currentTarget.checked)}
           />
-          <span>零件铭牌</span>
+          <span>爆炸零件铭牌</span>
         </label>
         {selectedId && (
           <label className="inline-flex cursor-pointer items-center gap-1.5 text-primary">
@@ -589,13 +621,13 @@ export default function ArticulatedAssemblyViewport({
           className={`relative w-full overflow-hidden rounded-md border bg-[#111a18] ${compact ? "h-80 sm:h-96" : "h-96 sm:h-[30rem]"}`}
         />
 
-        {/* Real-time Joint Controls & Part Readout */}
+        {/* Real-time Joint Controls / Closed-Loop Readout & Part Info */}
         <div className="surface-inset flex min-w-0 flex-col justify-between gap-3 p-3 text-xs">
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <div className="flex items-center justify-between border-b pb-2">
               <span className="flex items-center gap-1.5 font-medium">
                 <Sliders className="size-3.5 text-primary" />
-                实时关节手轮控制
+                {externalCommands ? "闭环轨迹实时联动读数" : "实时关节手轮控制"}
               </span>
               {!externalCommands && solved.activeControls.length > 0 && (
                 <button
@@ -617,8 +649,29 @@ export default function ArticulatedAssemblyViewport({
 
             {solved.activeControls.length === 0 ? (
               <p className="text-muted-foreground">当前装配的部件全部为刚性固连（可通过下方编辑将任一部件改为移动副 slide 或转动副 hinge）。</p>
+            ) : externalCommands ? (
+              <div className="space-y-2">
+                {solved.activeControls.map((ctrl) => {
+                  const unit = ctrl.joint.type === "slide" ? "mm" : "°";
+                  const [min, max] = ctrl.joint.range;
+                  const pct = clamp(((ctrl.value - min) / Math.max(1e-6, max - min)) * 100, 0, 100);
+                  return (
+                    <div key={ctrl.path} className="space-y-1.5 rounded border bg-background/60 p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium" title={ctrl.path}>{ctrl.label}</span>
+                        <span className="mono shrink-0 font-semibold text-primary">
+                          {formatNum(ctrl.value)} {unit}
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <div className="max-h-64 space-y-2.5 overflow-y-auto pr-1">
+              <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
                 {solved.activeControls.map((ctrl) => {
                   const unit = ctrl.joint.type === "slide" ? "mm" : "°";
                   return (
@@ -641,7 +694,6 @@ export default function ArticulatedAssemblyViewport({
                         max={ctrl.joint.range[1]}
                         step={ctrl.joint.type === "slide" ? 0.5 : 1}
                         value={ctrl.value}
-                        disabled={Boolean(externalCommands)}
                         className="h-4 w-full accent-primary"
                         onChange={(e) => {
                           setAutoDemo(false);
@@ -663,7 +715,7 @@ export default function ArticulatedAssemblyViewport({
                     <span className="truncate text-muted-foreground">
                       {c.label}（{c.coupledSummary}）
                     </span>
-                    <span className="mono shrink-0">{formatNum(c.value)}°</span>
+                    <span className="mono shrink-0 text-foreground">{formatNum(c.value)}°</span>
                   </div>
                 ))}
               </div>

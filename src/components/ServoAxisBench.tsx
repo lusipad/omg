@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Download, ExternalLink, Play } from "lucide-react";
+import { Activity, Download, ExternalLink, FolderInput, Play } from "lucide-react";
+import { Link } from "react-router";
 import { CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { studioHref } from "@contracts/studio-navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { downloadBlob } from "@/lib/download";
@@ -290,8 +292,22 @@ export default function ServoAxisBench({ workspace, onChange, preferred }: Props
         {response?.parameters ? <ModelicaResponse key={JSON.stringify([origin, response.binding, runId])} parameters={response.parameters} targetDeg={targetDeg} filename={filename} />
           : response?.result ? <ResponsePanel key={origin} result={response.result} targetDeg={targetDeg} filename={filename} />
           : response?.error ? <p role="alert" className="p-3 text-sm text-destructive">{response.error}</p>
-          : <div className="engineering-grid grid min-h-48 place-items-center rounded-md border px-4 text-center text-sm text-muted-foreground">
-            {canRun ? "运行当前单轴设置后可查看位置和速度曲线。" : "安装一对配套驱动器与电机后，即可运行位置阶跃。"}
+          : <div className="engineering-grid flex min-h-56 flex-col items-center justify-center gap-3 rounded-md border px-6 py-8 text-center text-sm text-muted-foreground">
+            <p className="max-w-md leading-relaxed">
+              {canRun
+                ? "请点击左侧「组轴并运行位置阶跃」以求解 Modelica 位置与速度闭环响应。"
+                : "当前工程尚未同时安装配套的伺服驱动器与伺服电机设备包。可前往设备库拍照识别或导入器件，或直接载入标准伺服单轴样板体验。"}
+            </p>
+            {!canRun && (
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button size="sm" variant="outline" asChild>
+                  <Link to={studioHref({ view: "resources" })}><FolderInput className="size-3.5" />前往设备库导入 / 拍照识别</Link>
+                </Button>
+                <Button size="sm" variant="secondary" asChild>
+                  <Link to={studioHref({ view: "workbench", exampleId: "inovance-servo" })}><Play className="size-3.5" />打开汇川伺服单轴样板</Link>
+                </Button>
+              </div>
+            )}
           </div>}
       </div>
     </section>

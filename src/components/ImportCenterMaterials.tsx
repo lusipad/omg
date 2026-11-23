@@ -15,9 +15,10 @@ import MaterialCalibration from "./MaterialCalibration";
 export type MaterialIntakeProps = {
   onImportFiles: (files: File[], options?: WorkbenchImportOptions) => void;
   onImportText: (text: string, name: string, options?: WorkbenchImportOptions, onCommitted?: () => void) => void;
+  inline?: boolean;
 };
 
-export function MaterialIntake({ onImportFiles, onImportText }: MaterialIntakeProps) {
+export function MaterialIntake({ onImportFiles, onImportText, inline = false }: MaterialIntakeProps) {
   const [kind, setKind] = useState<"bom" | "manual">("bom");
   const [draft, setDraft] = useState({ name: "", source: "", content: "" });
   const fileInput = useRef<HTMLInputElement>(null);
@@ -35,21 +36,26 @@ export function MaterialIntake({ onImportFiles, onImportText }: MaterialIntakePr
       setDraft({ name: "", source: "", content: "" });
     });
   }
-  return <details className="min-w-0 border-t pt-3">
-    <summary className="cursor-pointer text-xs text-muted-foreground">手工录入或指定资料用途 <span className="ml-1">· BOM / 设备手册</span></summary>
-    <div className="mt-3 space-y-3">
-      <div className="flex flex-wrap items-center gap-2" aria-label="资料用途">
-        {(["bom", "manual"] as const).map((mode) => <Button size="sm" key={mode} variant={kind === mode ? "secondary" : "ghost"} aria-pressed={kind === mode}
-          onClick={() => { if (kind !== mode) { revision.current++; setKind(mode); } }}>{mode === "bom" ? "物料清单" : "设备手册"}</Button>)}
+  const body = (
+    <div className={inline ? "space-y-3" : "mt-3 space-y-3"}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5" aria-label="资料用途">
+          {(["bom", "manual"] as const).map((mode) => (
+            <Button size="sm" key={mode} variant={kind === mode ? "secondary" : "ghost"} aria-pressed={kind === mode}
+              onClick={() => { if (kind !== mode) { revision.current++; setKind(mode); } }}>
+              {mode === "bom" ? "物料清单 (BOM CSV/TSV)" : "设备手册 / 规格书"}
+            </Button>
+          ))}
+        </div>
+        <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}><Upload />选择资料文件</Button>
       </div>
-      <p className="text-sm leading-6 text-muted-foreground">{kind === "bom" ? "物料表需要名称和数量列，可附单位、制造商、型号及来源。" : IS_PAGES
+      <p className="text-xs leading-5 text-muted-foreground">{kind === "bom" ? "物料表需要名称和数量列，可附单位、制造商、型号及来源。" : IS_PAGES
         ? "可导入 TXT、Markdown，或粘贴 PDF 的相关章节。原文随资料记录保存。"
         : "可导入 PDF、TXT、Markdown，或粘贴规格原文。核对提取的章节后保存。"}</p>
       <input ref={fileInput} className="hidden" aria-label="选择 BOM 或手册文件" type="file" accept={IS_PAGES ? ".csv,.tsv,.txt,.md,.markdown" : ".csv,.tsv,.txt,.md,.markdown,.pdf"} onChange={(event) => {
         const file = event.target.files?.[0]; event.target.value = "";
         if (file) onImportFiles([file], options);
       }} />
-      <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}><Upload />选择资料文件</Button>
       <div className="grid gap-3 sm:grid-cols-2">
         {kind === "manual" && <label><span className="field-label">手册名称</span><Input value={draft.name} onChange={(event) => edit("name", event.target.value)} /></label>}
         <label className={kind === "bom" ? "sm:col-span-2" : ""}><span className="field-label">资料来源</span>
@@ -60,8 +66,13 @@ export function MaterialIntake({ onImportFiles, onImportText }: MaterialIntakePr
         <Textarea className="h-28 resize-y" value={draft.content} placeholder={kind === "bom" ? "名称,数量,单位,制造商,型号" : "粘贴手册或选型表文字"}
           onChange={(event) => edit("content", event.target.value)} />
       </label>
-      <Button disabled={!draft.content.trim()} onClick={preview}>预览资料</Button>
+      <Button size="sm" disabled={!draft.content.trim()} onClick={preview}>识别并预览资料</Button>
     </div>
+  );
+  if (inline) return <div className="min-w-0">{body}</div>;
+  return <details className="min-w-0 border-t pt-3">
+    <summary className="cursor-pointer text-xs text-muted-foreground">手工录入或指定资料用途 <span className="ml-1">· BOM / 设备手册</span></summary>
+    {body}
   </details>;
 }
 

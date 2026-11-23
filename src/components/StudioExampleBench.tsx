@@ -105,10 +105,15 @@ function ExampleSession({ kind, download, workspace, initialStructureId, initial
   const sample = loaded.workspace;
   const follower = sample.so101;
   const unapplied = (kind === "linear-assembly" || kind === "factory" || kind === "system" || kind === "mechanism") && !assemblyReady;
-  return <div className="min-w-0 space-y-4">
-    <div className="flex flex-wrap items-center justify-end gap-2">
-      {kind === "servo" && <p className="mr-auto text-xs text-muted-foreground">修改伺服参数后，请先组轴并运行。</p>}
-      {unapplied && <p className="mr-auto text-xs text-muted-foreground">运行或应用当前设置后可加入工程。</p>}
+  return <div className="min-w-0 space-y-3.5">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3.5 py-2 text-xs">
+      <p className="text-muted-foreground">
+        {kind === "servo"
+          ? "试跑模式：修改伺服参数后，先点击“组轴并运行位置阶跃”，确认响应后可保存进当前工程。"
+          : unapplied
+            ? "试跑模式：运行一次当前装配/仿真，即可解锁将此样板加入本机工程。"
+            : "试跑验证已就绪：可随时点击右侧“加入当前工程”持久化保存并继续深入标定。"}
+      </p>
       <Button size="sm" onClick={join} disabled={unapplied}><FolderInput />加入当前工程</Button>
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
