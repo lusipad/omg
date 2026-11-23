@@ -14,6 +14,7 @@ import type { MechanicalAssembly } from "@contracts/mechanical-assembly";
 import { MILO_STOCK, type MiloStockState } from "@contracts/milo-stock";
 import { primitiveBoundingBoxMm } from "@contracts/primitive-parts";
 import {
+  matingInputAndExplode,
   SANDBOX_BLOCKS,
   SANDBOX_MOUNT_LABELS,
   type WorldTargetStatus,
@@ -58,34 +59,6 @@ export interface SandboxViewport3DProps {
 }
 
 const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v));
-
-function snapInputOffsetMm(mountId: string, bounds: readonly [number, number, number]): [number, number, number] {
-  const [dx, dy, dz] = bounds;
-  switch (mountId) {
-    case "bottom":
-    case "neg_z":
-    case "spindle_clamp":
-    case "tool_tip":
-      return [0, 0, dz / 2];
-    case "pos_x":
-    case "bearing_mount":
-      return [-dx / 2, 0, 0];
-    case "neg_x":
-    case "motor_mount":
-      return [dx / 2, 0, 0];
-    case "pos_y":
-    case "rear_plate_mount":
-      return [0, -dy / 2, 0];
-    case "neg_y":
-    case "carriage_front":
-    case "z_rail_mount":
-      return [0, dy / 2, 0];
-    case "center":
-      return [0, 0, 0];
-    default:
-      return [0, 0, -dz / 2];
-  }
-}
 
 export default function SandboxViewport3D({
   workspace,
@@ -706,7 +679,7 @@ export default function SandboxViewport3D({
       const armedDef = SANDBOX_BLOCKS.find((b) => b.id === armedBlockRef.current);
       if (armedDef) {
         const bounds = primitiveBoundingBoxMm(armedDef.spec);
-        const offset = snapInputOffsetMm(matched.mountId, bounds);
+        const offset = matingInputAndExplode(matched.mountId, bounds).inputPosMm;
         const invInput = frameToMatrixMm({ positionMm: offset, quatWxyz: [1, 0, 0, 0] }).invert();
         const previewMatrix = matched.mountMatrixWorld.clone().multiply(invInput);
         ghostGroup.matrixAutoUpdate = false;

@@ -3,6 +3,7 @@ import {
   Activity,
   ArrowRight,
   Box,
+  Code,
   Download,
   ExternalLink,
   Layers,
@@ -29,9 +30,11 @@ import {
   type UniversalArchetypeId,
 } from "@contracts/universal-archetypes";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { downloadBlob } from "@/lib/download";
 import { loadImportedPhysics, type ImportedPhysics } from "@/lib/imported-physics";
 import { describeModel, putModelBundle } from "@/lib/model-files";
+import PhysicsModelCard from "./PhysicsModelCard";
 import PhysicsScene from "./PhysicsScene";
 
 export interface MujocoSandboxArenaProps {
@@ -78,6 +81,7 @@ export default function MujocoSandboxArena({
   const [playing, setPlaying] = useState(true);
   const [focusToken, setFocusToken] = useState(1);
   const [exportingPro, setExportingPro] = useState(false);
+  const [xmlOpen, setXmlOpen] = useState(false);
 
   const engineRef = useRef<ImportedPhysics | null>(null);
 
@@ -763,6 +767,15 @@ export default function MujocoSandboxArena({
           )}
         </div>
 
+        {/* Underlying Mathematical & Physical Equations */}
+        <div className="space-y-1.5 border-t pt-2">
+          <PhysicsModelCard
+            workspace={activeInput.workspace}
+            assembly={activeInput.assembly}
+            compact
+          />
+        </div>
+
         {/* Pro Workbench Hand-off & MJCF Export */}
         <div className="mt-auto space-y-1.5 border-t pt-2.5">
           <p className="text-[10px] font-semibold text-muted-foreground">导出与专业工作台衔接</p>
@@ -775,6 +788,15 @@ export default function MujocoSandboxArena({
             <Sparkles />
             {exportingPro ? "正在推送至专业求解器…" : "送入专业台 MuJoCo 求解器"}
             <ArrowRight />
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 w-full text-[11px]"
+            disabled={!compilation.ok}
+            onClick={() => setXmlOpen(true)}
+          >
+            <Code /> 查看编译生成的 MJCF 源码
           </Button>
           <div className="grid grid-cols-2 gap-1.5">
             <Button
@@ -797,6 +819,20 @@ export default function MujocoSandboxArena({
           </div>
         </div>
       </aside>
+
+      <Dialog open={xmlOpen} onOpenChange={setXmlOpen}>
+        <DialogContent className="max-h-[86dvh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>自动编译生成的 MuJoCo MJCF 物理描述源码</DialogTitle>
+            <DialogDescription>
+              下方 XML 由前端装配图、质量惯量矩阵、运动副螺旋轴与推力/闭环约束实时编译而成，直接送入 WASM 刚体积分器求解。
+            </DialogDescription>
+          </DialogHeader>
+          <pre className="mono max-h-[60dvh] overflow-auto rounded border bg-background/80 p-3 text-[11px] leading-relaxed text-emerald-200">
+            {compilation.ok ? compilation.result.xml : compilation.error}
+          </pre>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

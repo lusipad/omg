@@ -495,6 +495,25 @@ export function analyzeMachinePhysics(
   assembly: MechanicalAssembly,
   params?: PhysicsWhatIfParams,
 ): MachinePhysicsReport {
+  if (assembly.nodes.length === 0) {
+    return {
+      totalMassKg: 0,
+      totalCostCny: 0,
+      axes: [],
+      peakTorquePct: 0,
+      maxInertiaRatio: 1,
+      thrustForceN: 0,
+      cuttingForceN: 0,
+      columnDeflectionUm: 0,
+      columnCount: 0,
+      gussetCount: 0,
+      hasSpindle: false,
+      hasSensor: false,
+      hasWorkpiece: false,
+      overloadedNodeIds: [],
+      warnings: [],
+    };
+  }
   const pkgByKey = new Map(ws.packages.map((p) => [packageKey(p), p]));
   const childrenMap = new Map<string, string[]>();
   const massById = new Map<string, number>();

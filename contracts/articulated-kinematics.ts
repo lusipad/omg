@@ -133,6 +133,17 @@ export function solveArticulatedAssembly(
     explodeSubtreeRoot?: string;
   },
 ): ArticulatedSolveResult {
+  if (assembly.nodes.length === 0) {
+    return {
+      nodes: [],
+      activeControls: [],
+      coupledControls: [],
+      leaderLines: [],
+      observationPointMm: [0, 0, 0],
+      explodedObservationPointMm: [0, 0, 0],
+      issues: [],
+    };
+  }
   const issues = inspectMechanicalAssembly(ws, assembly);
   const catalog = new Map<string, DevicePackage>(ws.packages.map((p) => [packageKey(p), p]));
   const explodeFactor = clamp(options?.explodeFactor ?? 0, 0, 1);

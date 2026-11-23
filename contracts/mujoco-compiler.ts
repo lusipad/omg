@@ -243,6 +243,14 @@ function estimatePartMassKg(pkg: DevicePackage | undefined, finish: PrimitiveFin
   return Math.min(35, Math.max(0.025, Number((volM3 * density).toFixed(4))));
 }
 
+export function estimatePackagePhysicsMassKg(pkg: DevicePackage | undefined): number {
+  if (!pkg?.primitive) {
+    const m = pkg?.mechanics;
+    return m?.kind === "part" && m.outputs.length > 0 ? 0.15 : 0.1;
+  }
+  return estimatePartMassKg(pkg, resolveDefaultFinish(pkg.primitive));
+}
+
 interface GeomXmlSpec {
   readonly kind: "box" | "cylinder" | "sphere";
   readonly posM: readonly [number, number, number];
@@ -757,6 +765,9 @@ export function compileAssemblyToMujoco(
   assembly: MechanicalAssembly,
   options?: CompileMujocoOptions,
 ): CompiledMujocoResult {
+  if (assembly.nodes.length === 0) {
+    throw new Error("当前工作台为空（0 件零件），请先放置第 1 件基准刚体后再运行物理仿真。");
+  }
   const issues = inspectMechanicalAssembly(ws, assembly);
   if (issues.length > 0) {
     throw new Error(`装配尚未闭环或存在错误，无法编译到 MuJoCo：\n${issues.join("\n")}`);

@@ -269,6 +269,27 @@ function semanticMountsForShape(spec: PrimitivePartSpec, bounds: [number, number
     });
   }
 
+  if ((spec.shape === "box" || spec.shape === "plate") && dx >= 60 && dy >= 40) {
+    const xFront = Number((dx * 0.34).toFixed(2));
+    const xRear = Number((-dx * 0.34).toFixed(2));
+    extra.push(
+      { id: "pos_y_front", positionMm: [xFront, dy / 2, 0], quatWxyz: IDENTITY_QUAT },
+      { id: "pos_y_rear", positionMm: [xRear, dy / 2, 0], quatWxyz: IDENTITY_QUAT },
+      { id: "neg_y_front", positionMm: [xFront, -dy / 2, 0], quatWxyz: IDENTITY_QUAT },
+      { id: "neg_y_rear", positionMm: [xRear, -dy / 2, 0], quatWxyz: IDENTITY_QUAT },
+      { id: "top_front", positionMm: [xFront, 0, dz / 2], quatWxyz: IDENTITY_QUAT },
+      { id: "top_rear", positionMm: [xRear, 0, dz / 2], quatWxyz: IDENTITY_QUAT },
+    );
+  } else if ((spec.shape === "cylinder" || spec.shape === "tube") && spec.axis === "z" && dx >= 32) {
+    const zLow = Number((-dz * 0.35).toFixed(2));
+    extra.push(
+      { id: "rim_px", positionMm: [dx / 2, 0, zLow], quatWxyz: IDENTITY_QUAT },
+      { id: "rim_nx", positionMm: [-dx / 2, 0, zLow], quatWxyz: IDENTITY_QUAT },
+      { id: "rim_py", positionMm: [0, dy / 2, zLow], quatWxyz: IDENTITY_QUAT },
+      { id: "rim_ny", positionMm: [0, -dy / 2, zLow], quatWxyz: IDENTITY_QUAT },
+    );
+  }
+
   return [...extra, ...standard];
 }
 

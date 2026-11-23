@@ -287,6 +287,15 @@ export const SANDBOX_BLOCKS: readonly SandboxBlockDefinition[] = [
     defaultJoint: { type: "fixed" },
     roleHint: "frame",
   },
+  {
+    id: "tank_cylinder",
+    category: "frame",
+    name: "圆筒舱段 / 火箭贮箱",
+    subtitle: "Ø64×180 mm 航天级圆柱舱体（圆周自带 4 个对称装腿/舵面挂点）",
+    spec: { shape: "cylinder", radiusMm: 32, lengthMm: 180, axis: "z", finish: "aerospace_white" },
+    defaultJoint: { type: "fixed" },
+    roleHint: "frame",
+  },
 ];
 
 export interface RealVendorBomPreset {
@@ -451,7 +460,7 @@ function pickUniqueRevision(existing: readonly DevicePackage[], candidate: Devic
   return candidate;
 }
 
-function matingInputAndExplode(
+export function matingInputAndExplode(
   mountId: string,
   bounds: readonly [number, number, number],
 ): { inputPosMm: [number, number, number]; explodeVecMm: [number, number, number] } {
@@ -463,24 +472,179 @@ function matingInputAndExplode(
     case "tool_tip":
       return { inputPosMm: [0, 0, dz / 2], explodeVecMm: [0, 0, -75] };
     case "pos_x":
+    case "rim_px":
     case "bearing_mount":
       return { inputPosMm: [-dx / 2, 0, 0], explodeVecMm: [85, 0, 0] };
     case "neg_x":
+    case "rim_nx":
     case "motor_mount":
       return { inputPosMm: [dx / 2, 0, 0], explodeVecMm: [-85, 0, 0] };
     case "pos_y":
+    case "pos_y_front":
+    case "pos_y_rear":
+    case "rim_py":
     case "rear_plate_mount":
       return { inputPosMm: [0, -dy / 2, 0], explodeVecMm: [0, 85, 0] };
     case "neg_y":
+    case "neg_y_front":
+    case "neg_y_rear":
+    case "rim_ny":
     case "carriage_front":
     case "z_rail_mount":
       return { inputPosMm: [0, dy / 2, 0], explodeVecMm: [0, -85, 0] };
     case "center":
       return { inputPosMm: [0, 0, 0], explodeVecMm: [0, 0, 65] };
     default:
-      // top, pos_z, carriage_top, sensor_mount, etc.
+      // top, top_front, top_rear, pos_z, carriage_top, sensor_mount, etc.
       return { inputPosMm: [0, 0, -dz / 2], explodeVecMm: [0, 0, 75] };
   }
+}
+
+export function createZeroBlankSandbox(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
+  return {
+    workspace: emptyWorkspace(),
+    assembly: parseMechanicalAssembly({
+      schemaVersion: 1,
+      kind: "mechanical-assembly",
+      id: "sandbox-zero",
+      name: "从零新建构型",
+      baseMobility: "fixed",
+      nodes: [],
+      output: { node: "", mount: "" },
+      commands: {},
+    }),
+  };
+}
+
+export function placeRootBlockInSandbox(
+  ws: TwinWorkspace,
+  assembly: MechanicalAssembly,
+  blockId: string,
+): { workspace: TwinWorkspace; assembly: MechanicalAssembly; addedNodeId: string } {
+  const block = SANDBOX_BLOCKS.find((b) => b.id === blockId);
+  if (!block) throw new Error(`找不到积木定义：${blockId}`);
+
+  const candidate = buildPrimitivePartPackage({
+    manufacturer: "构元积木",
+    model: block.name,
+    revision: "B1",
+    title: `${block.name}（基准根件）`,
+    primitive: { ...block.spec },
+    joint: block.defaultJoint,
+    input: { positionMm: [0, 0, 0], quatWxyz: Q_ID },
+    extraOutputs: block.extraOutputs,
+    behavior: block.behavior,
+  });
+  const installedPkg = pickUniqueRevision(ws.packages, candidate);
+  let nextWs = ws.packages.some((p) => packageKey(p) === packageKey(installedPkg))
+    ? parseWorkspace(ws)
+    : installPackage(ws, installedPkg);
+
+  const addedNodeId = `${blockId}_1`;
+  const rootNode: MechanicalAssembly["nodes"][number] = {
+    id: addedNodeId,
+    label: block.name,
+    packageKey: packageKey(installedPkg),
+    parent: null,
+    explodeStep: 0,
+    ...(block.defaultJointMode ? { jointMode: block.defaultJointMode } : {}),
+    ...(block.defaultThruster ? { thruster: block.defaultThruster } : {}),
+  };
+  const outMount =
+    block.spec.shape === "spindle_cutter"
+      ? "tool_tip"
+      : block.spec.shape === "linear_rail_block"
+        ? "carriage_top"
+        : "top";
+
+  const nextAssembly = parseMechanicalAssembly({
+    ...assembly,
+    nodes: [rootNode],
+    output: { node: addedNodeId, mount: outMount },
+    commands: block.defaultJoint.type !== "fixed" ? { [addedNodeId]: 0 } : {},
+  });
+
+  if (nextWs.mechanisms?.some((m) => m.id === nextAssembly.id)) {
+    nextWs = {
+      ...nextWs,
+      mechanisms: nextWs.mechanisms.map((m) => (m.id === nextAssembly.id ? nextAssembly : m)),
+    };
+  }
+  return { workspace: nextWs, assembly: nextAssembly, addedNodeId };
+}
+
+export function attachCustomPackageToSandbox(
+  ws: TwinWorkspace,
+  assembly: MechanicalAssembly,
+  rawPkg: DevicePackage,
+  parentNodeId?: string,
+  parentMountId?: string,
+): { workspace: TwinWorkspace; assembly: MechanicalAssembly; addedNodeId: string } {
+  const hasRoot = assembly.nodes.length > 0;
+  let targetParentId = parentNodeId;
+  let targetMountId = parentMountId;
+  if (hasRoot && (!targetParentId || !targetMountId)) {
+    const best = findBestSnapTarget(ws, assembly, "table_plate", parentNodeId);
+    if (!best) throw new Error("当前没有空闲安装点，请在右栏结构树指定安装父件。");
+    targetParentId = best.parentNodeId;
+    targetMountId = best.parentMountId;
+  }
+
+  let pkgCandidate = rawPkg;
+  if (hasRoot && targetMountId && rawPkg.primitive && rawPkg.mechanics?.kind === "part") {
+    const bounds = primitiveBoundingBoxMm(rawPkg.primitive);
+    const { inputPosMm } = matingInputAndExplode(targetMountId, bounds);
+    pkgCandidate = parseDevicePackage({
+      ...rawPkg,
+      mechanics: {
+        ...rawPkg.mechanics,
+        input: { ...rawPkg.mechanics.input, positionMm: inputPosMm },
+      },
+    });
+  }
+
+  const installedPkg = pickUniqueRevision(ws.packages, pkgCandidate);
+  let nextWs = ws.packages.some((p) => packageKey(p) === packageKey(installedPkg))
+    ? parseWorkspace(ws)
+    : installPackage(ws, installedPkg);
+
+  let idx = 1;
+  while (assembly.nodes.some((n) => n.id === `custom_part_${idx}`)) idx++;
+  const addedNodeId = `custom_part_${idx}`;
+  const isFixed = installedPkg.mechanics?.kind !== "part" || installedPkg.mechanics.joint.type === "fixed";
+  const parentNode = hasRoot && targetParentId ? assembly.nodes.find((n) => n.id === targetParentId) : undefined;
+  const explodeVecMm =
+    hasRoot && targetMountId && rawPkg.primitive
+      ? matingInputAndExplode(targetMountId, primitiveBoundingBoxMm(rawPkg.primitive)).explodeVecMm
+      : ([0, 0, 65] as [number, number, number]);
+
+  const nextNode: MechanicalAssembly["nodes"][number] = {
+    id: addedNodeId,
+    label: installedPkg.model,
+    packageKey: packageKey(installedPkg),
+    parent: hasRoot && targetParentId && targetMountId ? { node: targetParentId, mount: targetMountId } : null,
+    explodeStep: (parentNode?.explodeStep ?? -1) + 1,
+    ...(hasRoot ? { explodeVectorMm: explodeVecMm } : {}),
+  };
+
+  const nextOutput = !hasRoot
+    ? { node: addedNodeId, mount: installedPkg.primitive?.shape === "spindle_cutter" ? "tool_tip" : "top" }
+    : assembly.output;
+
+  const nextAssembly = parseMechanicalAssembly({
+    ...assembly,
+    nodes: [...assembly.nodes, nextNode],
+    output: nextOutput,
+    commands: !isFixed ? { ...assembly.commands, [addedNodeId]: 0 } : assembly.commands,
+  });
+
+  if (nextWs.mechanisms?.some((m) => m.id === nextAssembly.id)) {
+    nextWs = {
+      ...nextWs,
+      mechanisms: nextWs.mechanisms.map((m) => (m.id === nextAssembly.id ? nextAssembly : m)),
+    };
+  }
+  return { workspace: nextWs, assembly: nextAssembly, addedNodeId };
 }
 
 export function snapBlockOntoAssembly(
@@ -567,13 +731,23 @@ export function snapBlockOntoAssembly(
   } else if (blockId === "gripper_tip" || block.defaultJoint.type === "slide") {
     nextOutput = { node: addedNodeId, mount: effectiveSpec.shape === "linear_rail_block" ? "carriage_top" : "top" };
   } else if (
+    blockId !== "drive_wheel" &&
+    blockId !== "rocket_thruster" &&
+    parentMountId !== "bottom" &&
+    parentMountId !== "neg_z" &&
     !outputAlreadyEndEffector &&
     ((blockId === "table_plate" && (parentIsSlide || parentNodeId === assembly.output.node)) ||
       (blockId === "workpiece_block" && parentNodeId === assembly.output.node) ||
       (isExtendableTip && parentNodeId === assembly.output.node))
   ) {
     nextOutput = { node: addedNodeId, mount: "top" };
-  } else if (assembly.output.node === assembly.nodes[0]?.id) {
+  } else if (
+    blockId !== "drive_wheel" &&
+    blockId !== "rocket_thruster" &&
+    parentMountId !== "bottom" &&
+    parentMountId !== "neg_z" &&
+    assembly.output.node === assembly.nodes[0]?.id
+  ) {
     nextOutput = { node: addedNodeId, mount: "top" };
   }
 
@@ -604,11 +778,17 @@ export function updateSandboxNode(
     label?: string;
     primaryLengthMm?: number;
     axis?: AxisDir;
+    finish?: PrimitiveFinish;
+    massKg?: number;
     rotateZ90?: boolean;
+    rotateAxis90?: AxisDir;
+    inputOffsetDeltaMm?: readonly [number, number, number];
     jointType?: "fixed" | "slide" | "hinge";
     jointAxis?: AxisDir;
     jointRange?: readonly [number, number];
     jointMode?: "actuated" | "passive" | "velocity";
+    coupledTo?: { path: string; ratio: number } | null;
+    thrusterMaxForceN?: number | null;
     vendorPresetId?: string;
   },
 ): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
@@ -627,9 +807,13 @@ export function updateSandboxNode(
   let parameters = oldPkg.parameters;
   let modelBindings = oldPkg.modelBindings;
 
+  if (nextSpec && patch.finish) {
+    nextSpec = { ...nextSpec, finish: patch.finish };
+  }
+
   if (nextSpec && patch.primaryLengthMm !== undefined && patch.primaryLengthMm > 0) {
     const len = patch.primaryLengthMm;
-    if (nextSpec.shape === "extrusion_profile" || nextSpec.shape === "cylinder" || nextSpec.shape === "tube" || nextSpec.shape === "lead_screw") {
+    if (nextSpec.shape === "extrusion_profile" || nextSpec.shape === "cylinder" || nextSpec.shape === "tube" || nextSpec.shape === "lead_screw" || nextSpec.shape === "cone") {
       nextSpec = { ...nextSpec, lengthMm: len };
     } else if (nextSpec.shape === "linear_rail_block") {
       nextSpec = { ...nextSpec, railLengthMm: len };
@@ -637,6 +821,8 @@ export function updateSandboxNode(
       nextSpec = { ...nextSpec, widthMm: len };
     } else if (nextSpec.shape === "spindle_cutter") {
       nextSpec = { ...nextSpec, bodyLengthMm: len };
+    } else if (nextSpec.shape === "sphere") {
+      nextSpec = { ...nextSpec, radiusMm: len / 2 };
     }
   }
 
@@ -649,10 +835,24 @@ export function updateSandboxNode(
     }
   }
 
-  if (patch.rotateZ90) {
+  if (patch.inputOffsetDeltaMm) {
+    nextInput = {
+      ...nextInput,
+      positionMm: [
+        Number((nextInput.positionMm[0] + patch.inputOffsetDeltaMm[0]).toFixed(2)),
+        Number((nextInput.positionMm[1] + patch.inputOffsetDeltaMm[1]).toFixed(2)),
+        Number((nextInput.positionMm[2] + patch.inputOffsetDeltaMm[2]).toFixed(2)),
+      ],
+    };
+  }
+
+  const rotAxis = patch.rotateAxis90 ?? (patch.rotateZ90 ? "z" : undefined);
+  if (rotAxis) {
     const [w, x, y, z] = nextInput.quatWxyz;
     const cur = new Quaternion(x, y, z, w).normalize();
-    const rot90 = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), Math.PI / 2);
+    const rotVec =
+      rotAxis === "x" ? new Vector3(1, 0, 0) : rotAxis === "y" ? new Vector3(0, 1, 0) : new Vector3(0, 0, 1);
+    const rot90 = new Quaternion().setFromAxisAngle(rotVec, Math.PI / 2);
     const combined = cur.multiply(rot90).normalize();
     nextInput = { ...nextInput, quatWxyz: [combined.w, combined.x, combined.y, combined.z] };
   }
@@ -671,6 +871,13 @@ export function updateSandboxNode(
     nextJoint = { ...nextJoint, axis: axisVec };
   } else if (patch.jointRange && nextJoint.type !== "fixed") {
     nextJoint = { ...nextJoint, range: [patch.jointRange[0], patch.jointRange[1]] };
+  }
+
+  if (patch.massKg !== undefined && patch.massKg > 0) {
+    parameters = {
+      ...(parameters ?? {}),
+      massKg: { status: "catalog", value: Number(patch.massKg.toFixed(3)), unit: "kg", label: "部件质量" },
+    };
   }
 
   if (patch.vendorPresetId) {
@@ -718,11 +925,29 @@ export function updateSandboxNode(
   const nextNodes = assembly.nodes.map((n) => {
     if (n.id !== nodeId) return n;
     const nextJointMode = nextJoint.type === "fixed" ? undefined : (patch.jointMode ?? n.jointMode);
+    const nextCoupled =
+      nextJoint.type === "fixed" || patch.coupledTo === null
+        ? undefined
+        : patch.coupledTo !== undefined
+          ? patch.coupledTo
+          : n.coupledTo;
+    const nextThruster =
+      patch.thrusterMaxForceN === null || (patch.thrusterMaxForceN !== undefined && patch.thrusterMaxForceN <= 0)
+        ? undefined
+        : patch.thrusterMaxForceN !== undefined
+          ? { maxForceN: patch.thrusterMaxForceN, direction: [0, 0, 1] as [number, number, number], label: `${model}推力` }
+          : n.thruster;
     return {
-      ...n,
+      id: n.id,
       packageKey: packageKey(finalPkg),
-      ...(patch.label?.trim() ? { label: patch.label.trim() } : patch.vendorPresetId ? { label: model } : {}),
-      ...(nextJointMode ? { jointMode: nextJointMode } : { jointMode: undefined }),
+      parent: n.parent,
+      ...(n.materialId ? { materialId: n.materialId } : {}),
+      ...(patch.label?.trim() ? { label: patch.label.trim() } : patch.vendorPresetId ? { label: model } : n.label ? { label: n.label } : {}),
+      ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}),
+      ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}),
+      ...(nextJointMode ? { jointMode: nextJointMode } : {}),
+      ...(nextCoupled ? { coupledTo: nextCoupled } : {}),
+      ...(nextThruster ? { thruster: nextThruster } : {}),
     };
   });
   const nextCommands = { ...assembly.commands };
@@ -733,12 +958,7 @@ export function updateSandboxNode(
   }
   const nextAssembly = parseMechanicalAssembly({
     ...assembly,
-    nodes: nextNodes.map((n) => {
-      if (n.jointMode !== undefined) return n;
-      const cleaned = { ...n };
-      delete cleaned.jointMode;
-      return cleaned;
-    }),
+    nodes: nextNodes,
     commands: nextCommands,
   });
 
@@ -758,7 +978,14 @@ export function removeSandboxNode(
 ): MechanicalAssembly {
   const target = assembly.nodes.find((n) => n.id === nodeId);
   if (!target) return assembly;
-  if (!target.parent) throw new Error("根节点底座不可拆除（可通过上方切换关卡或重置画布）。");
+  if (!target.parent) {
+    return parseMechanicalAssembly({
+      ...assembly,
+      nodes: [],
+      output: { node: "", mount: "" },
+      commands: {},
+    });
+  }
 
   const toDrop = new Set([nodeId]);
   let grew = true;
@@ -1676,6 +1903,16 @@ export const SANDBOX_MOUNT_LABELS: Record<string, string> = {
   neg_x: "左侧面 (-X)",
   pos_y: "后面 (+Y)",
   neg_y: "前面 (-Y)",
+  pos_y_front: "左前轮轴位 (+Y 前)",
+  pos_y_rear: "左后轮轴位 (+Y 后)",
+  neg_y_front: "右前轮轴位 (-Y 前)",
+  neg_y_rear: "右后轮轴位 (-Y 后)",
+  top_front: "前顶部 (+X 顶)",
+  top_rear: "后顶部 (-X 顶)",
+  rim_px: "圆周 +X 挂点",
+  rim_nx: "圆周 -X 挂点",
+  rim_py: "圆周 +Y 挂点",
+  rim_ny: "圆周 -Y 挂点",
   carriage_top: "滑块承载面",
   carriage_front: "滑块正面",
   column_seat: "立柱安装位",
@@ -1722,7 +1959,7 @@ export function findBestSnapTarget(
 
   const candidateIdsRaw: string[] = [];
   if (preferredParentId && nodeById.has(preferredParentId)) candidateIdsRaw.push(preferredParentId);
-  if (isFrameMountedAccessory) {
+  if (isFrameMountedAccessory || blockId === "drive_wheel") {
     if (assembly.nodes[0]) candidateIdsRaw.push(assembly.nodes[0].id);
     if (nodeById.has(assembly.output.node)) candidateIdsRaw.push(assembly.output.node);
     for (const n of assembly.nodes) candidateIdsRaw.push(n.id);
@@ -1736,11 +1973,15 @@ export function findBestSnapTarget(
 
   const preferredMounts: readonly string[] = isFrameMountedAccessory
     ? ["neg_y", "pos_x", "neg_x", "pos_y", "motor_mount", "bearing_mount", "top", "bottom"]
-    : blockId === "spindle_head"
-      ? ["carriage_front", "neg_y", "spindle_clamp", "carriage_top", "top", "bottom"]
-      : blockId === "column_4080"
-        ? ["column_seat", "pos_y", "top", "neg_y", "pos_x", "neg_x"]
-        : ["carriage_top", "top", "arm_mount", "pos_y", "neg_y", "pos_x", "neg_x"];
+    : blockId === "drive_wheel"
+      ? ["pos_y_front", "neg_y_front", "pos_y_rear", "neg_y_rear", "pos_y", "neg_y"]
+      : blockId === "rocket_thruster"
+        ? ["bottom", "neg_z", "top"]
+        : blockId === "spindle_head"
+          ? ["carriage_front", "neg_y", "spindle_clamp", "carriage_top", "top", "bottom"]
+          : blockId === "column_4080"
+            ? ["column_seat", "pos_y", "top", "neg_y", "pos_x", "neg_x"]
+            : ["carriage_top", "top", "arm_mount", "top_front", "pos_y", "neg_y", "pos_x", "neg_x"];
 
   for (const parentId of candidateIds) {
     const parentNode = nodeById.get(parentId);

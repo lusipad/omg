@@ -40,7 +40,7 @@ const nodes = z.array(z.strictObject({
     ratio: finite,
     offset: finite.optional(),
   }).optional(),
-})).min(1).max(MECHANICAL_LIMITS.nodes).refine((items) => new Set(items.map((n) => n.id)).size === items.length, "机械实例标识重复");
+})).min(0).max(MECHANICAL_LIMITS.nodes).refine((items) => new Set(items.map((n) => n.id)).size === items.length, "机械实例标识重复");
 
 export const mechanicalClosureSchema = z.strictObject({
   id: signalIdSchema,
