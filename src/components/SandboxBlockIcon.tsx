@@ -17,7 +17,9 @@ const FINISH_COLOR: Record<PrimitiveFinish, string> = {
   sensor_amber: "#fbbf24",
   rubber_grip: "#38bdf8",
   aerospace_white: "#f8fafc",
-  pearl_crimson: "#f472b6",
+  pearl_crimson: "#b85270",
+  concrete_gray: "#d2d7dd",
+  curtain_glass: "#78a6c4",
 };
 
 export function SandboxBlockIcon({
@@ -81,7 +83,7 @@ export function SandboxBlockIcon({
   if (shape === "sphere") {
     return (
       <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
-        <circle cx="18" cy="18" r="11.5" fill={finish === "pearl_crimson" ? "#831843" : "#1e293b"} stroke={accent} strokeWidth="1.8" />
+        <circle cx="18" cy="18" r="11.5" fill={finish === "pearl_crimson" ? "#592133" : "#1e293b"} stroke={accent} strokeWidth="1.8" />
         <ellipse cx="18" cy="18" rx="11.5" ry="4" stroke="#f8fafc" strokeWidth="1.2" strokeOpacity="0.7" />
       </svg>
     );

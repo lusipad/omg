@@ -12,6 +12,8 @@ export const primitiveFinishSchema = z.enum([
   "rubber_grip",
   "aerospace_white",
   "pearl_crimson",
+  "concrete_gray",
+  "curtain_glass",
 ]);
 export type PrimitiveFinish = z.infer<typeof primitiveFinishSchema>;
 

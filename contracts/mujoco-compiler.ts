@@ -107,7 +107,9 @@ const FINISH_RGBA: Record<PrimitiveFinish, string> = {
   sensor_amber: "0.89 0.61 0.23 1",
   rubber_grip: "0.11 0.14 0.17 1",
   aerospace_white: "0.94 0.96 0.98 1",
-  pearl_crimson: "0.86 0.16 0.48 1",
+  pearl_crimson: "0.66 0.275 0.39 1",
+  concrete_gray: "0.82 0.84 0.87 1",
+  curtain_glass: "0.47 0.65 0.77 1",
 };
 
 const FINISH_DENSITY_KG_M3: Record<PrimitiveFinish, number> = {
@@ -121,6 +123,8 @@ const FINISH_DENSITY_KG_M3: Record<PrimitiveFinish, number> = {
   rubber_grip: 1250,
   aerospace_white: 1950,
   pearl_crimson: 2400,
+  concrete_gray: 2400,
+  curtain_glass: 2500,
 };
 
 function escAttr(raw: string): string {

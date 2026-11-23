@@ -31,7 +31,9 @@ const FINISH_OPTIONS: Array<{ value: PrimitiveFinish; label: string }> = [
   { value: "sensor_amber", label: "传感器琥珀色" },
   { value: "rubber_grip", label: "高摩擦橡胶/防滑垫" },
   { value: "aerospace_white", label: "航天白瓷/复合材料" },
-  { value: "pearl_crimson", label: "明珠璀璨洋红" },
+  { value: "pearl_crimson", label: "明珠黛紫红（建筑铝板）" },
+  { value: "concrete_gray", label: "清水混凝土浅灰" },
+  { value: "curtain_glass", label: "冰蓝反射玻璃幕墙" },
 ];
 
 const DEFAULT_NAMES: Record<ShapeKind, string> = {

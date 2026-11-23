@@ -46,7 +46,7 @@ export const UNIVERSAL_ARCHETYPES: readonly UniversalArchetypeDef[] = [
     category: "flagship",
     badge: "地标巨构",
     title: "东方明珠三级旋转观光塔",
-    subtitle: "120° 三擎斜撑巨柱 + 大小双璀璨明珠 + 98m 环廊 / 267m 空中旋转餐厅 / 350m 太空舱三级独立旋转",
+    subtitle: "清水混凝土三斜撑与串珠立柱 + 黛紫红大小明珠 + 90m 观光廊 / 267m 旋转餐厅 / 350m 银色太空舱三级独立旋转",
     physicsHighlights: "多级独立角速度旋转层 · 立体几何与高精度球锥组合 · 468m 发射天线桅杆",
     showroomMode: "tower-spin",
   },
@@ -428,33 +428,33 @@ export function buildRescueHelicopterTemplate(): { workspace: TwinWorkspace; ass
 }
 
 /**
- * 旗舰③：东方明珠三级旋转观光塔（三斜巨柱 + 大小双球 + 98m环廊/267m旋转餐厅/350m太空舱）
+ * 旗舰③：东方明珠三级旋转观光塔（清水混凝土三斜撑 + 黛紫红串珠球体 + 冰蓝玻璃幕墙观光旋转层）
  */
 export function buildOrientalPearlTemplate(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
   const angles = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3] as const;
 
   const pkgPodium = buildPrimitivePartPackage({
     manufacturer: "构元地标",
-    model: "外滩圆形承台基座",
+    model: "外滩圆形清水混凝土基座",
     revision: "SH",
-    primitive: { shape: "cylinder", radiusMm: 96, lengthMm: 18, axis: "z", finish: "anodized_black" },
+    primitive: { shape: "cylinder", radiusMm: 98, lengthMm: 16, axis: "z", finish: "concrete_gray" },
     behavior: { kind: "moving_table", massKg: 4.5 },
     extraOutputs: [
-      { id: "core_mount", positionMm: [0, 0, 9], quatWxyz: Q_ID },
+      { id: "core_mount", positionMm: [0, 0, 8], quatWxyz: Q_ID },
       ...angles.map((phi, i) => ({
         id: `col_mount_${i + 1}`,
-        positionMm: [64 * Math.cos(phi), 64 * Math.sin(phi), 9] as [number, number, number],
-        quatWxyz: quatFromZToVec(-44 * Math.cos(phi), -44 * Math.sin(phi), 166),
+        positionMm: [66 * Math.cos(phi), 66 * Math.sin(phi), 8] as [number, number, number],
+        quatWxyz: quatFromZToVec(-46 * Math.cos(phi), -46 * Math.sin(phi), 120),
       })),
     ],
   });
 
   const pkgTripodCol = buildPrimitivePartPackage({
     manufacturer: "构元地标",
-    model: "斜向太空桁架巨柱",
+    model: "C60 混凝土斜撑巨柱",
     revision: "SH",
-    primitive: { shape: "cylinder", radiusMm: 10, lengthMm: 172, axis: "z", finish: "aluminum" },
-    input: { positionMm: [0, 0, -86], quatWxyz: Q_ID },
+    primitive: { shape: "cylinder", radiusMm: 9.5, lengthMm: 132, axis: "z", finish: "concrete_gray" },
+    input: { positionMm: [0, 0, -66], quatWxyz: Q_ID },
     behavior: { kind: "moving_table", massKg: 0.45 },
   });
 
@@ -462,105 +462,125 @@ export function buildOrientalPearlTemplate(): { workspace: TwinWorkspace; assemb
     manufacturer: "构元地标",
     model: "中心垂直电梯核心筒",
     revision: "SH",
-    primitive: { shape: "tube", outerRadiusMm: 14, innerRadiusMm: 9, lengthMm: 390, axis: "z", finish: "aluminum" },
-    input: { positionMm: [0, 0, -195], quatWxyz: Q_ID },
+    primitive: { shape: "tube", outerRadiusMm: 10.5, innerRadiusMm: 6, lengthMm: 374, axis: "z", finish: "concrete_gray" },
+    input: { positionMm: [0, 0, -187], quatWxyz: Q_ID },
     behavior: { kind: "moving_table", massKg: 0.9 },
     extraOutputs: [
-      { id: "orbit_deck_mount", positionMm: [0, 0, -85], quatWxyz: Q_ID },
-      { id: "lower_pearl_mount", positionMm: [0, 0, -28], quatWxyz: Q_ID },
-      { id: "restaurant_mount", positionMm: [0, 0, 65], quatWxyz: Q_ID },
-      { id: "upper_pearl_mount", positionMm: [0, 0, 115], quatWxyz: Q_ID },
-      { id: "space_capsule_mount", positionMm: [0, 0, 181], quatWxyz: Q_ID },
+      { id: "orbit_deck_mount", positionMm: [0, 0, -69], quatWxyz: Q_ID },
+      { id: "lower_pearl_mount", positionMm: [0, 0, -69], quatWxyz: Q_ID },
+      { id: "mid_pearl_1_mount", positionMm: [0, 0, -7], quatWxyz: Q_ID },
+      { id: "mid_pearl_2_mount", positionMm: [0, 0, 18], quatWxyz: Q_ID },
+      { id: "mid_pearl_3_mount", positionMm: [0, 0, 43], quatWxyz: Q_ID },
+      { id: "restaurant_mount", positionMm: [0, 0, 99], quatWxyz: Q_ID },
+      { id: "upper_pearl_mount", positionMm: [0, 0, 97], quatWxyz: Q_ID },
+      { id: "space_capsule_mount", positionMm: [0, 0, 169], quatWxyz: Q_ID },
     ],
   });
 
   const pkgLowerPearl = buildPrimitivePartPackage({
     manufacturer: "构元地标",
-    model: "90m 璀璨下球体主体",
+    model: "90m 黛紫红璀璨下球体",
     revision: "SH",
     primitive: { shape: "sphere", radiusMm: 46, finish: "pearl_crimson" },
     behavior: { kind: "moving_table", massKg: 0.65 },
+  });
+
+  const pkgMidPearl = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "太空酒店中段串珠小球",
+    revision: "SH",
+    primitive: { shape: "sphere", radiusMm: 15, finish: "pearl_crimson" },
+    behavior: { kind: "moving_table", massKg: 0.08 },
   });
 
   const pkgUpperPearl = buildPrimitivePartPackage({
     manufacturer: "构元地标",
     model: "263m 主观光球体",
     revision: "SH",
-    primitive: { shape: "sphere", radiusMm: 33, finish: "pearl_crimson" },
+    primitive: { shape: "sphere", radiusMm: 34, finish: "pearl_crimson" },
     behavior: { kind: "moving_table", massKg: 0.42 },
   });
 
   const pkgOrbitRing = buildPrimitivePartPackage({
     manufacturer: "构元地标",
-    model: "98m 空中环形观光转盘",
+    model: "98m 冰蓝玻璃观光旋转环",
     revision: "SH",
-    primitive: { shape: "cylinder", radiusMm: 52, lengthMm: 10, axis: "z", finish: "steel" },
+    primitive: { shape: "cylinder", radiusMm: 48.5, lengthMm: 9, axis: "z", finish: "curtain_glass" },
     joint: { type: "hinge", axis: [0, 0, 1], unit: "deg", range: [-36000, 36000] },
     behavior: { kind: "moving_table", massKg: 0.16 },
     extraOutputs: [
-      { id: "pod_1", positionMm: [54, 0, 0], quatWxyz: Q_ID },
-      { id: "pod_2", positionMm: [-54, 0, 0], quatWxyz: Q_ID },
-      { id: "pod_3", positionMm: [0, 54, 0], quatWxyz: Q_ID },
-      { id: "pod_4", positionMm: [0, -54, 0], quatWxyz: Q_ID },
+      { id: "pod_1", positionMm: [49.2, 0, 0], quatWxyz: Q_ID },
+      { id: "pod_2", positionMm: [-49.2, 0, 0], quatWxyz: Q_ID },
+      { id: "pod_3", positionMm: [0, 49.2, 0], quatWxyz: quatAroundZ(Math.PI / 2) },
+      { id: "pod_4", positionMm: [0, -49.2, 0], quatWxyz: quatAroundZ(Math.PI / 2) },
     ],
   });
 
-  const pkgObsPod = buildPrimitivePartPackage({
+  const pkgObsMullion = buildPrimitivePartPackage({
     manufacturer: "构元地标",
-    model: "悬空观景旋转子球舱",
+    model: "银白玻璃幕墙竖梃窗框",
     revision: "SH",
-    primitive: { shape: "sphere", radiusMm: 11, finish: "pearl_crimson" },
-    behavior: { kind: "moving_table", massKg: 0.03 },
+    primitive: { shape: "box", widthMm: 4.5, depthMm: 14, heightMm: 8, finish: "aerospace_white" },
+    behavior: { kind: "moving_table", massKg: 0.02 },
   });
 
   const pkgRestaurantDeck = buildPrimitivePartPackage({
     manufacturer: "构元地标",
-    model: "267m 金色空中旋转餐厅",
+    model: "267m 冰蓝玻璃空中旋转餐厅",
     revision: "SH",
-    primitive: { shape: "cylinder", radiusMm: 40, lengthMm: 14, axis: "z", finish: "brass" },
+    primitive: { shape: "cylinder", radiusMm: 36.5, lengthMm: 9, axis: "z", finish: "curtain_glass" },
     joint: { type: "hinge", axis: [0, 0, 1], unit: "deg", range: [-36000, 36000] },
     behavior: { kind: "moving_table", massKg: 0.14 },
     extraOutputs: [
-      { id: "bay_px", positionMm: [42, 0, 0], quatWxyz: Q_ID },
-      { id: "bay_nx", positionMm: [-42, 0, 0], quatWxyz: Q_ID },
+      { id: "bay_px", positionMm: [37.2, 0, 0], quatWxyz: Q_ID },
+      { id: "bay_nx", positionMm: [-37.2, 0, 0], quatWxyz: Q_ID },
     ],
   });
 
   const pkgGlassBay = buildPrimitivePartPackage({
     manufacturer: "构元地标",
-    model: "全景玻璃挑窗包厢",
+    model: "旋转餐厅银白挑窗框",
     revision: "SH",
-    primitive: { shape: "box", widthMm: 12, depthMm: 18, heightMm: 10, finish: "workpiece_alloy" },
+    primitive: { shape: "box", widthMm: 4.5, depthMm: 16, heightMm: 8, finish: "aerospace_white" },
     behavior: { kind: "moving_table", massKg: 0.025 },
   });
 
   const pkgSpaceCapsule = buildPrimitivePartPackage({
     manufacturer: "构元地标",
-    model: "350m 太空舱旋转顶球",
+    model: "350m 太空舱银白旋转顶球",
     revision: "SH",
-    primitive: { shape: "sphere", radiusMm: 20, finish: "aerospace_white" },
+    primitive: { shape: "sphere", radiusMm: 19, finish: "aerospace_white" },
     joint: { type: "hinge", axis: [0, 0, 1], unit: "deg", range: [-36000, 36000] },
     behavior: { kind: "moving_table", massKg: 0.1 },
     extraOutputs: [
-      { id: "beacon_px", positionMm: [22, 0, 0], quatWxyz: Q_ID },
-      { id: "beacon_nx", positionMm: [-22, 0, 0], quatWxyz: Q_ID },
+      { id: "beacon_px", positionMm: [18.5, 0, 0], quatWxyz: Q_ID },
+      { id: "beacon_nx", positionMm: [-18.5, 0, 0], quatWxyz: Q_ID },
     ],
   });
 
-  const pkgBeaconPod = buildPrimitivePartPackage({
+  const pkgCapsuleWindow = buildPrimitivePartPackage({
     manufacturer: "构元地标",
-    model: "航标激光雷达吊舱",
+    model: "太空舱冰蓝全景观景窗",
     revision: "SH",
-    primitive: { shape: "sphere", radiusMm: 7, finish: "sensor_amber" },
+    primitive: { shape: "box", widthMm: 4, depthMm: 12, heightMm: 6, finish: "curtain_glass" },
     behavior: { kind: "moving_table", massKg: 0.02 },
+  });
+
+  const pkgSpirePedestal = buildPrimitivePartPackage({
+    manufacturer: "构元地标",
+    model: "混凝土收分天线基筒",
+    revision: "SH",
+    primitive: { shape: "cone", radiusBottomMm: 10.5, radiusTopMm: 5.5, lengthMm: 58, axis: "z", finish: "concrete_gray" },
+    input: { positionMm: [0, 0, -29], quatWxyz: Q_ID },
+    behavior: { kind: "moving_table", massKg: 0.15 },
   });
 
   const pkgSpire = buildPrimitivePartPackage({
     manufacturer: "构元地标",
-    model: "468m 电视广播发射天线桅杆",
+    model: "468m 银白电视广播发射天线桅杆",
     revision: "SH",
-    primitive: { shape: "cone", radiusBottomMm: 11, radiusTopMm: 1.5, lengthMm: 135, axis: "z", finish: "brass" },
-    input: { positionMm: [0, 0, -67.5], quatWxyz: Q_ID },
+    primitive: { shape: "cone", radiusBottomMm: 4.5, radiusTopMm: 1.0, lengthMm: 92, axis: "z", finish: "aerospace_white" },
+    input: { positionMm: [0, 0, -46], quatWxyz: Q_ID },
     behavior: { kind: "moving_table", massKg: 0.12 },
   });
 
@@ -569,13 +589,15 @@ export function buildOrientalPearlTemplate(): { workspace: TwinWorkspace; assemb
     pkgTripodCol,
     pkgCoreTube,
     pkgLowerPearl,
+    pkgMidPearl,
     pkgUpperPearl,
     pkgOrbitRing,
-    pkgObsPod,
+    pkgObsMullion,
     pkgRestaurantDeck,
     pkgGlassBay,
     pkgSpaceCapsule,
-    pkgBeaconPod,
+    pkgCapsuleWindow,
+    pkgSpirePedestal,
     pkgSpire,
   ].reduce(installPackage, emptyWorkspace());
 
@@ -586,49 +608,53 @@ export function buildOrientalPearlTemplate(): { workspace: TwinWorkspace; assemb
     name: "东方明珠三级旋转观光塔",
     baseMobility: "fixed",
     nodes: [
-      { id: "bund_podium", label: "外滩圆形广场基座", packageKey: packageKey(pkgPodium), parent: null, explodeStep: 0 },
-      { id: "mega_col_1", label: "东侧斜撑巨柱", packageKey: packageKey(pkgTripodCol), parent: { node: "bund_podium", mount: "col_mount_1" }, explodeStep: 1, explodeVectorMm: [55, 0, 20] },
-      { id: "mega_col_2", label: "西北斜撑巨柱", packageKey: packageKey(pkgTripodCol), parent: { node: "bund_podium", mount: "col_mount_2" }, explodeStep: 1, explodeVectorMm: [-32, 48, 20] },
-      { id: "mega_col_3", label: "西南斜撑巨柱", packageKey: packageKey(pkgTripodCol), parent: { node: "bund_podium", mount: "col_mount_3" }, explodeStep: 1, explodeVectorMm: [-32, -48, 20] },
+      { id: "bund_podium", label: "外滩圆形清水混凝土基座", packageKey: packageKey(pkgPodium), parent: null, explodeStep: 0 },
+      { id: "mega_col_1", label: "东侧混凝土斜撑巨柱", packageKey: packageKey(pkgTripodCol), parent: { node: "bund_podium", mount: "col_mount_1" }, explodeStep: 1, explodeVectorMm: [55, 0, 20] },
+      { id: "mega_col_2", label: "西北混凝土斜撑巨柱", packageKey: packageKey(pkgTripodCol), parent: { node: "bund_podium", mount: "col_mount_2" }, explodeStep: 1, explodeVectorMm: [-32, 48, 20] },
+      { id: "mega_col_3", label: "西南混凝土斜撑巨柱", packageKey: packageKey(pkgTripodCol), parent: { node: "bund_podium", mount: "col_mount_3" }, explodeStep: 1, explodeVectorMm: [-32, -48, 20] },
       { id: "core_tube", label: "全高度电梯核心井筒", packageKey: packageKey(pkgCoreTube), parent: { node: "bund_podium", mount: "core_mount" }, explodeStep: 1, explodeVectorMm: [0, 0, 50] },
       {
         id: "lower_orbit_ring",
-        label: "① 98m 观景旋转环廊",
+        label: "① 98m 冰蓝玻璃观光旋转环",
         packageKey: packageKey(pkgOrbitRing),
         parent: { node: "core_tube", mount: "orbit_deck_mount" },
         jointMode: "velocity",
         explodeStep: 2,
         explodeVectorMm: [0, 0, -35],
       },
-      { id: "orbit_pod_1", label: "观景卫星舱 #1", packageKey: packageKey(pkgObsPod), parent: { node: "lower_orbit_ring", mount: "pod_1" }, explodeStep: 3, explodeVectorMm: [30, 0, 0] },
-      { id: "orbit_pod_2", label: "观景卫星舱 #2", packageKey: packageKey(pkgObsPod), parent: { node: "lower_orbit_ring", mount: "pod_2" }, explodeStep: 3, explodeVectorMm: [-30, 0, 0] },
-      { id: "orbit_pod_3", label: "观景卫星舱 #3", packageKey: packageKey(pkgObsPod), parent: { node: "lower_orbit_ring", mount: "pod_3" }, explodeStep: 3, explodeVectorMm: [0, 30, 0] },
-      { id: "orbit_pod_4", label: "观景卫星舱 #4", packageKey: packageKey(pkgObsPod), parent: { node: "lower_orbit_ring", mount: "pod_4" }, explodeStep: 3, explodeVectorMm: [0, -30, 0] },
-      { id: "lower_pearl", label: "90m 璀璨下球体", packageKey: packageKey(pkgLowerPearl), parent: { node: "core_tube", mount: "lower_pearl_mount" }, explodeStep: 2, explodeVectorMm: [-70, 0, 0] },
+      { id: "orbit_pod_1", label: "观光环银白竖梃 #1", packageKey: packageKey(pkgObsMullion), parent: { node: "lower_orbit_ring", mount: "pod_1" }, explodeStep: 3, explodeVectorMm: [30, 0, 0] },
+      { id: "orbit_pod_2", label: "观光环银白竖梃 #2", packageKey: packageKey(pkgObsMullion), parent: { node: "lower_orbit_ring", mount: "pod_2" }, explodeStep: 3, explodeVectorMm: [-30, 0, 0] },
+      { id: "orbit_pod_3", label: "观光环银白竖梃 #3", packageKey: packageKey(pkgObsMullion), parent: { node: "lower_orbit_ring", mount: "pod_3" }, explodeStep: 3, explodeVectorMm: [0, 30, 0] },
+      { id: "orbit_pod_4", label: "观光环银白竖梃 #4", packageKey: packageKey(pkgObsMullion), parent: { node: "lower_orbit_ring", mount: "pod_4" }, explodeStep: 3, explodeVectorMm: [0, -30, 0] },
+      { id: "lower_pearl", label: "90m 黛紫红璀璨下球体", packageKey: packageKey(pkgLowerPearl), parent: { node: "core_tube", mount: "lower_pearl_mount" }, explodeStep: 2, explodeVectorMm: [-70, 0, 0] },
+      { id: "mid_pearl_1", label: "中段酒店串珠 #1", packageKey: packageKey(pkgMidPearl), parent: { node: "core_tube", mount: "mid_pearl_1_mount" }, explodeStep: 2, explodeVectorMm: [45, 0, 0] },
+      { id: "mid_pearl_2", label: "中段酒店串珠 #2", packageKey: packageKey(pkgMidPearl), parent: { node: "core_tube", mount: "mid_pearl_2_mount" }, explodeStep: 2, explodeVectorMm: [-45, 0, 0] },
+      { id: "mid_pearl_3", label: "中段酒店串珠 #3", packageKey: packageKey(pkgMidPearl), parent: { node: "core_tube", mount: "mid_pearl_3_mount" }, explodeStep: 2, explodeVectorMm: [0, 45, 0] },
       {
         id: "sky_restaurant_deck",
-        label: "② 267m 空中旋转餐厅",
+        label: "② 267m 空中旋转餐厅玻璃环",
         packageKey: packageKey(pkgRestaurantDeck),
         parent: { node: "core_tube", mount: "restaurant_mount" },
         jointMode: "velocity",
         explodeStep: 3,
         explodeVectorMm: [65, 0, 20],
       },
-      { id: "rest_bay_a", label: "全景旋转挑窗 A", packageKey: packageKey(pkgGlassBay), parent: { node: "sky_restaurant_deck", mount: "bay_px" }, explodeStep: 4, explodeVectorMm: [25, 0, 0] },
-      { id: "rest_bay_b", label: "全景旋转挑窗 B", packageKey: packageKey(pkgGlassBay), parent: { node: "sky_restaurant_deck", mount: "bay_nx" }, explodeStep: 4, explodeVectorMm: [-25, 0, 0] },
-      { id: "upper_pearl", label: "263m 主观光上球体", packageKey: packageKey(pkgUpperPearl), parent: { node: "core_tube", mount: "upper_pearl_mount" }, explodeStep: 3, explodeVectorMm: [0, 65, 35] },
+      { id: "rest_bay_a", label: "旋转餐厅银白挑窗框 A", packageKey: packageKey(pkgGlassBay), parent: { node: "sky_restaurant_deck", mount: "bay_px" }, explodeStep: 4, explodeVectorMm: [25, 0, 0] },
+      { id: "rest_bay_b", label: "旋转餐厅银白挑窗框 B", packageKey: packageKey(pkgGlassBay), parent: { node: "sky_restaurant_deck", mount: "bay_nx" }, explodeStep: 4, explodeVectorMm: [-25, 0, 0] },
+      { id: "upper_pearl", label: "263m 黛紫红主观光球体", packageKey: packageKey(pkgUpperPearl), parent: { node: "core_tube", mount: "upper_pearl_mount" }, explodeStep: 3, explodeVectorMm: [0, 65, 35] },
       {
         id: "space_capsule_rotor",
-        label: "③ 350m 太空舱旋转层",
+        label: "③ 350m 银色太空舱旋转层",
         packageKey: packageKey(pkgSpaceCapsule),
         parent: { node: "core_tube", mount: "space_capsule_mount" },
         jointMode: "velocity",
         explodeStep: 4,
         explodeVectorMm: [0, 0, 60],
       },
-      { id: "space_beacon_a", label: "太空舱航标吊舱 A", packageKey: packageKey(pkgBeaconPod), parent: { node: "space_capsule_rotor", mount: "beacon_px" }, explodeStep: 5, explodeVectorMm: [25, 0, 0] },
-      { id: "space_beacon_b", label: "太空舱航标吊舱 B", packageKey: packageKey(pkgBeaconPod), parent: { node: "space_capsule_rotor", mount: "beacon_nx" }, explodeStep: 5, explodeVectorMm: [-25, 0, 0] },
-      { id: "antenna_spire", label: "468m 广播电视发射天线", packageKey: packageKey(pkgSpire), parent: { node: "core_tube", mount: "top" }, explodeStep: 5, explodeVectorMm: [0, 0, 110] },
+      { id: "space_beacon_a", label: "太空舱冰蓝观景窗 A", packageKey: packageKey(pkgCapsuleWindow), parent: { node: "space_capsule_rotor", mount: "beacon_px" }, explodeStep: 5, explodeVectorMm: [25, 0, 0] },
+      { id: "space_beacon_b", label: "太空舱冰蓝观景窗 B", packageKey: packageKey(pkgCapsuleWindow), parent: { node: "space_capsule_rotor", mount: "beacon_nx" }, explodeStep: 5, explodeVectorMm: [-25, 0, 0] },
+      { id: "spire_pedestal", label: "410m 混凝土收分天线基筒", packageKey: packageKey(pkgSpirePedestal), parent: { node: "core_tube", mount: "top" }, explodeStep: 4, explodeVectorMm: [0, 0, 80] },
+      { id: "antenna_spire", label: "468m 银白发射天线桅杆", packageKey: packageKey(pkgSpire), parent: { node: "spire_pedestal", mount: "top" }, explodeStep: 5, explodeVectorMm: [0, 0, 115] },
     ],
     output: { node: "antenna_spire", mount: "top" },
     commands: { lower_orbit_ring: 0, sky_restaurant_deck: 0, space_capsule_rotor: 0 },

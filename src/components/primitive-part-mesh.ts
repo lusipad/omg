@@ -19,7 +19,9 @@ const FINISH_CONFIG: Record<PrimitiveFinish, { color: number; metalness: number;
   sensor_amber: { color: 0xe39b3b, metalness: 0.2, roughness: 0.45 },
   rubber_grip: { color: 0x1e242b, metalness: 0.08, roughness: 0.88 },
   aerospace_white: { color: 0xf1f5f9, metalness: 0.18, roughness: 0.28 },
-  pearl_crimson: { color: 0xdb2777, metalness: 0.42, roughness: 0.24 },
+  pearl_crimson: { color: 0xa84664, metalness: 0.36, roughness: 0.38 },
+  concrete_gray: { color: 0xd2d7dd, metalness: 0.08, roughness: 0.76 },
+  curtain_glass: { color: 0x78a6c4, metalness: 0.52, roughness: 0.16 },
 };
 
 function makeMaterial(finish: PrimitiveFinish, selected?: boolean): THREE.MeshStandardMaterial {
@@ -433,7 +435,7 @@ export function createPrimitivePartGroup(
       root.add(mesh);
       // Equatorial rim ring so spin angles are clearly visible in 3D view
       const bandGeo = new THREE.TorusGeometry(spec.radiusMm * 1.005, Math.max(0.8, spec.radiusMm * 0.03), 8, 36);
-      const bandMat = finish === "pearl_crimson" ? brassMat : steelMat;
+      const bandMat = finish === "pearl_crimson" ? makeMaterial("curtain_glass", options?.selected) : steelMat;
       root.add(new THREE.Mesh(bandGeo, bandMat));
       break;
     }
