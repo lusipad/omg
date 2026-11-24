@@ -71,6 +71,18 @@ export interface CompiledMujocoActuatorMeta {
   readonly range: readonly [number, number];
 }
 
+export interface CompiledMotorCouplingMeta {
+  readonly kind: "pump_speed" | "rotor_aero";
+  readonly effectorPath: string;
+  readonly effectorLabel: string;
+  readonly motorPath: string | null;
+  readonly motorLabel: string | null;
+  readonly maxForceN: number;
+  readonly ratedOmegaRadS: number;
+  readonly active: boolean;
+  readonly reason?: string;
+}
+
 export interface CompiledMujocoResult {
   readonly bundle: ModelBundle;
   readonly xml: string;
@@ -85,6 +97,7 @@ export interface CompiledMujocoResult {
     readonly arena: ArenaPresetId;
   };
   readonly actuatorMeta: readonly CompiledMujocoActuatorMeta[];
+  readonly motorCouplings: readonly CompiledMotorCouplingMeta[];
   readonly recommendedRun: ImportedRunSettings;
   readonly payloadSiteId?: string;
 }
@@ -151,7 +164,7 @@ function fmtQuatWxyz(q: Quaternion): string {
 }
 
 function sanitizeMjName(raw: string): string {
-  const cleaned = raw.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+/, "");
+  const cleaned = raw.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/_{2,}/g, "_").replace(/^_+/, "");
   return cleaned || "item";
 }
 
@@ -623,7 +636,9 @@ function flattenAssemblyForPhysics(ws: TwinWorkspace, rootAssembly: MechanicalAs
         pkg,
         part,
         jointMode: node.jointMode,
-        thruster: node.thruster,
+        thruster: node.thruster?.sourceNodePath
+          ? { ...node.thruster, sourceNodePath: remapPath(node.thruster.sourceNodePath) }
+          : node.thruster,
         coupledTo: node.coupledTo ? { ...node.coupledTo, path: remapPath(node.coupledTo.path) } : undefined,
         mountById: new Map(part.outputs.map((m) => [m.id, frameToMatrixMm(m)])),
         mountFrameById: new Map(part.outputs.map((m) => [m.id, m])),
@@ -907,8 +922,87 @@ export function compileAssemblyToMujoco(
   let totalMassKg = 0;
   const actuatorLines: string[] = [];
   const actuatorMeta: CompiledMujocoActuatorMeta[] = [];
+  const motorCouplings: CompiledMotorCouplingMeta[] = [];
+  const customNumericLines: string[] = [];
   const equalityLines: string[] = [];
   const tendonLines: string[] = [];
+
+  const isImpellerNode = (candidate: FlatCompiledNode): boolean => {
+    const idL = candidate.id.toLowerCase();
+    const labelL = `${candidate.label} ${candidate.pkg?.model ?? ""}`.toLowerCase();
+    return idL.includes("pump_impeller") || labelL.includes("叶轮") || labelL.includes("impeller");
+  };
+
+  const nodeHasImpellerDescendant = (rootPath: string): boolean => {
+    const queue = [...(childrenMap.get(rootPath) ?? [])];
+    for (let i = 0; i < queue.length; i++) {
+      const cur = queue[i]!;
+      if (isImpellerNode(cur)) return true;
+      for (const ch of childrenMap.get(cur.path) ?? []) queue.push(ch);
+    }
+    return false;
+  };
+
+  const ancestorSet = (path: string): Set<string> => {
+    const set = new Set<string>();
+    let cur: string | null = path;
+    while (cur) {
+      set.add(cur);
+      cur = byPath.get(cur)?.parentPath ?? null;
+    }
+    return set;
+  };
+
+  const resolvePumpDriver = (nozzleNode: FlatCompiledNode): FlatCompiledNode | null => {
+    if (nozzleNode.thruster?.sourceNodePath) {
+      const explicit = byPath.get(nozzleNode.thruster.sourceNodePath);
+      const j = explicit ? jointSpecByPath.get(explicit.path) : undefined;
+      if (explicit && j && j.partJoint.type === "hinge" && nodeHasImpellerDescendant(explicit.path)) {
+        return explicit;
+      }
+      return null;
+    }
+
+    const nozzleAncestors = ancestorSet(nozzleNode.path);
+    const candidates = flat.nodes.filter((candidate) => {
+      const j = jointSpecByPath.get(candidate.path);
+      return j?.partJoint.type === "hinge" && nodeHasImpellerDescendant(candidate.path);
+    });
+    if (candidates.length === 0) return null;
+
+    // Prefer a turbopump motor that shares the closest common ancestor (e.g. same engine subassembly yoke)
+    let best: FlatCompiledNode | null = null;
+    let bestSharedDepth = -1;
+    for (const cand of candidates) {
+      let cur: string | null = cand.path;
+      let distFromCand = 0;
+      while (cur) {
+        if (nozzleAncestors.has(cur)) {
+          const depthScore = cur.split("/").length * 100 - distFromCand;
+          if (depthScore > bestSharedDepth) {
+            bestSharedDepth = depthScore;
+            best = cand;
+          }
+          break;
+        }
+        cur = byPath.get(cur)?.parentPath ?? null;
+        distFromCand++;
+      }
+    }
+    return best ?? candidates[0]!;
+  };
+
+  const resolveAncestorMotor = (bladeNode: FlatCompiledNode): FlatCompiledNode | null => {
+    let cur: string | null = bladeNode.path;
+    while (cur) {
+      const j = jointSpecByPath.get(cur);
+      if (j && j.partJoint.type === "hinge") {
+        return byPath.get(cur) ?? null;
+      }
+      cur = byPath.get(cur)?.parentPath ?? null;
+    }
+    return null;
+  };
 
   const arenaSpec = renderArenaWorldbodyXml(arena);
   // Site order matters: imported-physics reads `site:0` as the first `<site>` in the compiled MJCF!
@@ -964,7 +1058,7 @@ export function compileAssemblyToMujoco(
           const actIdx = actuatorMeta.length;
           const actName = uniqueName(`vel_${node.path}`);
           actuatorLines.push(
-            `    <velocity name="${escAttr(actName)}" joint="${escAttr(jSpec.mjName)}" kv="2.4" ctrlrange="-18 18" forcerange="-12 12"/>`,
+            `    <velocity name="${escAttr(actName)}" joint="${escAttr(jSpec.mjName)}" kv="2.6" ctrlrange="-24 24" forcerange="-16 16"/>`,
           );
           actuatorMeta.push({
             index: actIdx,
@@ -973,7 +1067,7 @@ export function compileAssemblyToMujoco(
             label: node.label,
             mode: "velocity",
             unit: "rad/s",
-            range: [-18, 18],
+            range: [-24, 24],
           });
         }
       } else if (jSpec.mode === "passive") {
@@ -1051,24 +1145,95 @@ export function compileAssemblyToMujoco(
     }
 
     if (node.thruster) {
-      const thrSiteName = uniqueName(`thr_site_${node.path}`);
-      const thrActName = uniqueName(`thr_${node.path}`);
+      const coupleMode = node.thruster.coupleMode ?? "direct";
       const thrDir = new Vector3(...(node.thruster.direction ?? [0, 0, 1])).normalize();
       const thrQuat = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), thrDir);
-      lines.push(`${indent}  <site name="${escAttr(thrSiteName)}" pos="0 0 0" quat="${fmtQuatWxyz(thrQuat)}"/>`);
-      const actIdx = actuatorMeta.length;
-      actuatorLines.push(
-        `    <motor name="${escAttr(thrActName)}" site="${escAttr(thrSiteName)}" gear="0 0 1 0 0 0" ctrlrange="0 ${fmt(node.thruster.maxForceN)}"/>`,
-      );
-      actuatorMeta.push({
-        index: actIdx,
-        name: thrActName,
-        nodePath: node.path,
-        label: node.thruster.label?.trim() || `${node.label} · 推力`,
-        mode: "thrust",
-        unit: "N",
-        range: [0, node.thruster.maxForceN],
-      });
+      const thrSiteName = uniqueName(`thr_site_${node.path}`);
+
+      if (coupleMode === "direct") {
+        lines.push(`${indent}  <site name="${escAttr(thrSiteName)}" pos="0 0 0" quat="${fmtQuatWxyz(thrQuat)}"/>`);
+        const thrActName = uniqueName(`thr_${node.path}`);
+        const actIdx = actuatorMeta.length;
+        actuatorLines.push(
+          `    <motor name="${escAttr(thrActName)}" site="${escAttr(thrSiteName)}" gear="0 0 1 0 0 0" ctrlrange="0 ${fmt(node.thruster.maxForceN)}"/>`,
+        );
+        actuatorMeta.push({
+          index: actIdx,
+          name: thrActName,
+          nodePath: node.path,
+          label: node.thruster.label?.trim() || `${node.label} · 推力`,
+          mode: "thrust",
+          unit: "N",
+          range: [0, node.thruster.maxForceN],
+        });
+      } else if (coupleMode === "pump_speed") {
+        const ratedOmega = node.thruster.ratedOmegaRadS ?? 16;
+        const driverNode = resolvePumpDriver(node);
+        const driverJSpec = driverNode ? jointSpecByPath.get(driverNode.path) : undefined;
+        if (driverNode && driverJSpec) {
+          lines.push(`${indent}  <site name="${escAttr(thrSiteName)}" pos="0 0 0" quat="${fmtQuatWxyz(thrQuat)}"/>`);
+          const couplingName = `gy_mc__${thrSiteName}__${bodyName}__${driverJSpec.mjName}`;
+          customNumericLines.push(
+            `    <numeric name="${escAttr(couplingName)}" data="1 ${fmt(node.thruster.maxForceN)} ${fmt(ratedOmega)} 0"/>`,
+          );
+          motorCouplings.push({
+            kind: "pump_speed",
+            effectorPath: node.path,
+            effectorLabel: node.label,
+            motorPath: driverNode.path,
+            motorLabel: driverNode.label,
+            maxForceN: node.thruster.maxForceN,
+            ratedOmegaRadS: ratedOmega,
+            active: true,
+          });
+        } else {
+          motorCouplings.push({
+            kind: "pump_speed",
+            effectorPath: node.path,
+            effectorLabel: node.label,
+            motorPath: null,
+            motorLabel: null,
+            maxForceN: node.thruster.maxForceN,
+            ratedOmegaRadS: ratedOmega,
+            active: false,
+            reason: "纯拉瓦尔喷管缺少电驱涡轮泵（高速无刷电机→离心泵叶轮）供流，质量流量 ṁ=0，推力为 0 N",
+          });
+        }
+      } else {
+        // rotor_aero
+        const ratedOmega = node.thruster.ratedOmegaRadS ?? 15;
+        const driverNode = resolveAncestorMotor(node);
+        const driverJSpec = driverNode ? jointSpecByPath.get(driverNode.path) : undefined;
+        if (driverNode && driverJSpec) {
+          lines.push(`${indent}  <site name="${escAttr(thrSiteName)}" pos="0 0 0" quat="${fmtQuatWxyz(thrQuat)}"/>`);
+          const couplingName = `gy_mc__${thrSiteName}__${bodyName}__${driverJSpec.mjName}`;
+          customNumericLines.push(
+            `    <numeric name="${escAttr(couplingName)}" data="2 ${fmt(node.thruster.maxForceN)} ${fmt(ratedOmega)} 0.0035"/>`,
+          );
+          motorCouplings.push({
+            kind: "rotor_aero",
+            effectorPath: node.path,
+            effectorLabel: node.label,
+            motorPath: driverNode.path,
+            motorLabel: driverNode.label,
+            maxForceN: node.thruster.maxForceN,
+            ratedOmegaRadS: ratedOmega,
+            active: true,
+          });
+        } else {
+          motorCouplings.push({
+            kind: "rotor_aero",
+            effectorPath: node.path,
+            effectorLabel: node.label,
+            motorPath: null,
+            motorLabel: null,
+            maxForceN: node.thruster.maxForceN,
+            ratedOmegaRadS: ratedOmega,
+            active: false,
+            reason: "纯桨叶未挂载在旋转电机轴上（ω=0，升力为 0 N）",
+          });
+        }
+      }
     }
 
     for (const child of childrenMap.get(node.path) ?? []) {
@@ -1120,6 +1285,9 @@ export function compileAssemblyToMujoco(
   if (actuatorLines.length > 0) {
     sections.push(`  <actuator>\n${actuatorLines.join("\n")}\n  </actuator>`);
   }
+  if (customNumericLines.length > 0) {
+    sections.push(`  <custom>\n${customNumericLines.join("\n")}\n  </custom>`);
+  }
   sections.push(`</mujoco>`);
 
   const xml = sections.join("\n");
@@ -1144,6 +1312,7 @@ export function compileAssemblyToMujoco(
     baseMobility,
     totalMassKg,
     actuatorMeta,
+    motorCouplings,
     tcpSiteId,
     payloadSiteId,
   });
@@ -1162,6 +1331,7 @@ export function compileAssemblyToMujoco(
       arena,
     },
     actuatorMeta,
+    motorCouplings,
     recommendedRun,
     payloadSiteId,
   };
@@ -1173,10 +1343,11 @@ function buildRecommendedRunSettings(args: {
   baseMobility: "fixed" | "free";
   totalMassKg: number;
   actuatorMeta: readonly CompiledMujocoActuatorMeta[];
+  motorCouplings: readonly CompiledMotorCouplingMeta[];
   tcpSiteId: string;
   payloadSiteId?: string;
 }): ImportedRunSettings {
-  const { assembly, arena, baseMobility, totalMassKg, actuatorMeta, tcpSiteId, payloadSiteId } = args;
+  const { assembly, arena, baseMobility, totalMassKg, actuatorMeta, motorCouplings, tcpSiteId, payloadSiteId } = args;
   const zeros = actuatorMeta.map(() => 0);
   const weightN = Math.max(0.5, totalMassKg * 9.81);
   const clampAct = (a: CompiledMujocoActuatorMeta, val: number) =>
@@ -1187,6 +1358,49 @@ function buildRecommendedRunSettings(args: {
       durationS: 1.6,
       controls: [],
       pointId: tcpSiteId,
+    };
+  }
+
+  // Case 0M-Rocket: Electric-pump motor-driven TVC rocket (vel_motor -> impeller -> thrust + servo gimbal)
+  const activePumpPaths = new Set(
+    motorCouplings.filter((c) => c.active && c.kind === "pump_speed" && c.motorPath).map((c) => c.motorPath!),
+  );
+  if (activePumpPaths.size > 0) {
+    const isPumpAct = (a: CompiledMujocoActuatorMeta) => a.mode === "velocity" && activePumpPaths.has(a.nodePath);
+    const s1 = actuatorMeta.map((a) => (isPumpAct(a) ? clampAct(a, 20) : 0));
+    const s2 = actuatorMeta.map((a) => (isPumpAct(a) ? clampAct(a, 19.5) : a.mode === "actuated" ? clampAct(a, 0.035) : 0));
+    const s3 = actuatorMeta.map((a) => (isPumpAct(a) ? clampAct(a, 19.0) : a.mode === "actuated" ? clampAct(a, -0.035) : 0));
+    const s4 = actuatorMeta.map((a) => (isPumpAct(a) ? clampAct(a, 18.5) : 0));
+    return {
+      durationS: 2.05,
+      controls: zeros,
+      pointId: tcpSiteId,
+      sequence: [
+        { timeS: 0.2, controls: s1, label: "电泵高速起转增压 · 点火离台" },
+        { timeS: 0.6, controls: s2, label: "TVC 伺服舵机偏转矢量程序转弯" },
+        { timeS: 0.95, controls: s3, label: "舵机反向平衡姿态修正" },
+        { timeS: 1.95, controls: s4, label: "舵机回中稳定垂直爬升" },
+      ],
+    };
+  }
+
+  // Case 0M-Rotor: Motor-driven aerodynamic rotorcraft (F_lift proportional to omega^2)
+  const activeRotorPaths = new Set(
+    motorCouplings.filter((c) => c.active && c.kind === "rotor_aero" && c.motorPath).map((c) => c.motorPath!),
+  );
+  if (activeRotorPaths.size > 0) {
+    const r1 = actuatorMeta.map((a) => (a.mode === "velocity" ? clampAct(a, 17) : 0));
+    const r2 = actuatorMeta.map((a) => (a.mode === "velocity" ? clampAct(a, 19.5) : a.mode === "actuated" ? clampAct(a, 0.025) : 0));
+    const r3 = actuatorMeta.map((a) => (a.mode === "velocity" ? clampAct(a, 19.0) : a.mode === "actuated" ? clampAct(a, -0.02) : 0));
+    return {
+      durationS: 2.1,
+      controls: zeros,
+      pointId: tcpSiteId,
+      sequence: [
+        { timeS: 0.35, controls: r1, label: "无刷旋翼电机高速起转" },
+        { timeS: 1.15, controls: r2, label: "桨叶 ω² 气动升力起飞离台" },
+        { timeS: 2.0, controls: r3, label: "姿态调整与稳定悬停" },
+      ],
     };
   }
 

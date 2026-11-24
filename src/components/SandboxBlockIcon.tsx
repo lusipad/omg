@@ -30,13 +30,101 @@ export function SandboxBlockIcon({
 }: SandboxBlockIconProps) {
   const accent = finish ? FINISH_COLOR[finish] : "#5eead4";
 
-  // Dedicated icons for cross-domain universal blocks
-  if (blockId === "drive_wheel" || (shape === "cylinder" && finish === "rubber_grip")) {
+  // Dedicated icons for atomic electromechanical primitives & pure effectors
+  if (blockId === "bldc_motor") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <rect x="9" y="13" width="18" height="15" rx="3" fill="#0f172a" stroke="#64748b" strokeWidth="1.8" />
+        <line x1="12" y1="18" x2="24" y2="18" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="3 1.5" />
+        <rect x="15.5" y="5" width="5" height="8" rx="1.2" fill="#cbd5e1" stroke="#5eead4" strokeWidth="1.4" />
+        <path d="M12 8a7 7 0 0 1 12 0" stroke="#5eead4" strokeWidth="1.4" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (blockId === "hub_motor_y") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <rect x="8" y="9" width="14" height="18" rx="3" fill="#0f172a" stroke="#64748b" strokeWidth="1.8" />
+        <rect x="22" y="15" width="9" height="6" rx="1.5" fill="#cbd5e1" stroke="#5eead4" strokeWidth="1.4" />
+        <circle cx="15" cy="18" r="3.5" fill="#1e293b" stroke="#f59e0b" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+
+  if (blockId === "gimbal_servo") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <rect x="9" y="12" width="18" height="13" rx="2.5" fill="#422006" stroke="#eab308" strokeWidth="1.8" />
+        <circle cx="18" cy="18.5" r="3.2" fill="#0f172a" stroke="#fde047" strokeWidth="1.5" />
+        <path d="M11 8a11 11 0 0 1 14 0" stroke="#fde047" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (blockId === "linear_actuator") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <rect x="13" y="14" width="10" height="17" rx="2" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.8" />
+        <rect x="15.5" y="5" width="5" height="9" rx="1" fill="#e2e8f0" stroke="#5eead4" strokeWidth="1.3" />
+        <path d="M18 4v5M15.5 6.5 18 4l2.5 2.5" stroke="#5eead4" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
+  if (blockId === "gimbal_yoke") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <circle cx="18" cy="18" r="11" fill="none" stroke="#cbd5e1" strokeWidth="3.2" />
+        <circle cx="18" cy="18" r="5" fill="#0f172a" stroke="#5eead4" strokeWidth="1.4" strokeDasharray="2.5 2" />
+      </svg>
+    );
+  }
+
+  if (blockId === "pump_impeller") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <circle cx="18" cy="18" r="10.5" fill="#422006" stroke="#eab308" strokeWidth="1.8" />
+        <path d="M18 18c2-5 6-6 8-4M18 18c5 2 6 6 4 8M18 18c-2 5-6 6-8 4M18 18c-5-2-6-6-4-8" stroke="#fde047" strokeWidth="1.7" strokeLinecap="round" />
+        <circle cx="18" cy="18" r="2.6" fill="#0f172a" stroke="#fef08a" strokeWidth="1.2" />
+      </svg>
+    );
+  }
+
+  if (blockId === "laval_nozzle") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <path d="M14 6h8l-1.5 6 5.5 14H10l5.5-14L14 6Z" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M12 29h12" stroke="#64748b" strokeWidth="1.4" strokeDasharray="2.5 2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (blockId === "passive_wheel" || (shape === "cylinder" && finish === "rubber_grip")) {
     return (
       <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
         <circle cx="18" cy="18" r="12" fill="#0f172a" stroke="#38bdf8" strokeWidth="3.2" strokeDasharray="4 2.2" />
-        <circle cx="18" cy="18" r="6" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.6" />
-        <circle cx="18" cy="18" r="2.2" fill="#5eead4" />
+        <circle cx="18" cy="18" r="5.5" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.6" />
+        <circle cx="18" cy="18" r="1.8" fill="#64748b" />
+      </svg>
+    );
+  }
+
+  if (blockId === "passive_blade") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <ellipse cx="11" cy="18" rx="7.5" ry="2.6" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.6" />
+        <ellipse cx="25" cy="18" rx="7.5" ry="2.6" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.6" />
+        <circle cx="18" cy="18" r="2.8" fill="#0f172a" stroke="#64748b" strokeWidth="1.4" />
+      </svg>
+    );
+  }
+
+  if (blockId === "grid_fin") {
+    return (
+      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+        <rect x="8" y="8" width="20" height="20" rx="2" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.8" />
+        <path d="M14 8v20M22 8v20M8 14h20M8 22h20" stroke="#cbd5e1" strokeWidth="1.2" />
       </svg>
     );
   }
@@ -57,25 +145,6 @@ export function SandboxBlockIcon({
         <rect x="4" y="13" width="28" height="10" rx="5" fill="#1e293b" stroke="#cbd5e1" strokeWidth="1.8" />
         <circle cx="9.5" cy="18" r="2.5" fill="#0f172a" stroke="#5eead4" strokeWidth="1.6" />
         <circle cx="26.5" cy="18" r="2.5" fill="#0f172a" stroke="#5eead4" strokeWidth="1.6" />
-      </svg>
-    );
-  }
-
-  if (blockId === "rocket_thruster") {
-    return (
-      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
-        <path d="M14 6h8l4 13H10l4-13Z" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.8" strokeLinejoin="round" />
-        <path d="M13 19l2 10 3-5 3 5 2-10" fill="#fb923c" fillOpacity="0.45" stroke="#f97316" strokeWidth="1.8" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-
-  if (blockId === "rotor_propeller") {
-    return (
-      <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
-        <line x1="4" y1="16" x2="32" y2="16" stroke="#38bdf8" strokeWidth="3.2" strokeLinecap="round" />
-        <circle cx="18" cy="16" r="4" fill="#0f172a" stroke="#e2e8f0" strokeWidth="1.6" />
-        <path d="M12 24h12M18 20v7" stroke="#5eead4" strokeWidth="1.6" strokeLinecap="round" />
       </svg>
     );
   }

@@ -226,14 +226,14 @@ export const SANDBOX_BLOCKS: readonly SandboxBlockDefinition[] = [
     roleHint: "frame",
   },
   {
-    id: "drive_wheel",
-    category: "actuator",
-    name: "高摩擦橡胶驱动轮",
-    subtitle: "Ø84×24 mm 高抓地橡胶轮胎，带连续转速驱动马达",
+    id: "passive_wheel",
+    category: "motion",
+    name: "纯高摩擦橡胶轮胎 (无动力)",
+    subtitle: "Ø84×24 mm 无动力橡胶轮，必须装在「轮毂驱动电机」上才能产生牵引力",
     spec: { shape: "cylinder", radiusMm: 42, lengthMm: 24, axis: "y", finish: "rubber_grip" },
-    defaultJoint: { type: "hinge", axis: [0, 1, 0], unit: "deg", range: [-36000, 36000] },
-    defaultJointMode: "velocity",
-    roleHint: "drive",
+    defaultJoint: { type: "fixed" },
+    roleHint: "frame",
+    behavior: { kind: "moving_table", massKg: 0.16 },
   },
   {
     id: "gripper_finger",
@@ -246,28 +246,103 @@ export const SANDBOX_BLOCKS: readonly SandboxBlockDefinition[] = [
     roleHint: "frame",
   },
 
-  // ⑥ 空天载具与建筑结构基本件（矢量火箭喷管 / 升力旋翼 / 明珠球舱 / 整流罩尖锥）
+  // ⑥ 真实原子机电零件（无刷电机 / 轮毂电机 / 舵机 / 丝杠推杆 / 承力环 / 涡轮泵叶轮 / 纯拉瓦尔喷管 / 纯桨叶 / 气动舵面）
   {
-    id: "rocket_thruster",
+    id: "bldc_motor",
     category: "actuator",
-    name: "矢量火箭发动机喷管",
-    subtitle: "可绕 Y 轴 ±15° 摆动并带局部轴向推力（支持 MuJoCo 推力求解）",
-    spec: { shape: "cone", radiusBottomMm: 26, radiusTopMm: 12, lengthMm: 44, axis: "z", finish: "anodized_black" },
-    defaultJoint: { type: "hinge", axis: [0, 1, 0], unit: "deg", range: [-15, 15] },
-    defaultJointMode: "actuated",
-    defaultThruster: { maxForceN: 95, direction: [0, 0, 1], label: "矢量引擎推力" },
-    roleHint: "drive",
-  },
-  {
-    id: "rotor_propeller",
-    category: "actuator",
-    name: "高速升力旋翼桨盘",
-    subtitle: "260 mm 长高速旋转桨叶并带垂直升力推进器",
-    spec: { shape: "box", widthMm: 260, depthMm: 22, heightMm: 6, finish: "anodized_black" },
+    name: "高速无刷电机 (Z 轴动力源)",
+    subtitle: "真实旋转速度驱动电机（带出轴端 shaft_tip，可带动涡轮泵叶轮或旋翼桨叶）",
+    spec: { shape: "servo_motor_body", flangeMm: 32, bodyLengthMm: 26, shaftDiameterMm: 8, shaftLengthMm: 10, axis: "z", finish: "anodized_black" },
     defaultJoint: { type: "hinge", axis: [0, 0, 1], unit: "deg", range: [-36000, 36000] },
     defaultJointMode: "velocity",
-    defaultThruster: { maxForceN: 55, direction: [0, 0, 1], label: "旋翼总距升力" },
+    roleHint: "motor",
+    behavior: { kind: "moving_table", massKg: 0.11 },
+  },
+  {
+    id: "hub_motor_y",
+    category: "actuator",
+    name: "轮毂驱动电机 (Y 轴)",
+    subtitle: "沿 Y 轴连续输出的轮毂伺服电机，外端挂载纯橡胶轮胎即可驱动整车前进爬坡",
+    spec: { shape: "servo_motor_body", flangeMm: 28, bodyLengthMm: 20, shaftDiameterMm: 8, shaftLengthMm: 8, axis: "y", finish: "anodized_black" },
+    defaultJoint: { type: "hinge", axis: [0, 1, 0], unit: "deg", range: [-36000, 36000] },
+    defaultJointMode: "velocity",
     roleHint: "drive",
+    behavior: { kind: "moving_table", massKg: 0.12 },
+  },
+  {
+    id: "gimbal_servo",
+    category: "actuator",
+    name: "精密位置伺服舵机 (±20°)",
+    subtitle: "闭环角度位置伺服关节，挂载在承力环下方带动纯喷管实现 TVC 矢量偏转",
+    spec: { shape: "servo_motor_body", flangeMm: 26, bodyLengthMm: 20, shaftDiameterMm: 6, shaftLengthMm: 8, axis: "y", finish: "brass" },
+    defaultJoint: { type: "hinge", axis: [0, 1, 0], unit: "deg", range: [-20, 20] },
+    defaultJointMode: "actuated",
+    roleHint: "motor",
+    behavior: { kind: "moving_table", massKg: 0.065 },
+  },
+  {
+    id: "linear_actuator",
+    category: "actuator",
+    name: "电动丝杠推杆 (±50 mm)",
+    subtitle: "电机+丝杠一体化直线作动筒，可驱动折叠支腿、升降台或机械推杆",
+    spec: { shape: "cylinder", radiusMm: 9, lengthMm: 86, axis: "z", finish: "steel" },
+    defaultJoint: { type: "slide", axis: [0, 0, 1], unit: "mm", range: [-50, 50] },
+    defaultJointMode: "actuated",
+    roleHint: "motor",
+    behavior: { kind: "moving_table", massKg: 0.14 },
+  },
+  {
+    id: "gimbal_yoke",
+    category: "motion",
+    name: "发动机承力环 / 万向节架",
+    subtitle: "中空承力桁架（中心含 pump_bay 同轴涡轮泵舱位，底部可挂接 TVC 舵机）",
+    spec: { shape: "tube", outerRadiusMm: 28, innerRadiusMm: 20, lengthMm: 26, axis: "z", finish: "aluminum" },
+    defaultJoint: { type: "fixed" },
+    extraOutputs: [{ id: "pump_bay", positionMm: [0, 0, 0], quatWxyz: [1, 0, 0, 0] }],
+    roleHint: "frame",
+    behavior: { kind: "moving_table", massKg: 0.075 },
+  },
+  {
+    id: "pump_impeller",
+    category: "actuator",
+    name: "离心涡轮泵叶轮 (无源)",
+    subtitle: "必须装在高速无刷电机出轴端，靠电机转速增压供流，才能驱动拉瓦尔喷管产生推力",
+    spec: { shape: "cylinder", radiusMm: 14, lengthMm: 10, axis: "z", finish: "brass" },
+    defaultJoint: { type: "fixed" },
+    roleHint: "frame",
+    behavior: { kind: "moving_table", massKg: 0.032 },
+  },
+  {
+    id: "laval_nozzle",
+    category: "actuator",
+    name: "纯拉瓦尔推力室喷管 (无源)",
+    subtitle: "本身无动力（0 N）；须有「电机+涡轮泵叶轮」供流方能产生轴向推力（F ∝ ω_pump）",
+    spec: { shape: "cone", radiusBottomMm: 23, radiusTopMm: 9.5, lengthMm: 44, axis: "z", finish: "steel" },
+    defaultJoint: { type: "fixed" },
+    defaultThruster: { maxForceN: 85, direction: [0, 0, 1], label: "电泵耦合拉瓦尔推力", coupleMode: "pump_speed", ratedOmegaRadS: 16 },
+    roleHint: "drive",
+    behavior: { kind: "moving_table", massKg: 0.11 },
+  },
+  {
+    id: "passive_blade",
+    category: "actuator",
+    name: "纯气动升力桨叶 (无动力)",
+    subtitle: "260 mm 无动力旋翼桨叶；必须挂载在旋转电机轴上按角速度 ω² 产生气动升力与反扭",
+    spec: { shape: "box", widthMm: 260, depthMm: 22, heightMm: 6, finish: "anodized_black" },
+    defaultJoint: { type: "fixed" },
+    defaultThruster: { maxForceN: 42, direction: [0, 0, 1], label: "旋翼气动升力 (∝ω²)", coupleMode: "rotor_aero", ratedOmegaRadS: 15 },
+    roleHint: "drive",
+    behavior: { kind: "moving_table", massKg: 0.045 },
+  },
+  {
+    id: "grid_fin",
+    category: "frame",
+    name: "钛合金气动舵面 / 栅格翼",
+    subtitle: "多孔轻质舵翼片，配合伺服舵机或周向挂点实现姿态稳定与气动控制",
+    spec: { shape: "plate", widthMm: 34, depthMm: 26, thicknessMm: 4, holeDiameterMm: 6, holeInsetMm: 6.5, finish: "steel" },
+    defaultJoint: { type: "fixed" },
+    roleHint: "frame",
+    behavior: { kind: "moving_table", massKg: 0.024 },
   },
   {
     id: "pearl_sphere",
@@ -286,6 +361,7 @@ export const SANDBOX_BLOCKS: readonly SandboxBlockDefinition[] = [
     spec: { shape: "cone", radiusBottomMm: 32, radiusTopMm: 2, lengthMm: 88, axis: "z", finish: "aerospace_white" },
     defaultJoint: { type: "fixed" },
     roleHint: "frame",
+    behavior: { kind: "moving_table", massKg: 0.14 },
   },
   {
     id: "tank_cylinder",
@@ -295,6 +371,7 @@ export const SANDBOX_BLOCKS: readonly SandboxBlockDefinition[] = [
     spec: { shape: "cylinder", radiusMm: 32, lengthMm: 180, axis: "z", finish: "aerospace_white" },
     defaultJoint: { type: "fixed" },
     roleHint: "frame",
+    behavior: { kind: "moving_table", massKg: 0.78 },
   },
 ];
 
@@ -493,6 +570,7 @@ export function matingInputAndExplode(
     case "z_rail_mount":
       return { inputPosMm: [0, dy / 2, 0], explodeVecMm: [0, -85, 0] };
     case "center":
+    case "pump_bay":
       return { inputPosMm: [0, 0, 0], explodeVecMm: [0, 0, 65] };
     default:
       // top, top_front, top_rear, pos_z, carriage_top, sensor_mount, etc.
@@ -725,16 +803,30 @@ export function snapBlockOntoAssembly(
     blockId === "arm_link" ||
     blockId === "column_4080";
 
+  const isBottomOrSubcomponent =
+    blockId === "passive_wheel" ||
+    blockId === "hub_motor_y" ||
+    blockId === "laval_nozzle" ||
+    blockId === "gimbal_servo" ||
+    blockId === "gimbal_yoke" ||
+    blockId === "pump_impeller" ||
+    blockId === "passive_blade" ||
+    blockId === "grid_fin" ||
+    parentMountId === "bottom" ||
+    parentMountId === "neg_z" ||
+    parentMountId === "pump_bay" ||
+    parentMountId === "shaft_tip" ||
+    parentMountId.startsWith("pos_y_") ||
+    parentMountId.startsWith("neg_y_") ||
+    parentMountId.startsWith("rim_");
+
   let nextOutput = assembly.output;
   if (effectiveSpec.shape === "spindle_cutter") {
     nextOutput = { node: addedNodeId, mount: "tool_tip" };
   } else if (blockId === "gripper_tip" || block.defaultJoint.type === "slide") {
     nextOutput = { node: addedNodeId, mount: effectiveSpec.shape === "linear_rail_block" ? "carriage_top" : "top" };
   } else if (
-    blockId !== "drive_wheel" &&
-    blockId !== "rocket_thruster" &&
-    parentMountId !== "bottom" &&
-    parentMountId !== "neg_z" &&
+    !isBottomOrSubcomponent &&
     !outputAlreadyEndEffector &&
     ((blockId === "table_plate" && (parentIsSlide || parentNodeId === assembly.output.node)) ||
       (blockId === "workpiece_block" && parentNodeId === assembly.output.node) ||
@@ -742,10 +834,7 @@ export function snapBlockOntoAssembly(
   ) {
     nextOutput = { node: addedNodeId, mount: "top" };
   } else if (
-    blockId !== "drive_wheel" &&
-    blockId !== "rocket_thruster" &&
-    parentMountId !== "bottom" &&
-    parentMountId !== "neg_z" &&
+    !isBottomOrSubcomponent &&
     assembly.output.node === assembly.nodes[0]?.id
   ) {
     nextOutput = { node: addedNodeId, mount: "top" };
@@ -1926,6 +2015,7 @@ export const SANDBOX_MOUNT_LABELS: Record<string, string> = {
   leg_b_face: "直角支撑面",
   pin_a: "左端铰孔 (pin_a)",
   pin_b: "右端铰孔 (pin_b)",
+  pump_bay: "同轴涡轮泵舱位 (pump_bay)",
   center: "中心点",
 };
 
@@ -1957,9 +2047,125 @@ export function findBestSnapTarget(
   const isFrameMountedAccessory =
     blockId === "limit_switch" || blockId === "servo_motor" || blockId === "ball_screw" || blockId === "gusset_l";
 
+  const makeHit = (parentNode: MechanicalAssembly["nodes"][number], mountId: string): BestSnapTarget => ({
+    parentNodeId: parentNode.id,
+    parentMountId: mountId,
+    parentLabel: parentNode.label ?? parentNode.id,
+    mountLabel: labelForSandboxMount(mountId),
+  });
+
+  const hasChild = (parentId: string, predicate?: (n: MechanicalAssembly["nodes"][number]) => boolean) =>
+    assembly.nodes.some((n) => n.parent?.node === parentId && (predicate ? predicate(n) : true));
+
+  const freeOutputsOf = (parentNode: MechanicalAssembly["nodes"][number]) => {
+    const pkg = pkgByKey.get(parentNode.packageKey);
+    if (pkg?.mechanics?.kind !== "part") return [];
+    return pkg.mechanics.outputs.filter(
+      (out) =>
+        out.id !== "pos_z" &&
+        out.id !== "neg_z" &&
+        !(out.id === "center" && pkg.mechanics!.kind === "part" && pkg.mechanics!.outputs.length > 1) &&
+        !occupied.has(`${parentNode.id}::${out.id}`),
+    );
+  };
+
+  // Targeted electromechanical affinity rules so motors, impellers, servos, nozzles, wheels, and blades pair causally
+  if (!preferredParentId) {
+    if (blockId === "pump_impeller") {
+      const motor = assembly.nodes.find((n) => {
+        const pkg = pkgByKey.get(n.packageKey);
+        return (
+          (n.id.startsWith("bldc_motor") || (pkg?.primitive?.shape === "servo_motor_body" && pkg.primitive.axis === "z")) &&
+          !hasChild(n.id)
+        );
+      });
+      if (motor) {
+        const free = freeOutputsOf(motor);
+        const pick = free.find((o) => o.id === "shaft_tip") ?? free.find((o) => o.id === "top") ?? free[0];
+        if (pick) return makeHit(motor, pick.id);
+      }
+    }
+
+    if (blockId === "passive_blade") {
+      const rotorMotor = assembly.nodes.find((n) => {
+        const pkg = pkgByKey.get(n.packageKey);
+        const isSpinZ =
+          pkg?.mechanics?.kind === "part" &&
+          pkg.mechanics.joint.type === "hinge" &&
+          Math.abs(pkg.mechanics.joint.axis[2]) > 0.5;
+        return (
+          isSpinZ &&
+          !hasChild(n.id, (c) => c.id.startsWith("passive_blade") || Boolean(c.thruster?.coupleMode === "rotor_aero"))
+        );
+      });
+      if (rotorMotor) {
+        const free = freeOutputsOf(rotorMotor);
+        const pick = free.find((o) => o.id === "shaft_tip") ?? free.find((o) => o.id === "top") ?? free[0];
+        if (pick) return makeHit(rotorMotor, pick.id);
+      }
+    }
+
+    if (blockId === "passive_wheel") {
+      const hub = assembly.nodes.find((n) => {
+        const pkg = pkgByKey.get(n.packageKey);
+        const isYMotor =
+          n.id.startsWith("hub_motor_y") ||
+          n.id.startsWith("passive_hinge") ||
+          (pkg?.mechanics?.kind === "part" && pkg.mechanics.joint.type === "hinge" && Math.abs(pkg.mechanics.joint.axis[1]) > 0.5);
+        return (
+          isYMotor &&
+          !hasChild(n.id, (c) => pkgByKey.get(c.packageKey)?.primitive?.finish === "rubber_grip")
+        );
+      });
+      if (hub) {
+        const free = freeOutputsOf(hub);
+        const prefOut = hub.parent?.mount.startsWith("neg_y") ? "neg_y" : "pos_y";
+        const pick =
+          free.find((o) => o.id === prefOut) ??
+          free.find((o) => o.id === "pos_y" || o.id === "neg_y" || o.id === "shaft_tip") ??
+          free[0];
+        if (pick) return makeHit(hub, pick.id);
+      }
+    }
+
+    if (blockId === "laval_nozzle") {
+      const servo = assembly.nodes.find((n) => {
+        const pkg = pkgByKey.get(n.packageKey);
+        const isPitchServo =
+          n.id.startsWith("gimbal_servo") ||
+          (pkg?.mechanics?.kind === "part" &&
+            pkg.mechanics.joint.type === "hinge" &&
+            Math.abs(pkg.mechanics.joint.axis[2]) < 0.5);
+        return (
+          isPitchServo &&
+          !occupied.has(`${n.id}::bottom`) &&
+          pkg?.mechanics?.kind === "part" &&
+          pkg.mechanics.outputs.some((o) => o.id === "bottom")
+        );
+      });
+      if (servo) return makeHit(servo, "bottom");
+    }
+
+    if (blockId === "bldc_motor") {
+      const yokeWithFreeBay = assembly.nodes.find(
+        (n) =>
+          freeOutputsOf(n).some((o) => o.id === "pump_bay") &&
+          !hasChild(n.id, (c) => c.id.startsWith("bldc_motor") && c.parent?.mount === "pump_bay"),
+      );
+      if (yokeWithFreeBay) return makeHit(yokeWithFreeBay, "pump_bay");
+      const yokeWithFreeTop = assembly.nodes.find(
+        (n) =>
+          n.parent?.mount !== "bottom" &&
+          hasChild(n.id, (c) => c.id.startsWith("bldc_motor") && c.parent?.mount === "pump_bay") &&
+          freeOutputsOf(n).some((o) => o.id === "top"),
+      );
+      if (yokeWithFreeTop) return makeHit(yokeWithFreeTop, "top");
+    }
+  }
+
   const candidateIdsRaw: string[] = [];
   if (preferredParentId && nodeById.has(preferredParentId)) candidateIdsRaw.push(preferredParentId);
-  if (isFrameMountedAccessory || blockId === "drive_wheel") {
+  if (isFrameMountedAccessory || blockId === "hub_motor_y" || blockId === "bldc_motor" || blockId === "gimbal_yoke" || blockId === "gimbal_servo") {
     if (assembly.nodes[0]) candidateIdsRaw.push(assembly.nodes[0].id);
     if (nodeById.has(assembly.output.node)) candidateIdsRaw.push(assembly.output.node);
     for (const n of assembly.nodes) candidateIdsRaw.push(n.id);
@@ -1973,47 +2179,37 @@ export function findBestSnapTarget(
 
   const preferredMounts: readonly string[] = isFrameMountedAccessory
     ? ["neg_y", "pos_x", "neg_x", "pos_y", "motor_mount", "bearing_mount", "top", "bottom"]
-    : blockId === "drive_wheel"
+    : blockId === "hub_motor_y"
       ? ["pos_y_front", "neg_y_front", "pos_y_rear", "neg_y_rear", "pos_y", "neg_y"]
-      : blockId === "rocket_thruster"
-        ? ["bottom", "neg_z", "top"]
-        : blockId === "spindle_head"
-          ? ["carriage_front", "neg_y", "spindle_clamp", "carriage_top", "top", "bottom"]
-          : blockId === "column_4080"
-            ? ["column_seat", "pos_y", "top", "neg_y", "pos_x", "neg_x"]
-            : ["carriage_top", "top", "arm_mount", "top_front", "pos_y", "neg_y", "pos_x", "neg_x"];
+      : blockId === "bldc_motor"
+        ? ["pump_bay", "top_front", "top_rear", "top", "shaft_tip"]
+        : blockId === "gimbal_yoke"
+          ? ["bottom", "top", "top_front", "top_rear"]
+          : blockId === "gimbal_servo"
+            ? ["bottom", "top", "rim_px", "rim_nx", "rim_py", "rim_ny"]
+            : blockId === "laval_nozzle"
+              ? ["bottom", "rim_px", "rim_nx", "rim_py", "rim_ny", "top"]
+              : blockId === "grid_fin"
+                ? ["rim_px", "rim_nx", "rim_py", "rim_ny", "pos_x", "neg_x", "top"]
+                : blockId === "spindle_head"
+                  ? ["carriage_front", "neg_y", "spindle_clamp", "carriage_top", "top", "bottom"]
+                  : blockId === "column_4080"
+                    ? ["column_seat", "pos_y", "top", "neg_y", "pos_x", "neg_x"]
+                    : ["carriage_top", "top", "arm_mount", "top_front", "pos_y", "neg_y", "pos_x", "neg_x"];
 
   for (const parentId of candidateIds) {
     const parentNode = nodeById.get(parentId);
     if (!parentNode) continue;
-    const pkg = pkgByKey.get(parentNode.packageKey);
-    if (pkg?.mechanics?.kind !== "part") continue;
-    const outputs = pkg.mechanics.outputs.filter(
-      (out) =>
-        out.id !== "pos_z" &&
-        out.id !== "neg_z" &&
-        !(out.id === "center" && pkg.mechanics!.kind === "part" && pkg.mechanics!.outputs.length > 1) &&
-        !occupied.has(`${parentId}::${out.id}`),
-    );
+    const outputs = freeOutputsOf(parentNode);
     if (outputs.length === 0) continue;
 
     for (const mountId of preferredMounts) {
       if (outputs.some((o) => o.id === mountId)) {
-        return {
-          parentNodeId: parentId,
-          parentMountId: mountId,
-          parentLabel: parentNode.label ?? parentNode.id,
-          mountLabel: labelForSandboxMount(mountId),
-        };
+        return makeHit(parentNode, mountId);
       }
     }
     const fallbackMount = outputs[0]!.id;
-    return {
-      parentNodeId: parentId,
-      parentMountId: fallbackMount,
-      parentLabel: parentNode.label ?? parentNode.id,
-      mountLabel: labelForSandboxMount(fallbackMount),
-    };
+    return makeHit(parentNode, fallbackMount);
   }
 
   return null;

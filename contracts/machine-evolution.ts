@@ -6,12 +6,16 @@ import {
 } from "./articulated-kinematics";
 import { createFeedbackStockPlayback, type MiloStockState } from "./milo-stock";
 import type { MiloVec3 } from "./milo-motion";
-import { parseMechanicalAssembly, type MechanicalAssembly } from "./mechanical-assembly";
+import { mechanicalSubassembly, parseMechanicalAssembly, type MechanicalAssembly } from "./mechanical-assembly";
 import { primitiveBoundingBoxMm } from "./primitive-parts";
 import {
   createChallengeSolution,
+  createZeroBlankSandbox,
+  matingInputAndExplode,
+  placeRootBlockInSandbox,
   SANDBOX_BLOCKS,
   snapBlockOntoAssembly,
+  updateSandboxNode,
 } from "./sandbox-challenges";
 import {
   buildPrimitivePartPackage,
@@ -1233,6 +1237,61 @@ function makeXyStageModule(): { workspace: TwinWorkspace; assembly: MechanicalAs
   return sol;
 }
 
+function makeEpumpTvcEngineModule(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
+  const zero = createZeroBlankSandbox();
+  const s1 = placeRootBlockInSandbox(zero.workspace, zero.assembly, "gimbal_yoke");
+  const s2 = snapBlockOntoAssembly(s1.workspace, s1.assembly, "bldc_motor", s1.addedNodeId, "pump_bay");
+  const s3 = snapBlockOntoAssembly(s2.workspace, s2.assembly, "pump_impeller", s2.addedNodeId, "shaft_tip");
+  const s4 = snapBlockOntoAssembly(s3.workspace, s3.assembly, "gimbal_servo", s1.addedNodeId, "bottom");
+  const s5 = snapBlockOntoAssembly(s4.workspace, s4.assembly, "laval_nozzle", s4.addedNodeId, "bottom");
+
+  const taggedNodes = s5.assembly.nodes.map((n) =>
+    n.id === s5.addedNodeId && n.thruster
+      ? { ...n, thruster: { ...n.thruster, sourceNodePath: s2.addedNodeId } }
+      : n,
+  );
+  const finalAsm = parseMechanicalAssembly({
+    ...s5.assembly,
+    id: "mod_epump_tvc_engine",
+    name: "电泵矢量火箭发动机总成",
+    nodes: taggedNodes,
+    output: { node: s1.addedNodeId, mount: "top" },
+  });
+  return { workspace: { ...s5.workspace, mechanisms: [finalAsm] }, assembly: finalAsm };
+}
+
+function makeWheelDrivePodModule(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
+  const zero = createZeroBlankSandbox();
+  const s1 = placeRootBlockInSandbox(zero.workspace, zero.assembly, "hub_motor_y");
+  const s2 = snapBlockOntoAssembly(s1.workspace, s1.assembly, "passive_wheel", s1.addedNodeId, "pos_y");
+  const finalAsm = parseMechanicalAssembly({
+    ...s2.assembly,
+    id: "mod_wheel_drive_pod",
+    name: "轮毂电驱车轮总成",
+    output: { node: s1.addedNodeId, mount: "top" },
+  });
+  return { workspace: { ...s2.workspace, mechanisms: [finalAsm] }, assembly: finalAsm };
+}
+
+function makeCoaxialRotorHeadModule(): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {
+  const zero = createZeroBlankSandbox();
+  const s1 = placeRootBlockInSandbox(zero.workspace, zero.assembly, "gimbal_yoke");
+  const m1 = snapBlockOntoAssembly(s1.workspace, s1.assembly, "bldc_motor", s1.addedNodeId, "pump_bay");
+  const b1 = snapBlockOntoAssembly(m1.workspace, m1.assembly, "passive_blade", m1.addedNodeId, "shaft_tip");
+  const m2 = snapBlockOntoAssembly(b1.workspace, b1.assembly, "bldc_motor", s1.addedNodeId, "top");
+  const b2 = snapBlockOntoAssembly(m2.workspace, m2.assembly, "passive_blade", m2.addedNodeId, "shaft_tip");
+  const coupled = updateSandboxNode(b2.workspace, b2.assembly, m2.addedNodeId, {
+    coupledTo: { path: m1.addedNodeId, ratio: -1 },
+  });
+  const finalAsm = parseMechanicalAssembly({
+    ...coupled.assembly,
+    id: "mod_coaxial_rotor_head",
+    name: "共轴反扭双电机旋翼头",
+    output: { node: s1.addedNodeId, mount: "top" },
+  });
+  return { workspace: { ...coupled.workspace, mechanisms: [finalAsm] }, assembly: finalAsm };
+}
+
 export const MODULE_BLUEPRINTS: readonly ModuleBlueprintDef[] = [
   {
     id: "mod_feed_x",
@@ -1261,6 +1320,27 @@ export const MODULE_BLUEPRINTS: readonly ModuleBlueprintDef[] = [
     subtitle: "已校准过圆弧插补的双轴精密滑台总成（直接放上就能载物！）",
     unlockedBy: "comm-2-xy",
     buildFn: makeXyStageModule,
+  },
+  {
+    id: "mod_epump_tvc_engine",
+    name: "📦 电泵矢量火箭发动机总成",
+    subtitle: "5 原子件子总成：承力环 + 高速无刷电机 + 离心泵叶轮 + TVC 舵机 + 纯拉瓦尔喷管",
+    unlockedBy: "comm-4-omni",
+    buildFn: makeEpumpTvcEngineModule,
+  },
+  {
+    id: "mod_wheel_drive_pod",
+    name: "📦 轮毂电驱车轮总成",
+    subtitle: "2 原子件子总成：Y 轴轮毂驱动电机 + 纯高摩擦橡胶轮胎（自动适配左右对称轮距）",
+    unlockedBy: "comm-4-omni",
+    buildFn: makeWheelDrivePodModule,
+  },
+  {
+    id: "mod_coaxial_rotor_head",
+    name: "📦 共轴反扭双电机旋翼头",
+    subtitle: "5 原子件子总成：承力毂 + 双无刷电机 (ratio=-1 反扭抵消) + 上下双气动桨叶",
+    unlockedBy: "comm-4-omni",
+    buildFn: makeCoaxialRotorHeadModule,
   },
 ];
 
@@ -1313,7 +1393,7 @@ export const EVOLUTION_COMMISSIONS: readonly EvolutionCommissionDef[] = [
       "slide_x", "slide_y", "slide_z", "ball_screw",
       "servo_motor", "spindle_head", "limit_switch", "workpiece_block",
     ],
-    unlockedModuleIds: ["mod_feed_x", "mod_feed_y", "mod_feed_z", "mod_xy_stage"],
+    unlockedModuleIds: MODULE_BLUEPRINTS.map((m) => m.id),
     stepsHint: [
       "1. 用已解锁模组或快速样本搭出 X/Y 载物台 + 立柱 Z 轴 + 电主轴",
       "2. 多加 L 型角件或双立柱横梁可大幅降低切削让刀变形 δ",
@@ -1330,7 +1410,7 @@ export const EVOLUTION_COMMISSIONS: readonly EvolutionCommissionDef[] = [
     trialButtonLabel: "⚡ 通电运行空间包络测试",
     rewardText: "全部组件与模块化封装能力全面解锁！自由前往「自由创造与 BOM」创造新物种。",
     unlockedBlockIds: SANDBOX_BLOCKS.map((b) => b.id),
-    unlockedModuleIds: ["mod_feed_x", "mod_feed_y", "mod_feed_z", "mod_xy_stage"],
+    unlockedModuleIds: MODULE_BLUEPRINTS.map((m) => m.id),
     stepsHint: [
       "1. 底座叠加回转 Z → 俯仰 Y → 刚性臂杆 → 俯仰 Y → 臂杆 → 末端抓手",
       "2. 点「⚡ 通电运行空间包络测试」验证 3D 扫掠空间与肩部重力力矩",
@@ -1338,33 +1418,6 @@ export const EVOLUTION_COMMISSIONS: readonly EvolutionCommissionDef[] = [
     ],
   },
 ];
-
-function mountFlushOffset(mountId: string, bounds: readonly [number, number, number]): [number, number, number] {
-  const [dx, dy, dz] = bounds;
-  switch (mountId) {
-    case "bottom":
-    case "neg_z":
-    case "spindle_clamp":
-      return [0, 0, dz / 2];
-    case "pos_x":
-    case "bearing_mount":
-      return [-dx / 2, 0, 0];
-    case "neg_x":
-    case "motor_mount":
-      return [dx / 2, 0, 0];
-    case "pos_y":
-    case "rear_plate_mount":
-      return [0, -dy / 2, 0];
-    case "neg_y":
-    case "carriage_front":
-    case "z_rail_mount":
-      return [0, dy / 2, 0];
-    case "center":
-      return [0, 0, 0];
-    default:
-      return [0, 0, -dz / 2];
-  }
-}
 
 /**
  * 将高阶封装模组（内置模组或用户自创封装模块）完整嫁接到当前机械装配的指定父安装点上。
@@ -1405,6 +1458,21 @@ export function snapModuleOntoAssembly(
   const newRootId = idMap.get(modRoot.id)!;
   const baseStep = parentNode.explodeStep ?? 0;
 
+  // Detect any internal motor+impeller pair inside the module so nozzles pair with their own pod's pump motor
+  const modPumpMotor = modAsm.nodes.find((mn) => {
+    const pkg = modPkgs.get(mn.packageKey);
+    const isHinge = pkg?.mechanics?.kind === "part" && pkg.mechanics.joint.type === "hinge";
+    if (!isHinge) return false;
+    return modAsm.nodes.some((c) => {
+      if (c.parent?.node !== mn.id) return false;
+      const cPkg = modPkgs.get(c.packageKey);
+      const txt = `${c.id} ${c.label ?? ""} ${cPkg?.model ?? ""}`.toLowerCase();
+      return txt.includes("impeller") || txt.includes("叶轮");
+    });
+  });
+  const mappedPumpMotorId = modPumpMotor ? idMap.get(modPumpMotor.id) : undefined;
+  const flipWheelOutwardToNegY = parentMountId.startsWith("neg_y");
+
   const pkgKeyMap = new Map<string, string>();
   for (const mn of modAsm.nodes) {
     const origPkg = modPkgs.get(mn.packageKey);
@@ -1412,14 +1480,32 @@ export function snapModuleOntoAssembly(
     let candidate = origPkg;
     if (mn.id === modRoot.id && origPkg.mechanics?.kind === "part") {
       const bounds = origPkg.primitive ? primitiveBoundingBoxMm(origPkg.primitive) : ([80, 80, 20] as const);
-      const flush = mountFlushOffset(parentMountId, bounds);
+      const { inputPosMm } = matingInputAndExplode(parentMountId, bounds);
       const revBump = `${origPkg.revision}_${parentMountId}`.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "M2";
       candidate = parseDevicePackage({
         ...origPkg,
         revision: revBump,
         mechanics: {
           ...origPkg.mechanics,
-          input: { positionMm: flush, quatWxyz: Q_ID },
+          input: { positionMm: inputPosMm, quatWxyz: origPkg.mechanics.input.quatWxyz },
+        },
+      });
+    } else if (
+      flipWheelOutwardToNegY &&
+      mn.parent?.node === modRoot.id &&
+      mn.parent.mount === "pos_y" &&
+      origPkg.primitive?.finish === "rubber_grip" &&
+      origPkg.mechanics?.kind === "part"
+    ) {
+      const bounds = primitiveBoundingBoxMm(origPkg.primitive);
+      const { inputPosMm } = matingInputAndExplode("neg_y", bounds);
+      const revBump = `${origPkg.revision}_ny`.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "M2";
+      candidate = parseDevicePackage({
+        ...origPkg,
+        revision: revBump,
+        mechanics: {
+          ...origPkg.mechanics,
+          input: { positionMm: inputPosMm, quatWxyz: origPkg.mechanics.input.quatWxyz },
         },
       });
     }
@@ -1435,9 +1521,31 @@ export function snapModuleOntoAssembly(
     const isRoot = mn.id === modRoot.id;
     const remappedParent = isRoot
       ? { node: parentNodeId, mount: parentMountId }
-      : { node: idMap.get(mn.parent!.node)!, mount: mn.parent!.mount };
+      : {
+          node: idMap.get(mn.parent!.node)!,
+          mount:
+            flipWheelOutwardToNegY &&
+            mn.parent?.node === modRoot.id &&
+            mn.parent.mount === "pos_y" &&
+            modPkgs.get(mn.packageKey)?.primitive?.finish === "rubber_grip"
+              ? "neg_y"
+              : mn.parent!.mount,
+        };
     const remappedCoupled = mn.coupledTo
       ? { ...mn.coupledTo, path: idMap.get(mn.coupledTo.path) ?? mn.coupledTo.path }
+      : undefined;
+    const nextThruster = mn.thruster
+      ? {
+          ...mn.thruster,
+          ...(mn.thruster.coupleMode === "pump_speed"
+            ? (() => {
+                const resolvedSource = mn.thruster.sourceNodePath
+                  ? (idMap.get(mn.thruster.sourceNodePath) ?? mn.thruster.sourceNodePath)
+                  : mappedPumpMotorId;
+                return resolvedSource ? { sourceNodePath: resolvedSource } : {};
+              })()
+            : {}),
+        }
       : undefined;
 
     return {
@@ -1447,13 +1555,23 @@ export function snapModuleOntoAssembly(
       parent: remappedParent,
       explodeStep: baseStep + 1 + (mn.explodeStep ?? 0),
       ...(mn.explodeVectorMm ? { explodeVectorMm: mn.explodeVectorMm } : { explodeVectorMm: [0, 0, 55] as [number, number, number] }),
+      ...(mn.jointMode ? { jointMode: mn.jointMode } : {}),
+      ...(nextThruster ? { thruster: nextThruster } : {}),
       ...(remappedCoupled ? { coupledTo: remappedCoupled } : {}),
     };
   });
 
   const mappedOutputId = idMap.get(modAsm.output.node) ?? newRootId;
   const keepSpindleOut = assembly.output.mount === "tool_tip" || assembly.output.node.startsWith("gripper_tip");
-  const nextOutput = keepSpindleOut ? assembly.output : { node: mappedOutputId, mount: modAsm.output.mount };
+  const isPodOrSubMount =
+    parentMountId === "bottom" ||
+    parentMountId === "neg_z" ||
+    parentMountId === "pump_bay" ||
+    parentMountId.startsWith("pos_y_") ||
+    parentMountId.startsWith("neg_y_") ||
+    parentMountId.startsWith("rim_") ||
+    modAsm.nodes.some((n) => Boolean(n.thruster) || modPkgs.get(n.packageKey)?.primitive?.finish === "rubber_grip");
+  const nextOutput = keepSpindleOut || isPodOrSubMount ? assembly.output : { node: mappedOutputId, mount: modAsm.output.mount };
 
   const nextCommands: Record<string, number> = { ...assembly.commands };
   for (const [k, v] of Object.entries(modAsm.commands)) {
@@ -1461,11 +1579,22 @@ export function snapModuleOntoAssembly(
     if (mapped) nextCommands[mapped] = v;
   }
 
+  const nextClosures = [
+    ...(assembly.closures ?? []),
+    ...(modAsm.closures ?? []).map((c) => ({
+      ...c,
+      id: allocId(`cl_${c.id}`),
+      nodeA: idMap.get(c.nodeA) ?? c.nodeA,
+      nodeB: idMap.get(c.nodeB) ?? c.nodeB,
+    })),
+  ];
+
   const nextAssembly = parseMechanicalAssembly({
     ...assembly,
     nodes: [...assembly.nodes, ...graftedNodes],
     output: nextOutput,
     commands: nextCommands,
+    ...(nextClosures.length > 0 ? { closures: nextClosures } : {}),
   });
 
   if (nextWs.mechanisms?.some((m) => m.id === nextAssembly.id)) {
@@ -1510,6 +1639,30 @@ export function encapsulateUserModule(
     workspace: modWs,
     assembly: cleanAsm,
   };
+}
+
+/** 从当前装配中提取指定子树根节点及其全部下级零件，封装为可复用子总成模块 */
+export function encapsulateSubtreeModule(
+  ws: TwinWorkspace,
+  assembly: MechanicalAssembly,
+  rootNodeId: string,
+  customName: string,
+): CustomModuleRecord {
+  const keep = new Set([rootNodeId]);
+  for (const parent of keep) {
+    for (const child of assembly.nodes) {
+      if (child.parent?.node === parent) keep.add(child.id);
+    }
+  }
+  const outInSub = keep.has(assembly.output.node)
+    ? assembly.output
+    : { node: rootNodeId, mount: "top" };
+  const prepared = parseMechanicalAssembly({
+    ...assembly,
+    output: outInSub,
+  });
+  const subAsm = mechanicalSubassembly(prepared, rootNodeId);
+  return encapsulateUserModule(ws, subAsm, customName);
 }
 
 export function createCommissionStarter(commissionId: CommissionId): { workspace: TwinWorkspace; assembly: MechanicalAssembly } {

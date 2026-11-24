@@ -39,6 +39,7 @@ import {
   classifyNodeFunctionalLayer,
   createCommissionReferenceSolution,
   createCommissionStarter,
+  encapsulateSubtreeModule,
   encapsulateUserModule,
   EVOLUTION_COMMISSIONS,
   FUNCTIONAL_LAYERS,
@@ -60,6 +61,7 @@ import {
   deriveAssemblyPhysicsModel,
   evaluateFromZeroLab,
   FROM_ZERO_LABS,
+  type FromZeroLabAction,
   type FromZeroLabId,
 } from "@contracts/physics-explainer";
 import { primitiveBoundingBoxMm, type AxisDir, type PrimitiveFinish } from "@contracts/primitive-parts";
@@ -296,6 +298,7 @@ export default function SandboxBuilderStudio({
   const [showroomRightTab, setShowroomRightTab] = useState<"math" | "layers">("math");
   const [sandboxRightTab, setSandboxRightTab] = useState<"structure" | "math">("structure");
   const [fromZeroLabId, setFromZeroLabId] = useState<FromZeroLabId | "">("");
+  const [labEngineModuleId, setLabEngineModuleId] = useState("");
   const [customCreatorOpen, setCustomCreatorOpen] = useState(false);
   const [lastBuildPillar, setLastBuildPillar] = useState<"commissions" | "sandbox">("sandbox");
   const [physicsSourceHint, setPhysicsSourceHint] = useState<"current" | UniversalArchetypeId | undefined>(undefined);
@@ -686,11 +689,55 @@ export default function SandboxBuilderStudio({
     }
   }
 
+  function resolveModuleData(item: { kind: "module" | "custom"; id: string }) {
+    return item.kind === "module"
+      ? MODULE_BLUEPRINTS.find((m) => m.id === item.id)?.buildFn()
+      : (() => {
+          const cm = customModules.find((c) => c.id === item.id);
+          return cm ? { workspace: cm.workspace, assembly: cm.assembly } : undefined;
+        })();
+  }
+
+  function inferModuleProbeBlockId(modData: { workspace: TwinWorkspace; assembly: MechanicalAssembly }): string {
+    const modPkgs = new Map(modData.workspace.packages.map((p) => [packageKey(p), p]));
+    if (modData.assembly.nodes.some((n) => n.thruster?.coupleMode === "pump_speed" || n.thruster?.coupleMode === "direct")) {
+      return "laval_nozzle";
+    }
+    if (modData.assembly.nodes.some((n) => n.thruster?.coupleMode === "rotor_aero")) {
+      return "bldc_motor";
+    }
+    if (modData.assembly.nodes.some((n) => modPkgs.get(n.packageKey)?.primitive?.finish === "rubber_grip")) {
+      return "hub_motor_y";
+    }
+    return "table_plate";
+  }
+
+  function openModuleForEdit(modData: { workspace: TwinWorkspace; assembly: MechanicalAssembly }) {
+    setError("");
+    setActiveEditorSession((prev) => ({
+      workspace: modData.workspace,
+      assembly: modData.assembly,
+      commands: { ...modData.assembly.commands },
+      dirty: true,
+      history: [...prev.history.slice(-15), { workspace: prev.workspace, assembly: prev.assembly }],
+    }));
+    setSelectedNodeId("");
+    setPreferredParentId("");
+    setArmedItem(null);
+    setFitToken((n) => n + 1);
+    setHoverHint(`已拆开子总成「${modData.assembly.name}」在画布上逐件编辑`);
+  }
+
   function quickAttachItem(item: { kind: "block" | "module" | "custom"; id: string }, overrideParentId?: string) {
     const cur = pillar === "commissions" ? commSession : sandboxSession;
     if (cur.assembly.nodes.length === 0) {
-      if (item.kind !== "block") {
-        setError("空工作台（0 件）下请先放 1 个基础积木或自定义零件作为根坐标系。");
+      if (item.kind === "module" || item.kind === "custom") {
+        const modData = resolveModuleData({ kind: item.kind, id: item.id });
+        if (!modData) {
+          setError(`找不到封装模块：${item.id}`);
+          return;
+        }
+        openModuleForEdit(modData);
         return;
       }
       try {
@@ -713,7 +760,13 @@ export default function SandboxBuilderStudio({
     }
 
     const hintParent = overrideParentId ?? (preferredParentId || undefined);
-    const probeBlockId = item.kind === "block" ? item.id : "table_plate";
+    const probeBlockId =
+      item.kind === "block"
+        ? item.id
+        : (() => {
+            const modData = resolveModuleData({ kind: item.kind, id: item.id });
+            return modData ? inferModuleProbeBlockId(modData) : "table_plate";
+          })();
     const best = findBestSnapTarget(cur.workspace, cur.assembly, probeBlockId, hintParent);
     if (!best) {
       setError("当前没有合适的空闲安装面，请在右栏结构树点 + 选择安装父件。");
@@ -734,6 +787,7 @@ export default function SandboxBuilderStudio({
       history: [...prev.history.slice(-15), { workspace: prev.workspace, assembly: prev.assembly }],
     }));
     setFromZeroLabId(labId);
+    setLabEngineModuleId("");
     setLastBuildPillar("sandbox");
     setPillar("sandbox");
     setArmedItem(null);
@@ -741,6 +795,59 @@ export default function SandboxBuilderStudio({
     setPreferredParentId("");
     setShowTrialVerdict(false);
     setFitToken((n) => n + 1);
+  }
+
+  function handleLabEncapsulateEngine() {
+    setError("");
+    try {
+      const rec = encapsulateUserModule(
+        activeSession.workspace,
+        activeSession.assembly,
+        "自造电泵矢量发动机总成",
+      );
+      setCustomModules((prev) => [rec, ...prev.slice(0, 15)]);
+      setLabEngineModuleId(rec.id);
+      const zero = createZeroBlankSandbox();
+      setSandboxSession((prev) => ({
+        workspace: zero.workspace,
+        assembly: zero.assembly,
+        commands: {},
+        dirty: true,
+        history: [...prev.history.slice(-15), { workspace: prev.workspace, assembly: prev.assembly }],
+      }));
+      setArmedItem(null);
+      setSelectedNodeId("");
+      setPreferredParentId("");
+      setFitToken((n) => n + 1);
+      setSaveFeedback(`已封装「${rec.name}」，现在放贮箱并挂上这台发动机总成！`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "封装发动机总成失败。");
+    }
+  }
+
+  function handleAutoCoupleCounterRotor() {
+    const motors = activeSession.assembly.nodes.filter((n) => {
+      const pkg = activeSession.workspace.packages.find((p) => packageKey(p) === n.packageKey);
+      const j = pkg?.mechanics?.kind === "part" ? pkg.mechanics.joint : undefined;
+      return j?.type === "hinge" && Math.abs(j.axis[2]) > 0.5;
+    });
+    if (motors.length < 2) return;
+    mutateSelectedNode(motors[1]!.id, { coupledTo: { path: motors[0]!.id, ratio: -1 } });
+  }
+
+  function handleLabStepAction(action: FromZeroLabAction) {
+    if (action.kind === "block") {
+      quickAttachItem({ kind: "block", id: action.blockId });
+    } else if (action.kind === "set_free") {
+      mutateAssemblyConfig((asm) => setAssemblyBaseMobility(asm, "free"));
+    } else if (action.kind === "encapsulate_engine") {
+      handleLabEncapsulateEngine();
+    } else if (action.kind === "attach_module") {
+      const isCustom = customModules.some((c) => c.id === action.moduleId);
+      quickAttachItem({ kind: isCustom ? "custom" : "module", id: action.moduleId });
+    } else {
+      handleAutoCoupleCounterRotor();
+    }
   }
 
   function handleRunTrial() {
@@ -1003,9 +1110,12 @@ export default function SandboxBuilderStudio({
   const activeLabEval = useMemo(
     () =>
       pillar === "sandbox" && fromZeroLabId
-        ? evaluateFromZeroLab(fromZeroLabId, activeSession.workspace, activeSession.assembly, physicsModel)
+        ? evaluateFromZeroLab(fromZeroLabId, activeSession.workspace, activeSession.assembly, physicsModel, {
+            engineModuleSaved: Boolean(labEngineModuleId),
+            engineModuleId: labEngineModuleId || undefined,
+          })
         : null,
-    [pillar, fromZeroLabId, activeSession.workspace, activeSession.assembly, physicsModel],
+    [pillar, fromZeroLabId, activeSession.workspace, activeSession.assembly, physicsModel, labEngineModuleId],
   );
 
   const viewportHudText = armedItem
@@ -1883,24 +1993,37 @@ export default function SandboxBuilderStudio({
                         {activeLabEval.steps.filter((s) => s.done).length}/{activeLabEval.steps.length}
                       </span>
                     </div>
+                    {activeLabEval.phaseLabel && (
+                      <div className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                        {activeLabEval.phaseLabel}
+                      </div>
+                    )}
                     <p className="mono rounded bg-background/70 px-1.5 py-0.5 text-sky-300">
                       {activeLabEval.def.goalEquation}
                     </p>
                     <div className="space-y-0.5">
                       {activeLabEval.steps.map((st) => (
                         <div key={st.id} className="flex items-start justify-between gap-1">
-                          <span className={st.done ? "text-emerald-300" : "text-muted-foreground"}>
+                          <span className={st.done ? "text-emerald-300" : "text-muted-foreground"} title={st.hint}>
                             {st.done ? "✓" : "○"} {st.title}
                           </span>
-                          {!st.done && st.suggestedBlockId && (
+                          {!st.done && st.action ? (
                             <button
                               type="button"
-                              className="shrink-0 rounded bg-primary/20 px-1 text-[9px] text-primary hover:bg-primary/30"
+                              className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[9px] font-medium text-primary hover:bg-primary/30"
+                              onClick={() => handleLabStepAction(st.action!)}
+                            >
+                              {st.action.label}
+                            </button>
+                          ) : !st.done && st.suggestedBlockId ? (
+                            <button
+                              type="button"
+                              className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[9px] font-medium text-primary hover:bg-primary/30"
                               onClick={() => quickAttachItem({ kind: "block", id: st.suggestedBlockId! })}
                             >
                               +放置
                             </button>
-                          )}
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -2074,30 +2197,59 @@ export default function SandboxBuilderStudio({
                     {/* Custom & Builtin Modules */}
                     {(customModules.length > 0 || paletteFilter === "all") && (
                       <div className="space-y-1">
-                        <p className="text-[10px] font-semibold text-sky-300">已封装可复用模块（双击直装）</p>
+                        <p className="text-[10px] font-semibold text-sky-300">已封装可复用子总成（双击挂载 · 点拆看内部电机与原子件）</p>
                         {customModules.map((cm) => (
-                          <button
+                          <div
                             key={cm.id}
-                            type="button"
-                            onClick={() => setArmedItem({ kind: "custom", id: cm.id })}
-                            onDoubleClick={() => quickAttachItem({ kind: "custom", id: cm.id })}
-                            className="flex w-full items-center justify-between rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-left text-[11px] hover:border-emerald-400"
+                            className="flex w-full items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-1 text-[11px] hover:border-emerald-400"
                           >
-                            <span className="truncate font-medium">{cm.name}</span>
-                            <span className="text-[10px] text-emerald-300">{cm.nodeCount}件</span>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (activeSession.assembly.nodes.length === 0) quickAttachItem({ kind: "custom", id: cm.id });
+                                else setArmedItem({ kind: "custom", id: cm.id });
+                              }}
+                              onDoubleClick={() => quickAttachItem({ kind: "custom", id: cm.id })}
+                              className="flex min-w-0 flex-1 items-center justify-between gap-1 text-left"
+                            >
+                              <span className="truncate font-medium">{cm.name}</span>
+                              <span className="shrink-0 text-[10px] text-emerald-300">{cm.nodeCount}件</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="shrink-0 rounded border border-emerald-400/40 px-1 py-0.5 text-[9px] text-emerald-200 hover:bg-emerald-500/20"
+                              onClick={() => openModuleForEdit({ workspace: cm.workspace, assembly: cm.assembly })}
+                            >
+                              拆看
+                            </button>
+                          </div>
                         ))}
                         {MODULE_BLUEPRINTS.map((m) => (
-                          <button
+                          <div
                             key={m.id}
-                            type="button"
-                            onClick={() => setArmedItem({ kind: "module", id: m.id })}
-                            onDoubleClick={() => quickAttachItem({ kind: "module", id: m.id })}
-                            className="flex w-full items-center justify-between rounded border border-sky-500/35 bg-sky-500/10 px-2 py-1 text-left text-[11px] hover:border-sky-400"
+                            className="flex w-full items-center gap-1 rounded border border-sky-500/35 bg-sky-500/10 px-1.5 py-1 text-[11px] hover:border-sky-400"
                           >
-                            <span className="truncate font-medium">{m.name}</span>
-                            <span className="text-[10px] text-sky-300">总成</span>
-                          </button>
+                            <button
+                              type="button"
+                              title={m.subtitle}
+                              onClick={() => {
+                                if (activeSession.assembly.nodes.length === 0) quickAttachItem({ kind: "module", id: m.id });
+                                else setArmedItem({ kind: "module", id: m.id });
+                              }}
+                              onDoubleClick={() => quickAttachItem({ kind: "module", id: m.id })}
+                              className="flex min-w-0 flex-1 items-center justify-between gap-1 text-left"
+                            >
+                              <span className="truncate font-medium">{m.name}</span>
+                              <span className="shrink-0 text-[10px] text-sky-300">总成</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="shrink-0 rounded border border-sky-400/40 px-1 py-0.5 text-[9px] text-sky-200 hover:bg-sky-500/20"
+                              onClick={() => openModuleForEdit(m.buildFn())}
+                            >
+                              拆看
+                            </button>
+                          </div>
                         ))}
                       </div>
                     )}
@@ -2901,6 +3053,32 @@ export default function SandboxBuilderStudio({
                       <option key={v.id} value={v.id}>换为 {v.label}</option>
                     ))}
                   </select>
+
+                  {pillar === "sandbox" &&
+                    activeSession.assembly.nodes.some((n) => n.parent?.node === selectedRawNode.id) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 w-full text-[11px]"
+                        onClick={() => {
+                          setError("");
+                          try {
+                            const rec = encapsulateSubtreeModule(
+                              activeSession.workspace,
+                              activeSession.assembly,
+                              selectedRawNode.id,
+                              `${selectedRawNode.label ?? selectedRawNode.id} 子总成`,
+                            );
+                            setCustomModules((prev) => [rec, ...prev.slice(0, 15)]);
+                            setSaveFeedback(`已将分支封装为可复用模块「${rec.name}」`);
+                          } catch (cause) {
+                            setError(cause instanceof Error ? cause.message : "封装分支子总成失败。");
+                          }
+                        }}
+                      >
+                        <Package /> 封装此组件及下级为可复用模块
+                      </Button>
+                    )}
 
                   <Button size="sm" variant="destructive" className="h-7 w-full text-[11px]" onClick={() => deleteNodeById(selectedRawNode.id)}>
                     <Trash2 /> {selectedRawNode.parent !== null ? "拆掉此积木及下级子件" : "拆掉根部件回到 0 件空白台"}

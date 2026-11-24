@@ -53,6 +53,16 @@ function observe(d: MjData, point: { kind: "body" | "site"; index: number }) {
   return vector(point.kind === "body" ? d.xpos : d.site_xpos, 3 * point.index);
 }
 
+interface MotorCouplingBinding {
+  readonly kindCode: number;
+  readonly siteId: number;
+  readonly bodyId: number;
+  readonly dofAdr: number;
+  readonly maxForceN: number;
+  readonly ratedOmega: number;
+  readonly dragArmM: number;
+}
+
 // 调用方拥有 model，每次预览或运行使用独立的 mjData。
 export function createImportedPhysics(mj: MainModule, model: MjModel) {
   const warnings: string[] = [];
@@ -62,6 +72,30 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
   const dt = options.timestep, gravity = vector(options.gravity, 0);
   options.delete();
   if (!Number.isFinite(dt) || dt <= 0 || dt > IMPORTED_PHYSICS_LIMITS.maxDurationS) throw new Error("模型积分步长超出本地仿真的时间范围。");
+
+  const motorCouplings: MotorCouplingBinding[] = [];
+  for (let i = 0; i < model.nnumeric; i++) {
+    const adrName = model.name_numericadr[i];
+    if (adrName < 0 || !model.names[adrName]) continue;
+    const rawName = mj.mj_id2name(model, mj.mjtObj.mjOBJ_NUMERIC.value, i);
+    if (!rawName.startsWith("gy_mc__")) continue;
+    const parts = rawName.split("__");
+    if (parts.length !== 4 || model.numeric_size[i] < 4) continue;
+    const siteId = mj.mj_name2id(model, mj.mjtObj.mjOBJ_SITE.value, parts[1]!);
+    const bodyId = mj.mj_name2id(model, mj.mjtObj.mjOBJ_BODY.value, parts[2]!);
+    const jointId = mj.mj_name2id(model, mj.mjtObj.mjOBJ_JOINT.value, parts[3]!);
+    if (siteId < 0 || bodyId < 0 || jointId < 0) continue;
+    const dAdr = model.numeric_adr[i];
+    const dofAdr = model.jnt_dofadr[jointId];
+    const kindCode = model.numeric_data[dAdr];
+    const maxForceN = model.numeric_data[dAdr + 1];
+    const ratedOmega = model.numeric_data[dAdr + 2];
+    const dragArmM = model.numeric_data[dAdr + 3];
+    if (Number.isFinite(maxForceN) && Number.isFinite(ratedOmega) && ratedOmega > 0 && dofAdr >= 0) {
+      motorCouplings.push({ kindCode, siteId, bodyId, dofAdr, maxForceN, ratedOmega, dragArmM });
+    }
+  }
+  const coupledBodyIds = [...new Set(motorCouplings.map((c) => c.bodyId))];
   const keyframes = new Map<string, number>();
   for (let id = 0; id < model.nkey; id++) {
     const address = model.name_keyadr[id];
@@ -171,6 +205,55 @@ export function createImportedPhysics(mj: MainModule, model: MjModel) {
             ctrl.set(from);
           }
         } else ctrl.set(controls);
+        if (motorCouplings.length > 0) {
+          mj.mj_kinematics(model, data);
+          mj.mj_comPos(model, data);
+          mj.mj_fwdVelocity(model, data);
+          const xfrc: Float64Array = data.xfrc_applied;
+          const siteXmat: Float64Array = data.site_xmat;
+          const siteXpos: Float64Array = data.site_xpos;
+          const xipos: Float64Array = data.xipos;
+          const cvel: Float64Array = data.cvel;
+          const qvel: Float64Array = data.qvel;
+          for (const bId of coupledBodyIds) {
+            const off = 6 * bId;
+            xfrc[off] = 0; xfrc[off + 1] = 0; xfrc[off + 2] = 0;
+            xfrc[off + 3] = 0; xfrc[off + 4] = 0; xfrc[off + 5] = 0;
+          }
+          for (const mc of motorCouplings) {
+            const mOff = 9 * mc.siteId;
+            const dx = siteXmat[mOff + 2]!;
+            const dy = siteXmat[mOff + 5]!;
+            const dz = siteXmat[mOff + 8]!;
+            // Pump turbopumps depend on motor shaft angular speed (qvel); rotor blades depend on world airspeed angular velocity around rotor thrust axis (cvel · dir)
+            const cOff = 6 * mc.bodyId;
+            const omega =
+              mc.kindCode === 2
+                ? cvel[cOff]! * dx + cvel[cOff + 1]! * dy + cvel[cOff + 2]! * dz
+                : (qvel[mc.dofAdr] ?? 0);
+            const ratio = Math.abs(omega) / mc.ratedOmega;
+            const scale = mc.kindCode === 2 ? Math.min(1.25, ratio * ratio) : Math.min(1.25, ratio);
+            const thrustN = mc.maxForceN * scale;
+            if (thrustN <= 1e-6) continue;
+            const fx = thrustN * dx;
+            const fy = thrustN * dy;
+            const fz = thrustN * dz;
+            const sOff = 3 * mc.siteId;
+            const bComOff = 3 * mc.bodyId;
+            const rx = siteXpos[sOff]! - xipos[bComOff]!;
+            const ry = siteXpos[sOff + 1]! - xipos[bComOff + 1]!;
+            const rz = siteXpos[sOff + 2]! - xipos[bComOff + 2]!;
+            const dragSign = Math.abs(omega) > 1e-5 ? -Math.sign(omega) : 0;
+            const dragMag = dragSign * mc.dragArmM * thrustN;
+            const fOff = 6 * mc.bodyId;
+            xfrc[fOff] += fx;
+            xfrc[fOff + 1] += fy;
+            xfrc[fOff + 2] += fz;
+            xfrc[fOff + 3] += ry * fz - rz * fy + dragMag * dx;
+            xfrc[fOff + 4] += rz * fx - rx * fz + dragMag * dy;
+            xfrc[fOff + 5] += rx * fy - ry * fx + dragMag * dz;
+          }
+        }
         mj.mj_step(model, data);
         if (step % stride === 0 || step === steps) {
           if (Math.abs(data.time - step * dt) > 1e-7) throw new Error("MuJoCo 因数值异常复位，请检查模型或控制输入。");

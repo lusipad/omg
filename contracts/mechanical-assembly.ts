@@ -48,7 +48,32 @@ export function mechanicalSubassembly(raw: MechanicalAssembly, rootId: string): 
       .filter((n) => keep.has(n.id))
       .map((n) => {
         const dropCoupling = n.coupledTo && !keep.has(n.coupledTo.path.split("/")[0]);
-        const nextNode = dropCoupling ? { id: n.id, packageKey: n.packageKey, parent: n.parent, ...(n.materialId ? { materialId: n.materialId } : {}), ...(n.label ? { label: n.label } : {}), ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}), ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}), ...(n.jointMode ? { jointMode: n.jointMode } : {}), ...(n.thruster ? { thruster: n.thruster } : {}) } : n;
+        const dropThrusterSource = n.thruster?.sourceNodePath && !keep.has(n.thruster.sourceNodePath.split("/")[0]);
+        const nextThruster = n.thruster
+          ? dropThrusterSource
+            ? {
+                maxForceN: n.thruster.maxForceN,
+                ...(n.thruster.direction ? { direction: n.thruster.direction } : {}),
+                ...(n.thruster.label ? { label: n.thruster.label } : {}),
+                ...(n.thruster.coupleMode ? { coupleMode: n.thruster.coupleMode } : {}),
+                ...(n.thruster.ratedOmegaRadS !== undefined ? { ratedOmegaRadS: n.thruster.ratedOmegaRadS } : {}),
+              }
+            : n.thruster
+          : undefined;
+        const nextNode = (dropCoupling || dropThrusterSource)
+          ? {
+              id: n.id,
+              packageKey: n.packageKey,
+              parent: n.parent,
+              ...(n.materialId ? { materialId: n.materialId } : {}),
+              ...(n.label ? { label: n.label } : {}),
+              ...(n.explodeStep !== undefined ? { explodeStep: n.explodeStep } : {}),
+              ...(n.explodeVectorMm ? { explodeVectorMm: n.explodeVectorMm } : {}),
+              ...(n.jointMode ? { jointMode: n.jointMode } : {}),
+              ...(nextThruster ? { thruster: nextThruster } : {}),
+              ...(!dropCoupling && n.coupledTo ? { coupledTo: n.coupledTo } : {}),
+            }
+          : n;
         return nextNode.id === rootId ? { ...nextNode, parent: null } : nextNode;
       }),
     commands: Object.fromEntries(Object.entries(a.commands).filter(([path]) => keep.has(path.split("/")[0]))),

@@ -34,6 +34,9 @@ const nodes = z.array(z.strictObject({
     maxForceN: z.number().finite().positive().max(50_000),
     direction: vec3("请给出推力在部件本地坐标中的方向").refine(nonzero, "推力方向不能为零").optional(),
     label: z.string().trim().min(1).max(80).optional(),
+    coupleMode: z.enum(["direct", "pump_speed", "rotor_aero"]).optional(),
+    sourceNodePath: z.string().trim().min(1).max(240).optional(),
+    ratedOmegaRadS: z.number().finite().positive().max(10_000).optional(),
   }).optional(),
   coupledTo: z.strictObject({
     path: z.string().trim().min(1).max(240),

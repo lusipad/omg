@@ -669,6 +669,31 @@ export default function MujocoSandboxArena({
               {compilation.error}
             </p>
           )}
+
+          {compilation.ok && compilation.result.motorCouplings.length > 0 && (
+            <div className="space-y-1 pt-0.5 text-[10px]">
+              {compilation.result.motorCouplings.map((mc) => (
+                <div
+                  key={`${mc.kind}_${mc.effectorPath}`}
+                  className={`rounded border px-2 py-1 ${
+                    mc.active
+                      ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-200"
+                      : "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                  }`}
+                >
+                  {mc.active ? (
+                    <span>
+                      ⚡ {mc.motorLabel} → {mc.effectorLabel}（{mc.kind === "pump_speed" ? "F ∝ ω_pump" : "F ∝ ω²"} · 上限 {mc.maxForceN} N）
+                    </span>
+                  ) : (
+                    <span>
+                      ⚠️ {mc.effectorLabel} 当前 0 N：{mc.reason}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Measured Contact & Motion Telemetry */}
