@@ -2,11 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
-  Box,
   Code,
   Download,
-  ExternalLink,
-  Layers,
   Pause,
   Play,
   RotateCcw,
@@ -56,7 +53,12 @@ interface LoadedSimState {
   readonly runUsed: ImportedRunSettings;
 }
 
-const fmtMm = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)} mm`;
+function fmtDisplacement(mm: number): string {
+  const sign = mm >= 0 ? "+" : "-";
+  const abs = Math.abs(mm);
+  if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(2)} m`;
+  return `${sign}${abs.toFixed(1)} mm`;
+}
 
 export default function MujocoSandboxArena({
   hostWorkspace,
@@ -309,93 +311,53 @@ export default function MujocoSandboxArena({
     sourceChoice !== "current" ? UNIVERSAL_ARCHETYPES.find((a) => a.id === sourceChoice) : undefined;
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden max-lg:grid-rows-[46dvh_auto_minmax(0,1fr)] lg:grid-cols-[19rem_minmax(0,1fr)_18.5rem]">
-      {/* Left Pane: Subject Selection, Arena & Controls */}
+    <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden max-md:grid-rows-[44dvh_auto_minmax(0,1fr)] md:grid-cols-[16.5rem_minmax(0,1fr)_16.5rem] xl:grid-cols-[18.5rem_minmax(0,1fr)_18.5rem]">
+      {/* Left Pane: Compact Subject Selector, Environment & Immediate Controls */}
       <aside
         aria-label="多体仿真对象与环境控制"
-        className="surface flex min-h-0 flex-col gap-2 overflow-y-auto p-2.5 text-xs max-lg:row-start-3 lg:col-start-1 lg:row-start-1"
+        className="surface flex min-h-0 flex-col gap-3 overflow-y-auto p-3 text-xs max-md:row-start-2 md:col-start-1 md:row-start-1"
       >
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between gap-1">
-            <h2 className="font-semibold text-foreground">仿真装配模型</h2>
-            <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-              MuJoCo 刚体求解
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="arena-model-select" className="font-semibold text-foreground">
+              仿真装配模型
+            </label>
+            <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+              MuJoCo 求解
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => handleSelectSource("current")}
-            className={`w-full rounded-md border p-2 text-left transition-colors ${
-              sourceChoice === "current"
-                ? "border-primary bg-primary/15 ring-1 ring-primary"
-                : "bg-background/50 hover:border-primary/40"
-            }`}
+          <select
+            id="arena-model-select"
+            aria-label="切换仿真装配模型"
+            className="h-8 w-full rounded-md border bg-background px-2 text-xs text-foreground"
+            value={sourceChoice}
+            onChange={(e) => handleSelectSource(e.target.value as ArenaSourceChoice)}
           >
-            <div className="flex items-center justify-between gap-1">
-              <span className="truncate font-semibold text-foreground">
-                当前装配 · {currentAssembly.name}
-              </span>
-              <span className="shrink-0 rounded bg-muted px-1 text-[9px] text-muted-foreground">
-                {currentAssembly.nodes.length}件
-              </span>
-            </div>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">
-              将当前拼装构型编译为刚体模型并在重力场中求解
-            </p>
-          </button>
-
-          {(
-            [
-              {
-                category: "flagship" as const,
-                heading: "空天载具与建筑结构",
-                badgeClass: "bg-amber-500/15 text-amber-300",
-              },
-              {
-                category: "mechanism" as const,
-                heading: "移动底盘与典型机构",
-                badgeClass: "bg-sky-500/15 text-sky-300",
-              },
-            ] as const
-          ).map((group) => (
-            <div key={group.category} className="space-y-1 pt-1">
-              <p className="text-[10px] font-semibold text-muted-foreground">{group.heading}</p>
-              <div className="space-y-1">
-                {UNIVERSAL_ARCHETYPES.filter((a) => a.category === group.category).map((item) => {
-                  const selected = sourceChoice === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleSelectSource(item.id)}
-                      className={`w-full rounded-md border p-2 text-left transition-colors ${
-                        selected
-                          ? "border-primary bg-primary/15 ring-1 ring-primary"
-                          : "bg-background/50 hover:border-primary/40"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="truncate font-semibold text-foreground">{item.title}</span>
-                        <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] ${group.badgeClass}`}>
-                          {item.badge}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-muted-foreground">
-                        {item.subtitle}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+            <option value="current">
+              当前拼装 · {currentAssembly.name} ({currentAssembly.nodes.length}件)
+            </option>
+            <optgroup label="空天载具与建筑结构">
+              {UNIVERSAL_ARCHETYPES.filter((a) => a.category === "flagship").map((item) => (
+                <option key={item.id} value={item.id}>
+                  [{item.badge}] {item.title}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="移动底盘与典型机构">
+              {UNIVERSAL_ARCHETYPES.filter((a) => a.category === "mechanism").map((item) => (
+                <option key={item.id} value={item.id}>
+                  [{item.badge}] {item.title}
+                </option>
+              ))}
+            </optgroup>
+          </select>
 
           {activeInput.isArchetype && (
             <Button
               size="sm"
-              variant="secondary"
-              className="h-7 w-full text-[11px]"
+              variant="outline"
+              className="h-8 w-full text-xs"
               onClick={() =>
                 onLoadIntoSandbox(
                   activeInput.workspace,
@@ -404,21 +366,21 @@ export default function MujocoSandboxArena({
                 )
               }
             >
-              <Wrench /> 送入自由创造台拆改零件
+              <Wrench /> 送入自由创造台拆改
             </Button>
           )}
         </div>
 
         {/* Physical World & Root Mobility Settings */}
-        <div className="space-y-2 border-t pt-2">
+        <div className="space-y-2.5 border-t pt-3">
           <div className="space-y-1">
             <label htmlFor="arena-select" className="font-semibold text-foreground">
-              试炼物理场地（重力 g = -9.81 m/s²）
+              试炼物理场地（g = -9.81 m/s²）
             </label>
             <select
               id="arena-select"
               aria-label="选择试炼物理场地"
-              className="h-7 w-full rounded border bg-background px-1.5 text-[11px]"
+              className="h-8 w-full rounded-md border bg-background px-2 text-xs"
               value={effectiveArena}
               onChange={(e) => setArenaOverride(e.target.value as ArenaPresetId)}
             >
@@ -428,67 +390,57 @@ export default function MujocoSandboxArena({
                 </option>
               ))}
             </select>
-            <p className="text-[10px] leading-snug text-muted-foreground">
-              {ARENA_PRESETS.find((a) => a.id === effectiveArena)?.summary}
-            </p>
           </div>
 
-          <div className="space-y-1">
-            <span className="font-semibold text-foreground">底座刚体安装约束</span>
-            <div className="grid grid-cols-2 gap-1">
+          <div className="space-y-1.5">
+            <span className="font-semibold text-foreground">底座约束</span>
+            <div className="grid grid-cols-2 gap-1.5">
               <Button
                 size="sm"
                 variant={effectiveMobility === "fixed" ? "default" : "outline"}
-                className="h-7 text-[11px]"
+                className="h-8 text-xs"
                 onClick={() => setMobilityOverride("fixed")}
               >
-                🔩 固定螺栓基座
+                🔩 固定基座
               </Button>
               <Button
                 size="sm"
                 variant={effectiveMobility === "free" ? "default" : "outline"}
-                className="h-7 text-[11px]"
+                className="h-8 text-xs"
                 onClick={() => setMobilityOverride("free")}
               >
-                🛞 6-DOF 自由底盘
+                🛞 6-DOF 自由
               </Button>
             </div>
           </div>
         </div>
 
-        {/* Actuator Sliders & Script Re-run */}
+        {/* Actuator Sliders & Script Re-run (Above the Fold!) */}
         {compilation.ok && compilation.result.actuatorMeta.length > 0 && (
-          <div className="space-y-1.5 border-t pt-2">
-            <div className="flex items-center justify-between gap-1">
+          <div className="space-y-2 border-t pt-3">
+            <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-foreground">
-                主动执行器控制 ({compilation.result.actuatorMeta.length})
+                电机与执行器 ({compilation.result.actuatorMeta.length})
               </span>
               <button
                 type="button"
-                className="text-[10px] text-primary hover:underline"
+                className="text-[11px] text-primary hover:underline"
                 onClick={() => {
                   setManualCtrls(null);
                   void runWithSettings(compilation.result.recommendedRun);
                 }}
               >
-                恢复推荐动作剧本
+                恢复推荐剧本
               </button>
             </div>
 
             {compilation.result.recommendedRun.sequence && manualCtrls === null && (
-              <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-1.5 text-[10px] text-emerald-200">
-                <div className="font-medium">当前正运行多阶段剧本：</div>
-                <div className="mt-0.5 flex flex-wrap gap-1">
-                  {compilation.result.recommendedRun.sequence.map((st, idx) => (
-                    <span key={idx} className="rounded bg-background/50 px-1 py-0.5">
-                      {st.timeS}s {st.label ?? `阶段${idx + 1}`}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              <p className="text-[11px] text-emerald-300">
+                正运行 {compilation.result.recommendedRun.sequence.length} 阶段推荐剧本 · 拖动滑块接管控制
+              </p>
             )}
 
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {compilation.result.actuatorMeta.map((act, idx) => {
                 const val = sliderValues[idx] ?? 0;
                 const displayVal =
@@ -500,10 +452,10 @@ export default function MujocoSandboxArena({
                         ? `${val.toFixed(1)} N`
                         : `${val.toFixed(1)} rad/s`;
                 return (
-                  <label key={act.name} className="block space-y-0.5 rounded border bg-background/60 p-1.5">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="truncate text-[11px] font-medium">{act.label}</span>
-                      <span className="mono shrink-0 text-[10px] text-primary">{displayVal}</span>
+                  <label key={act.name} className="block space-y-1 rounded-md border bg-background/60 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-medium">{act.label}</span>
+                      <span className="mono shrink-0 text-[11px] text-primary">{displayVal}</span>
                     </div>
                     <input
                       type="range"
@@ -528,7 +480,7 @@ export default function MujocoSandboxArena({
 
             <Button
               size="sm"
-              className="h-7 w-full text-[11px]"
+              className="h-8 w-full text-xs"
               disabled={status === "loading"}
               onClick={() =>
                 void runWithSettings({
@@ -541,14 +493,14 @@ export default function MujocoSandboxArena({
                 })
               }
             >
-              <Play /> 按当前滑块目标值重算物理轨迹
+              <Play /> 按当前滑块重算轨迹
             </Button>
           </div>
         )}
       </aside>
 
       {/* Center Pane: Live MuJoCo WASM 3D Viewport + Timeline */}
-      <main className="surface relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2.5 max-lg:row-start-1 lg:col-start-2 lg:row-start-1">
+      <main className="surface relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2.5 max-md:row-start-1 md:col-start-2 md:row-start-1">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-foreground">
@@ -627,183 +579,154 @@ export default function MujocoSandboxArena({
         )}
       </main>
 
-      {/* Right Pane: Physics Telemetry, Structural Compile Stats & Pro Hand-off */}
+      {/* Right Pane: Hero Telemetry, Causal Chain, Physics Explanation & MJCF Inspect */}
       <aside
         aria-label="MuJoCo 动力学遥测与专业台通道"
-        className="surface flex min-h-0 flex-col gap-2.5 overflow-y-auto p-2.5 text-xs max-lg:row-start-3 lg:col-start-3 lg:row-start-1"
+        className="surface flex min-h-0 flex-col gap-3 overflow-y-auto p-3 text-xs max-md:row-start-3 md:col-start-3 md:row-start-1"
       >
-        <div className="space-y-1.5">
-          <h2 className="flex items-center gap-1.5 font-semibold text-foreground">
-            <Activity className="size-3.5 text-primary" />
-            MJCF 物理编译规模
-          </h2>
-          {compilation.ok ? (
-            <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-              <div className="rounded border bg-background/60 p-2">
-                <div className="text-[10px] text-muted-foreground">刚体 / 运动自由度</div>
-                <div className="mono font-semibold text-foreground">
-                  {compilation.result.stats.bodyCount} 体 · {compilation.result.stats.jointCount} 副
-                </div>
-              </div>
-              <div className="rounded border bg-background/60 p-2">
-                <div className="text-[10px] text-muted-foreground">总估算质量</div>
-                <div className="mono font-semibold text-foreground">
-                  {compilation.result.stats.totalMassKg.toFixed(2)} kg
-                </div>
-              </div>
-              <div className="rounded border bg-background/60 p-2">
-                <div className="text-[10px] text-muted-foreground">闭环 / 耦合约束</div>
-                <div className="mono font-semibold text-sky-300">
-                  {compilation.result.stats.equalityCount} 条 equality
-                </div>
-              </div>
-              <div className="rounded border bg-background/60 p-2">
-                <div className="text-[10px] text-muted-foreground">空间弹簧阻尼</div>
-                <div className="mono font-semibold text-emerald-300">
-                  {compilation.result.stats.tendonCount} 组 tendon
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="rounded border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-1.5 font-semibold text-foreground">
+              <Activity className="size-3.5 text-primary" />
+              仿真运动实测
+            </h2>
+            {telemetry && (
+              <span className="mono text-[11px] text-muted-foreground">{telemetry.durationS.toFixed(2)}s</span>
+            )}
+          </div>
+
+          {!compilation.ok ? (
+            <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-xs text-destructive">
               {compilation.error}
             </p>
-          )}
+          ) : (
+            <div className="space-y-2">
+              {telemetry ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-md border bg-background/60 p-2.5">
+                      <div className="text-[11px] text-muted-foreground">净高度变化 ΔZ</div>
+                      <div className="mono mt-0.5 text-sm font-bold text-sky-300">
+                        {fmtDisplacement(telemetry.deltaZMm)}
+                      </div>
+                    </div>
+                    <div className="rounded-md border bg-background/60 p-2.5">
+                      <div className="text-[11px] text-muted-foreground">水平位移 ΔX</div>
+                      <div className="mono mt-0.5 text-sm font-bold text-emerald-300">
+                        {fmtDisplacement(telemetry.deltaXMm)}
+                      </div>
+                    </div>
+                  </div>
 
-          {compilation.ok && compilation.result.motorCouplings.length > 0 && (
-            <div className="space-y-1 pt-0.5 text-[10px]">
-              {compilation.result.motorCouplings.map((mc) => (
-                <div
-                  key={`${mc.kind}_${mc.effectorPath}`}
-                  className={`rounded border px-2 py-1 ${
-                    mc.active
-                      ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-200"
-                      : "border-amber-500/40 bg-amber-500/10 text-amber-200"
-                  }`}
-                >
-                  {mc.active ? (
-                    <span>
-                      ⚡ {mc.motorLabel} → {mc.effectorLabel}（{mc.kind === "pump_speed" ? "F ∝ ω_pump" : "F ∝ ω²"} · 上限 {mc.maxForceN} N）
-                    </span>
-                  ) : (
-                    <span>
-                      ⚠️ {mc.effectorLabel} 当前 0 N：{mc.reason}
-                    </span>
+                  {telemetry.payloadLiftMm !== null && (
+                    <div
+                      className={`rounded-md border px-2.5 py-1.5 text-xs ${
+                        telemetry.payloadLiftMm > 35
+                          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                          : "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                      }`}
+                    >
+                      {effectiveArena === "grasp_pedestal"
+                        ? telemetry.payloadLiftMm > 35
+                          ? `物块静摩擦夹持抬起 ${fmtDisplacement(telemetry.payloadLiftMm)}`
+                          : `物块尚未稳定抬离（${fmtDisplacement(telemetry.payloadLiftMm)}）`
+                        : `物块水平推距 ${fmtDisplacement(telemetry.payloadSlideMm ?? 0)}`}
+                    </div>
                   )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Measured Contact & Motion Telemetry */}
-        <div className="space-y-1.5 border-t pt-2">
-          <h2 className="flex items-center gap-1.5 font-semibold text-foreground">
-            <Layers className="size-3.5 text-primary" />
-            真实刚体积分实测结果
-          </h2>
-          {telemetry ? (
-            <div className="space-y-1.5 text-[11px]">
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className="rounded border bg-background/60 p-2">
-                  <div className="text-[10px] text-muted-foreground">末端/车体 ΔX</div>
-                  <div className="mono font-semibold text-emerald-300">{fmtMm(telemetry.deltaXMm)}</div>
-                </div>
-                <div className="rounded border bg-background/60 p-2">
-                  <div className="text-[10px] text-muted-foreground">净高度变化 ΔZ</div>
-                  <div className="mono font-semibold text-sky-300">{fmtMm(telemetry.deltaZMm)}</div>
-                </div>
-              </div>
+                  {effectiveArena === "flat_ramp" && effectiveMobility === "free" && (
+                    <div
+                      className={`rounded-md border px-2.5 py-1.5 text-xs ${
+                        telemetry.deltaXMm > 350 && telemetry.deltaZMm > 30
+                          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                          : "border-border bg-background/60 text-muted-foreground"
+                      }`}
+                    >
+                      {telemetry.deltaXMm > 350 && telemetry.deltaZMm > 30
+                        ? "电驱四轮沿 10° 坡面摩擦爬升"
+                        : "可通过左侧开启轮毂电机驱动观察爬坡。"}
+                    </div>
+                  )}
 
-              {telemetry.payloadLiftMm !== null && (
-                <div
-                  className={`space-y-1 rounded border p-2 ${
-                    telemetry.payloadLiftMm > 35
-                      ? "border-emerald-500/40 bg-emerald-500/10"
-                      : "border-amber-500/40 bg-amber-500/10"
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-semibold">
-                    <span>被抓 / 被推物块轨迹</span>
-                    <span className="mono">{fmtMm(telemetry.payloadLiftMm)}</span>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    {effectiveArena === "grasp_pedestal"
-                      ? telemetry.payloadLiftMm > 35
-                        ? "✅ 纯接触静摩擦力牢牢夹紧 80g 自由物块并抬离台面"
-                        : "⚠️ 物块尚未稳定抬离台面，可调整夹指对夹行程或摩擦材质"
-                      : `物块水平推距 ${fmtMm(telemetry.payloadSlideMm ?? 0)}`}
-                  </p>
+                  {effectiveArena === "launch_complex" && effectiveMobility === "free" && (
+                    <div
+                      className={`rounded-md border px-2.5 py-1.5 text-xs ${
+                        telemetry.peakZMm > 350
+                          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                          : "border-border bg-background/60 text-muted-foreground"
+                      }`}
+                    >
+                      {Math.abs(telemetry.peakZMm - telemetry.deltaZMm) > 100
+                        ? `峰值爬升 +${(telemetry.peakZMm / 1000).toFixed(2)} m · `
+                        : ""}
+                      {telemetry.peakZMm > 350 ? "电机推力克服重力离台升空" : "推力尚不足以克服自重"}
+                    </div>
+                  )}
+
+                  {effectiveMobility === "fixed" &&
+                    compilation.result.actuatorMeta.filter((a) => a.mode === "velocity").length >= 2 && (
+                      <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-200">
+                        {compilation.result.actuatorMeta.length} 组回转副按设定角速度同步运行
+                      </div>
+                    )}
+                </>
+              ) : (
+                <p className="rounded-md border bg-background/50 p-2.5 text-xs text-muted-foreground">
+                  等待仿真积分输出实时位移数据…
+                </p>
+              )}
+
+              {compilation.result.motorCouplings.length > 0 && (
+                <div className="space-y-1.5">
+                  {compilation.result.motorCouplings.map((mc) => (
+                    <div
+                      key={`${mc.kind}_${mc.effectorPath}`}
+                      className={`rounded-md border px-2.5 py-1.5 text-xs ${
+                        mc.active
+                          ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-200"
+                          : "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                      }`}
+                    >
+                      {mc.active ? (
+                        <span>
+                          ⚡ {mc.motorLabel} → {mc.effectorLabel}（{mc.kind === "pump_speed" ? "F ∝ ω_pump" : "F ∝ ω²"} · 上限 {mc.maxForceN} N）
+                        </span>
+                      ) : (
+                        <span>⚠️ {mc.effectorLabel} 当前 0 N：{mc.reason}</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {effectiveArena === "flat_ramp" && effectiveMobility === "free" && (
-                <div
-                  className={`rounded border p-2 text-[10px] ${
-                    telemetry.deltaXMm > 350 && telemetry.deltaZMm > 30
-                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-                      : "border-border bg-background/60 text-muted-foreground"
-                  }`}
-                >
-                  {telemetry.deltaXMm > 350 && telemetry.deltaZMm > 30
-                    ? "四轮接触摩擦驱动底盘沿 10° 坡面爬升"
-                    : "可在左侧开启转速驱动或切换 6-DOF 自由底盘观察轮地接触牵引。"}
-                </div>
-              )}
-
-              {effectiveArena === "launch_complex" && effectiveMobility === "free" && (
-                <div
-                  className={`space-y-1 rounded border p-2 text-[10px] ${
-                    telemetry.peakZMm > 350
-                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-                      : "border-border bg-background/60 text-muted-foreground"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 font-semibold">
-                    <span>峰值爬升高度 +{(telemetry.peakZMm / 1000).toFixed(2)} m</span>
-                    <span className="mono">水平航程 {(telemetry.deltaXMm / 1000).toFixed(2)} m</span>
-                  </div>
-                  <p>
-                    {telemetry.peakZMm > 350
-                      ? `推力大于自重，垂直爬升峰值 +${(telemetry.peakZMm / 1000).toFixed(2)} m`
-                      : "可在左侧开启推进推力或调整旋翼总距与矢量摆角，观察重力场爬升轨迹。"}
-                  </p>
-                </div>
-              )}
-
-              {effectiveMobility === "fixed" &&
-                compilation.ok &&
-                compilation.result.actuatorMeta.filter((a) => a.mode === "velocity").length >= 2 && (
-                  <div className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 text-[10px] text-emerald-200">
-                    {compilation.result.actuatorMeta.length} 组回转副按设定角速度同步运行
-                  </div>
-                )}
+              <p className="mono text-[11px] text-muted-foreground">
+                编译规模：{compilation.result.stats.bodyCount} 刚体 · {compilation.result.stats.jointCount} 副 ·{" "}
+                {compilation.result.stats.totalMassKg.toFixed(2)} kg
+                {compilation.result.stats.equalityCount > 0 ? ` · ${compilation.result.stats.equalityCount} 闭环` : ""}
+                {compilation.result.stats.tendonCount > 0 ? ` · ${compilation.result.stats.tendonCount} 弹簧` : ""}
+              </p>
 
               {simState && simState.info.warnings.length > 0 && (
-                <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[10px] text-amber-200">
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200">
                   {simState.info.warnings.join(" ")}
                 </div>
               )}
             </div>
-          ) : (
-            <p className="rounded border bg-background/50 p-2 text-[11px] text-muted-foreground">
-              等待仿真积分输出实时位移与接触数据…
-            </p>
           )}
         </div>
 
-        {/* Underlying Mathematical & Physical Equations */}
-        <div className="space-y-1.5 border-t pt-2">
+        {/* Underlying Mathematical & Physical Equations (no duplicate body/mass header) */}
+        <div className="border-t pt-3">
           <PhysicsModelCard
             workspace={activeInput.workspace}
             assembly={activeInput.assembly}
             compact
+            hideSystemSummary
           />
         </div>
 
-        {/* Pro Workbench Hand-off & MJCF Export */}
-        <div className="mt-auto space-y-1.5 border-t pt-2.5">
-          <p className="text-[10px] font-semibold text-muted-foreground">导出与专业工作台衔接</p>
+        {/* Pro Workbench Hand-off & MJCF Inspect/Export */}
+        <div className="mt-auto space-y-2 border-t pt-3">
           <Button
             size="sm"
             className="h-8 w-full text-xs"
@@ -814,32 +737,24 @@ export default function MujocoSandboxArena({
             {exportingPro ? "正在推送至专业求解器…" : "送入专业台 MuJoCo 求解器"}
             <ArrowRight />
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 w-full text-[11px]"
-            disabled={!compilation.ok}
-            onClick={() => setXmlOpen(true)}
-          >
-            <Code /> 查看编译生成的 MJCF 源码
-          </Button>
           <div className="grid grid-cols-2 gap-1.5">
             <Button
               size="sm"
               variant="outline"
-              className="h-7 text-[11px]"
+              className="h-8 px-2 text-xs"
               disabled={!compilation.ok}
-              onClick={handleExportXml}
+              onClick={() => setXmlOpen(true)}
             >
-              <Download /> 导出 MJCF (.xml)
+              <Code /> 查看MJCF源码
             </Button>
             <Button
               size="sm"
-              variant="ghost"
-              className="h-7 text-[11px]"
-              onClick={() => onNavigate({ view: "workbench" })}
+              variant="outline"
+              className="h-8 px-2 text-xs"
+              disabled={!compilation.ok}
+              onClick={handleExportXml}
             >
-              <Box /> 打开工作台 <ExternalLink className="size-3" />
+              <Download /> 导出 .xml
             </Button>
           </div>
         </div>

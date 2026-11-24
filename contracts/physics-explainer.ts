@@ -423,11 +423,11 @@ export function deriveAssemblyPhysicsModel(
       status: ok ? "pass" : "warn",
       equation: sectionEq,
       metrics: [
-        { label: "有效电机耦合推力 F_max", value: `${maxThrustN.toFixed(1)} N` },
+        { label: "耦合推力 F_max", value: `${maxThrustN.toFixed(1)} N` },
         { label: "重力载荷 M·g", value: `${weightN.toFixed(2)} N` },
         { label: "有效推重比 T/W", value: `${twRatio.toFixed(2)}` },
-        { label: "垂直净加速度 a_z", value: `${peakAccelMs2 >= 0 ? "+" : ""}${peakAccelMs2.toFixed(1)} m/s²` },
-        { label: "质心-推力线偏距 Δx", value: `${deltaXComMm >= 0 ? "+" : ""}${deltaXComMm.toFixed(2)} mm` },
+        { label: "垂直加速度 a_z", value: `${peakAccelMs2 >= 0 ? "+" : ""}${peakAccelMs2.toFixed(1)} m/s²` },
+        { label: "质心推力偏距 Δx", value: `${deltaXComMm >= 0 ? "+" : ""}${deltaXComMm.toFixed(2)} mm` },
       ],
       explanation,
     });
@@ -463,8 +463,8 @@ export function deriveAssemblyPhysicsModel(
       status: allMotorized && maxTractionN > slopeDemandN * 1.1 ? "pass" : "warn",
       equation: "τ_motor / R ≤ μ N_i ,   F_slope = M g sin α ,   v = ω R",
       metrics: [
-        { label: "电驱主动轮 / 无动力轮", value: `${motorizedWheelCount} 驱 / ${unpoweredWheelCount} 从动 (R=${wheelRadiusMm} mm)` },
-        { label: "10° 坡道下滑分力", value: `${slopeDemandN.toFixed(2)} N` },
+        { label: "主动轮 / 从动轮", value: `${motorizedWheelCount} 驱 / ${unpoweredWheelCount} 从动 (R=${wheelRadiusMm} mm)` },
+        { label: "10° 坡下滑力", value: `${slopeDemandN.toFixed(2)} N` },
         { label: "橡胶静摩擦极限 (μ=1.35)", value: `${maxTractionN.toFixed(2)} N (α_max=${maxSlopeDeg.toFixed(0)}°)` },
       ],
       explanation: !hasMotors

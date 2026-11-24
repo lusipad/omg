@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity,
   ArrowRight,
   Blocks,
   Box,
@@ -87,7 +86,6 @@ import {
   setAssemblyBaseMobility,
   snapBlockOntoAssembly,
   updateSandboxNode,
-  type SandboxBlockCategory,
 } from "@contracts/sandbox-challenges";
 import { type StudioRoute } from "@contracts/studio-navigation";
 import { packageKey } from "@contracts/twin-device";
@@ -135,8 +133,7 @@ export interface SandboxBuilderStudioProps {
 }
 
 type PrimaryPillar = "showroom" | "commissions" | "sandbox" | "physics";
-type PaletteFilter = "all" | SandboxBlockCategory;
-type SandboxLeftTab = "blocks" | "manual";
+type PaletteFilter = "all" | "frame" | "motion" | "actuator" | "modules" | "manual";
 
 interface MachineEditorSession {
   workspace: TwinWorkspace;
@@ -154,7 +151,8 @@ const FILTER_TABS: ReadonlyArray<{ id: PaletteFilter; label: string }> = [
   { id: "frame", label: "骨架" },
   { id: "motion", label: "关节" },
   { id: "actuator", label: "动力" },
-  { id: "sensor", label: "传感" },
+  { id: "modules", label: "总成" },
+  { id: "manual", label: "调试" },
 ];
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -264,7 +262,6 @@ export default function SandboxBuilderStudio({
 
   // Pillar 3: Free Sandbox & Encapsulated Custom Modules
   const [sandboxSession, setSandboxSession] = useState<MachineEditorSession>(makeFreeSandboxSession);
-  const [sandboxLeftTab, setSandboxLeftTab] = useState<SandboxLeftTab>("blocks");
   const [customModules, setCustomModules] = useState<CustomModuleRecord[]>(readCustomModules);
   const [encapsulateDraft, setEncapsulateDraft] = useState("");
   const [sandboxTrialMode, setSandboxTrialMode] = useState<TrialMode>("milling-pocket");
@@ -592,7 +589,10 @@ export default function SandboxBuilderStudio({
   }, [unlockAll, pillar, currentCommission, completedComms]);
 
   const filteredBlocks = useMemo(
-    () => (paletteFilter === "all" ? SANDBOX_BLOCKS : SANDBOX_BLOCKS.filter((b) => b.category === paletteFilter)),
+    () =>
+      paletteFilter === "all" || paletteFilter === "modules" || paletteFilter === "manual"
+        ? SANDBOX_BLOCKS
+        : SANDBOX_BLOCKS.filter((b) => b.category === paletteFilter),
     [paletteFilter],
   );
 
@@ -1227,29 +1227,18 @@ export default function SandboxBuilderStudio({
           </Button>
         </div>
 
-        {/* Global Tools: X-Ray Principle, Explode View, Real BOM, Pro Mode */}
+        {/* Global Tools: Explode View, Save, Real BOM, Pro Mode */}
         <div className="flex flex-wrap items-center gap-1.5">
           {pillar !== "physics" && (
-            <>
-              <Button
-                size="sm"
-                variant={xrayMode ? "default" : "outline"}
-                className="h-7 px-2 text-xs"
-                onClick={() => setXrayMode((v) => !v)}
-              >
-                <Activity className="size-3.5" />
-                {xrayMode ? "透视层：开" : "原理透视"}
-              </Button>
-              <Button
-                size="sm"
-                variant={explodePct > 0 ? "default" : "outline"}
-                className="h-7 px-2 text-xs"
-                onClick={() => setExplodePct((v) => (v > 0 ? 0 : 55))}
-              >
-                <Layers className="size-3.5" />
-                {explodePct > 0 ? `爆炸 ${explodePct}%` : "爆炸视图"}
-              </Button>
-            </>
+            <Button
+              size="sm"
+              variant={explodePct > 0 ? "default" : "outline"}
+              className="h-7 px-2 text-xs"
+              onClick={() => setExplodePct((v) => (v > 0 ? 0 : 55))}
+            >
+              <Layers className="size-3.5" />
+              {explodePct > 0 ? `爆炸 ${explodePct}%` : "爆炸视图"}
+            </Button>
           )}
           {(pillar === "commissions" || pillar === "sandbox") && (
             <Button
@@ -1332,12 +1321,14 @@ export default function SandboxBuilderStudio({
       ) : (
       /* Locked 100dvh 3-Pane Workspace */
       <div
-        className={`grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden max-lg:grid-rows-[44dvh_auto_minmax(0,1fr)] ${
-          outlinerOpen ? "lg:grid-cols-[18.5rem_minmax(0,1fr)_18rem]" : "lg:grid-cols-[18.5rem_minmax(0,1fr)]"
+        className={`grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden max-md:grid-rows-[44dvh_auto_minmax(0,1fr)] ${
+          outlinerOpen
+            ? "md:grid-cols-[16.5rem_minmax(0,1fr)_16.5rem] xl:grid-cols-[18.5rem_minmax(0,1fr)_18.5rem]"
+            : "md:grid-cols-[16.5rem_minmax(0,1fr)] xl:grid-cols-[18.5rem_minmax(0,1fr)]"
         }`}
       >
-        {/* Mobile/Tablet Panel Switcher (<1024px only) */}
-        <div className="flex shrink-0 gap-1.5 lg:hidden" role="tablist" aria-label="移动端面板切换">
+        {/* Mobile Panel Switcher (<768px only) */}
+        <div className="flex shrink-0 gap-1.5 md:hidden" role="tablist" aria-label="移动端面板切换">
           <Button
             size="sm"
             role="tab"
@@ -1365,8 +1356,8 @@ export default function SandboxBuilderStudio({
         {/* ============================================================ */}
         <aside
           aria-label="左侧实验与积木面板"
-          className={`surface min-h-0 flex-col gap-2 overflow-hidden p-2.5 text-xs max-lg:row-start-3 lg:col-start-1 lg:row-start-1 ${
-            mobileTab === "left" ? "flex" : "hidden lg:flex"
+          className={`surface min-h-0 flex-col gap-2 overflow-hidden p-3 text-xs max-md:row-start-3 md:col-start-1 md:row-start-1 ${
+            mobileTab === "left" ? "flex" : "hidden md:flex"
           }`}
         >
           {pillar === "showroom" && (
@@ -1379,7 +1370,7 @@ export default function SandboxBuilderStudio({
                     <Button
                       size="sm"
                       variant={showroomPlaying ? "default" : "outline"}
-                      className="h-6 px-2 text-[10px]"
+                      className="h-6 px-2 text-[11px]"
                       onClick={() => setShowroomPlaying((p) => !p)}
                     >
                       {showroomPlaying ? <Pause className="size-3" /> : <Play className="size-3" />}
@@ -1388,7 +1379,7 @@ export default function SandboxBuilderStudio({
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-6 px-1.5 text-[10px]"
+                      className="h-6 px-1.5 text-[11px]"
                       onClick={() => {
                         if (megaExhibitId) setMegaPhaseDeg(0);
                         else setShowroomFrameIdx(0);
@@ -1401,8 +1392,8 @@ export default function SandboxBuilderStudio({
                   </div>
                 </div>
 
-                <p className="text-[10px] font-semibold text-muted-foreground">空天载具与建筑结构</p>
-                <div className="grid gap-1.5">
+                <p className="text-[11px] font-semibold text-muted-foreground">空天载具与建筑结构</p>
+                <div className="grid gap-1">
                   {flagshipArchetypes.map((item) => {
                     const selected = megaExhibitId === item.id;
                     return (
@@ -1410,26 +1401,28 @@ export default function SandboxBuilderStudio({
                         key={item.id}
                         type="button"
                         onClick={() => selectMegaExhibit(item.id)}
-                        className={`rounded-md border p-2 text-left transition-colors ${
+                        className={`rounded-md border px-2.5 py-1.5 text-left transition-colors ${
                           selected
                             ? "border-primary bg-primary/15 text-foreground ring-1 ring-primary"
                             : "bg-background/50 hover:border-primary/40 hover:bg-accent/40"
                         }`}
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <span className="font-semibold">{item.title}</span>
-                          <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] text-amber-300">
+                          <span className="truncate font-semibold">{item.title}</span>
+                          <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-300">
                             {item.badge}
                           </span>
                         </div>
-                        <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{item.subtitle}</p>
+                        {selected && (
+                          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{item.subtitle}</p>
+                        )}
                       </button>
                     );
                   })}
                 </div>
 
-                <p className="pt-1 text-[10px] font-semibold text-muted-foreground">数控机床与机械臂</p>
-                <div className="grid gap-1.5">
+                <p className="pt-1 text-[11px] font-semibold text-muted-foreground">数控机床与机械臂</p>
+                <div className="grid gap-1">
                   {SHOWROOM_EXHIBITS.map((ex) => {
                     const selected = megaExhibitId === null && ex.id === exhibitId;
                     return (
@@ -1437,17 +1430,21 @@ export default function SandboxBuilderStudio({
                         key={ex.id}
                         type="button"
                         onClick={() => selectExhibit(ex.id)}
-                        className={`rounded-md border p-2 text-left transition-colors ${
+                        className={`rounded-md border px-2.5 py-1.5 text-left transition-colors ${
                           selected
                             ? "border-primary bg-primary/15 text-foreground ring-1 ring-primary"
                             : "bg-background/50 hover:border-primary/40 hover:bg-accent/40"
                         }`}
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <span className="font-semibold">{ex.title}</span>
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-primary">{ex.badge}</span>
+                          <span className="truncate font-semibold">{ex.title}</span>
+                          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-primary">
+                            {ex.badge}
+                          </span>
                         </div>
-                        <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{ex.subtitle}</p>
+                        {selected && (
+                          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{ex.subtitle}</p>
+                        )}
                       </button>
                     );
                   })}
@@ -1930,379 +1927,208 @@ export default function SandboxBuilderStudio({
           )}
 
           {pillar === "sandbox" && (
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-              {/* Top Encapsulate + Run Physical Trial Bar */}
-              <div className="shrink-0 space-y-1.5 rounded-md border bg-background/60 p-2">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="font-semibold text-foreground">自由创造 & 模块封装</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {sandboxSession.history.length > 0 && (
-                      <button type="button" onClick={undoBuild} className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground">
-                        <Undo2 className="size-3" /> 撤销
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => startFromZeroBlank("")}
-                      className="inline-flex items-center gap-0.5 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/20"
-                    >
-                      <FilePlus2 className="size-3" /> 从零空白(0件)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSandboxSession(makeFreeSandboxSession());
-                        setFromZeroLabId("");
-                        setSelectedNodeId("");
-                        setShowTrialVerdict(false);
-                        setFitToken((n) => n + 1);
-                      }}
-                      className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-                    >
-                      <RotateCcw className="size-3" /> 基准板
-                    </button>
-                  </div>
-                </div>
-
-                {/* Guided From-Zero Physics Lab Selector */}
-                <div className="flex gap-1">
-                  <select
-                    aria-label="从零造物实验课"
-                    className="h-7 flex-1 rounded border bg-background px-1.5 text-[11px]"
-                    value={fromZeroLabId}
-                    onChange={(e) => {
-                      const val = e.target.value as FromZeroLabId | "";
-                      if (!val) setFromZeroLabId("");
-                      else startFromZeroBlank(val);
-                    }}
+            <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-hidden">
+              {/* Row 1: Lab selector + Zero Reset + Undo */}
+              <div className="flex shrink-0 items-center gap-1.5">
+                <select
+                  aria-label="从零造物实验课"
+                  className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
+                  value={fromZeroLabId}
+                  onChange={(e) => {
+                    const val = e.target.value as FromZeroLabId | "";
+                    if (!val) setFromZeroLabId("");
+                    else startFromZeroBlank(val);
+                  }}
+                >
+                  <option value="">实验课引导：自由创造（从 0 搭建）</option>
+                  {FROM_ZERO_LABS.map((lab) => (
+                    <option key={lab.id} value={lab.id}>
+                      {lab.title}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0 px-2 text-xs text-primary"
+                  title="清空为 0 件空白画布"
+                  onClick={() => startFromZeroBlank("")}
+                >
+                  <FilePlus2 className="size-3.5" /> 0件
+                </Button>
+                {sandboxSession.history.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 shrink-0 px-2 text-xs"
+                    aria-label="撤销上一步"
+                    title="撤销上一步"
+                    onClick={undoBuild}
                   >
-                    <option value="">从零造物实验课：自由发挥（点此选实验从 0 搭建）</option>
-                    {FROM_ZERO_LABS.map((lab) => (
-                      <option key={lab.id} value={lab.id}>
-                        {lab.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <Undo2 className="size-3.5" />
+                  </Button>
+                )}
+              </div>
 
-                {activeLabEval && (
-                  <div className="space-y-1 rounded border border-primary/35 bg-primary/10 p-2 text-[10px]">
-                    <div className="flex items-center justify-between gap-1 font-semibold text-foreground">
-                      <span>{activeLabEval.def.title}</span>
-                      <span className="text-primary">
-                        {activeLabEval.steps.filter((s) => s.done).length}/{activeLabEval.steps.length}
-                      </span>
-                    </div>
-                    {activeLabEval.phaseLabel && (
-                      <div className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                        {activeLabEval.phaseLabel}
-                      </div>
-                    )}
-                    <p className="mono rounded bg-background/70 px-1.5 py-0.5 text-sky-300">
-                      {activeLabEval.def.goalEquation}
-                    </p>
-                    <div className="space-y-0.5">
-                      {activeLabEval.steps.map((st) => (
-                        <div key={st.id} className="flex items-start justify-between gap-1">
-                          <span className={st.done ? "text-emerald-300" : "text-muted-foreground"} title={st.hint}>
-                            {st.done ? "✓" : "○"} {st.title}
-                          </span>
-                          {!st.done && st.action ? (
-                            <button
-                              type="button"
-                              className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[9px] font-medium text-primary hover:bg-primary/30"
-                              onClick={() => handleLabStepAction(st.action!)}
-                            >
-                              {st.action.label}
-                            </button>
-                          ) : !st.done && st.suggestedBlockId ? (
-                            <button
-                              type="button"
-                              className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[9px] font-medium text-primary hover:bg-primary/30"
-                              onClick={() => quickAttachItem({ kind: "block", id: st.suggestedBlockId! })}
-                            >
-                              +放置
-                            </button>
-                          ) : null}
+              {/* Row 2: Unified Palette / Subassembly / Joint Debug Tabs */}
+              <div className="grid shrink-0 grid-cols-6 gap-1 rounded-md border bg-background/60 p-0.5" role="tablist">
+                {FILTER_TABS.map((t) => {
+                  const countBadge =
+                    t.id === "modules"
+                      ? `(${customModules.length + MODULE_BLUEPRINTS.length})`
+                      : t.id === "manual"
+                        ? `(${solved.activeControls.length})`
+                        : "";
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={paletteFilter === t.id}
+                      onClick={() => setPaletteFilter(t.id)}
+                      className={`truncate rounded px-1 py-1 text-[11px] font-medium transition-colors ${
+                        paletteFilter === t.id
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      title={`${t.label}${countBadge}`}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Palette Tab Content */}
+              {paletteFilter === "modules" ? (
+                <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-0.5">
+                  <div className="flex gap-1.5">
+                    <Input
+                      className="h-8 min-w-0 flex-1 text-xs"
+                      aria-label="封装模块名称"
+                      placeholder="为当前构型命名封装…"
+                      value={encapsulateDraft}
+                      onChange={(e) => setEncapsulateDraft(e.target.value)}
+                    />
+                    <Button size="sm" variant="secondary" className="h-8 shrink-0 px-2.5 text-xs" onClick={handleEncapsulateAsModule}>
+                      📦 封装模块
+                    </Button>
+                  </div>
+
+                  {customModules.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] font-semibold text-emerald-300">我的封装子总成（双击挂载）</p>
+                      {customModules.map((cm) => (
+                        <div
+                          key={cm.id}
+                          className="flex w-full items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1.5 text-xs hover:border-emerald-400"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (activeSession.assembly.nodes.length === 0) quickAttachItem({ kind: "custom", id: cm.id });
+                              else setArmedItem({ kind: "custom", id: cm.id });
+                            }}
+                            onDoubleClick={() => quickAttachItem({ kind: "custom", id: cm.id })}
+                            className="flex min-w-0 flex-1 items-center justify-between gap-1 text-left"
+                          >
+                            <span className="truncate font-medium">{cm.name}</span>
+                            <span className="shrink-0 text-[11px] text-emerald-300">{cm.nodeCount}件</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded border border-emerald-400/40 px-1.5 py-0.5 text-[11px] text-emerald-200 hover:bg-emerald-500/20"
+                            onClick={() => openModuleForEdit({ workspace: cm.workspace, assembly: cm.assembly })}
+                          >
+                            拆看
+                          </button>
                         </div>
                       ))}
                     </div>
-                    {activeLabEval.readyForSim && (
-                      <Button
-                        size="sm"
-                        className="h-6 w-full text-[10px]"
-                        onClick={() => {
-                          setArmedItem(null);
-                          setLastBuildPillar("sandbox");
-                          setPhysicsSourceHint("current");
-                          setPillar("physics");
+                  )}
+
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-semibold text-sky-300">内置工程子总成（双击挂载）</p>
+                    {MODULE_BLUEPRINTS.map((m) => (
+                      <div
+                        key={m.id}
+                        className="flex w-full items-center gap-1.5 rounded-md border border-sky-500/35 bg-sky-500/10 px-2 py-1.5 text-xs hover:border-sky-400"
+                      >
+                        <button
+                          type="button"
+                          title={m.subtitle}
+                          onClick={() => {
+                            if (activeSession.assembly.nodes.length === 0) quickAttachItem({ kind: "module", id: m.id });
+                            else setArmedItem({ kind: "module", id: m.id });
+                          }}
+                          onDoubleClick={() => quickAttachItem({ kind: "module", id: m.id })}
+                          className="flex min-w-0 flex-1 items-center justify-between gap-1 text-left"
+                        >
+                          <span className="truncate font-medium">{m.name}</span>
+                          <span className="shrink-0 text-[11px] text-sky-300">总成</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded border border-sky-400/40 px-1.5 py-0.5 text-[11px] text-sky-200 hover:bg-sky-500/20"
+                          onClick={() => openModuleForEdit(m.buildFn())}
+                        >
+                          拆看
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : paletteFilter === "manual" ? (
+                <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-0.5">
+                  <div className="space-y-1.5 rounded-md border bg-background/60 p-2.5">
+                    <p className="text-[11px] font-semibold text-muted-foreground">单轴 / CNC 快速试机</p>
+                    <div className="flex gap-1.5">
+                      <select
+                        aria-label="选择物理试机工况"
+                        className="h-8 min-w-0 flex-1 rounded border bg-background px-2 text-xs"
+                        value={sandboxTrialMode}
+                        onChange={(e) => {
+                          setSandboxTrialMode(e.target.value as TrialMode);
+                          setShowTrialVerdict(false);
                         }}
                       >
-                        实验构型就绪 → 在 MuJoCo 中运行检验 →
+                        <option value="milling-pocket">试切校友毛坯圆槽 (三轴铣)</option>
+                        <option value="xy-circle">画 Ø56 mm 圆弧插补 (双轴)</option>
+                        <option value="step-axis">单轴阶跃到位响应</option>
+                        <option value="arm-orbit">多自由度机械臂空间包络</option>
+                      </select>
+                      <Button size="sm" className="h-8 shrink-0 px-2.5 text-xs" onClick={handleRunTrial}>
+                        <Zap /> 试机
                       </Button>
-                    )}
-                  </div>
-                )}
-
-                {/* Starter Archetype Quick Loader */}
-                <div className="flex gap-1">
-                  <select
-                    aria-label="快速载入造物原型样机"
-                    className="h-7 flex-1 rounded border bg-background px-1.5 text-[11px]"
-                    value=""
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (!val) return;
-                      if (val === "zero") {
-                        startFromZeroBlank("");
-                      } else if (val === "blank") {
-                        setSandboxSession(makeFreeSandboxSession());
-                        setFromZeroLabId("");
-                        setSelectedNodeId("");
-                        setShowTrialVerdict(false);
-                        setFitToken((n) => n + 1);
-                      } else {
-                        setFromZeroLabId("");
-                        loadArchetypeIntoSandbox(val as UniversalArchetypeId);
-                      }
-                    }}
-                  >
-                    <option value="">载入现有样机拆改或重置画布…</option>
-                    <option value="zero">从零空白开始（0 件）</option>
-                    <option value="blank">全新空白铝合金底板（1 件）</option>
-                    {UNIVERSAL_ARCHETYPES.map((arch) => (
-                      <option key={arch.id} value={arch.id}>
-                        {arch.badge} · {arch.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Encapsulate as reusable Turing-style block */}
-                <div className="flex gap-1">
-                  <Input
-                    className="h-7 min-w-0 flex-1 text-[11px]"
-                    aria-label="封装模块名称"
-                    placeholder="为当前机器命名封装为新积木…"
-                    value={encapsulateDraft}
-                    onChange={(e) => setEncapsulateDraft(e.target.value)}
-                  />
-                  <Button size="sm" variant="secondary" className="h-7 shrink-0 px-2 text-[10px]" onClick={handleEncapsulateAsModule}>
-                    📦 封装模块
-                  </Button>
-                </div>
-
-                {/* Physical Trial Mode Selector & Launch */}
-                <div className="flex gap-1">
-                  <select
-                    aria-label="选择物理试机工况"
-                    className="h-7 flex-1 rounded border bg-background px-1.5 text-[11px]"
-                    value={sandboxTrialMode}
-                    onChange={(e) => {
-                      setSandboxTrialMode(e.target.value as TrialMode);
-                      setShowTrialVerdict(false);
-                    }}
-                  >
-                    <option value="milling-pocket">试切校友毛坯圆槽 (三轴铣)</option>
-                    <option value="xy-circle">画 Ø56 mm 圆弧插补 (双轴)</option>
-                    <option value="step-axis">单轴阶跃到位响应</option>
-                    <option value="arm-orbit">多自由度机械臂空间包络</option>
-                  </select>
-                  <Button size="sm" className="h-7 shrink-0 px-2 text-[11px]" onClick={handleRunTrial}>
-                    <Zap /> 通电试机
-                  </Button>
-                </div>
-
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 w-full border border-primary/30 text-[11px] text-primary hover:bg-primary/15"
-                  onClick={() => {
-                    setArmedItem(null);
-                    setLastBuildPillar("sandbox");
-                    setPhysicsSourceHint("current");
-                    setPillar("physics");
-                  }}
-                >
-                  <Globe /> 在 MuJoCo 中运行刚体仿真（重力 · 接触 · 闭环验证）
-                </Button>
-
-                <div role="tablist" className="flex gap-1 pt-0.5">
-                  <Button
-                    size="sm"
-                    variant={sandboxLeftTab === "blocks" ? "default" : "ghost"}
-                    className="h-6 flex-1 text-[11px]"
-                    onClick={() => setSandboxLeftTab("blocks")}
-                  >
-                    🧱 积木与模组箱
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={sandboxLeftTab === "manual" ? "default" : "ghost"}
-                    className="h-6 flex-1 text-[11px]"
-                    onClick={() => setSandboxLeftTab("manual")}
-                  >
-                    🎛️ 手动摇动关节 ({solved.activeControls.length})
-                  </Button>
-                </div>
-              </div>
-
-              {showTrialVerdict && verdict && (
-                <div
-                  className={`shrink-0 space-y-1 rounded border p-2 text-[11px] ${
-                    verdict.passed ? "border-emerald-500/40 bg-emerald-500/10" : "border-amber-500/40 bg-amber-500/10"
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-semibold">
-                    <span>{verdict.passed ? `试机评级 ${verdict.grade}` : "物理校核提醒"}</span>
-                    <span className="mono text-[10px]">
-                      误差 ±{verdict.maxContourErrorMm}mm · 扭矩 {verdict.peakTorquePct}%
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">{verdict.diagnosis}</p>
-                </div>
-              )}
-
-              {sandboxLeftTab === "blocks" ? (
-                <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
-                  <div className="flex shrink-0 gap-1" role="tablist">
-                    {FILTER_TABS.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={paletteFilter === t.id}
-                        onClick={() => setPaletteFilter(t.id)}
-                        className={`flex-1 rounded px-1 py-0.5 text-[10px] font-medium ${
-                          paletteFilter === t.id ? "bg-primary text-primary-foreground" : "bg-background/50 text-muted-foreground"
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-
-                    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
-                    {pillar === "sandbox" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 w-full border-dashed border-primary/40 text-[11px] text-primary hover:bg-primary/10"
-                        onClick={() => setCustomCreatorOpen(true)}
-                      >
-                        <Plus /> 自定义参数化原语零件 (13 种几何)
-                      </Button>
-                    )}
-
-                    {/* Custom & Builtin Modules */}
-                    {(customModules.length > 0 || paletteFilter === "all") && (
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-semibold text-sky-300">已封装可复用子总成（双击挂载 · 点拆看内部电机与原子件）</p>
-                        {customModules.map((cm) => (
-                          <div
-                            key={cm.id}
-                            className="flex w-full items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-1 text-[11px] hover:border-emerald-400"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (activeSession.assembly.nodes.length === 0) quickAttachItem({ kind: "custom", id: cm.id });
-                                else setArmedItem({ kind: "custom", id: cm.id });
-                              }}
-                              onDoubleClick={() => quickAttachItem({ kind: "custom", id: cm.id })}
-                              className="flex min-w-0 flex-1 items-center justify-between gap-1 text-left"
-                            >
-                              <span className="truncate font-medium">{cm.name}</span>
-                              <span className="shrink-0 text-[10px] text-emerald-300">{cm.nodeCount}件</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="shrink-0 rounded border border-emerald-400/40 px-1 py-0.5 text-[9px] text-emerald-200 hover:bg-emerald-500/20"
-                              onClick={() => openModuleForEdit({ workspace: cm.workspace, assembly: cm.assembly })}
-                            >
-                              拆看
-                            </button>
-                          </div>
-                        ))}
-                        {MODULE_BLUEPRINTS.map((m) => (
-                          <div
-                            key={m.id}
-                            className="flex w-full items-center gap-1 rounded border border-sky-500/35 bg-sky-500/10 px-1.5 py-1 text-[11px] hover:border-sky-400"
-                          >
-                            <button
-                              type="button"
-                              title={m.subtitle}
-                              onClick={() => {
-                                if (activeSession.assembly.nodes.length === 0) quickAttachItem({ kind: "module", id: m.id });
-                                else setArmedItem({ kind: "module", id: m.id });
-                              }}
-                              onDoubleClick={() => quickAttachItem({ kind: "module", id: m.id })}
-                              className="flex min-w-0 flex-1 items-center justify-between gap-1 text-left"
-                            >
-                              <span className="truncate font-medium">{m.name}</span>
-                              <span className="shrink-0 text-[10px] text-sky-300">总成</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="shrink-0 rounded border border-sky-400/40 px-1 py-0.5 text-[9px] text-sky-200 hover:bg-sky-500/20"
-                              onClick={() => openModuleForEdit(m.buildFn())}
-                            >
-                              拆看
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {filteredBlocks.map((blk) => {
-                        const isArmed = armedItem?.kind === "block" && armedItem.id === blk.id;
-                        return (
-                          <button
-                            key={blk.id}
-                            type="button"
-                            title={blk.subtitle}
-                            onClick={() => {
-                              if (activeSession.assembly.nodes.length === 0) {
-                                quickAttachItem({ kind: "block", id: blk.id });
-                              } else if (preferredParentId) {
-                                quickAttachItem({ kind: "block", id: blk.id }, preferredParentId);
-                              } else {
-                                setArmedItem(isArmed ? null : { kind: "block", id: blk.id });
-                              }
-                            }}
-                            onDoubleClick={() => quickAttachItem({ kind: "block", id: blk.id })}
-                            className={`relative flex flex-col items-center gap-1 rounded-md border p-2 text-center ${
-                              isArmed
-                                ? "border-primary bg-primary/15 ring-1 ring-primary"
-                                : "bg-background/50 hover:border-primary/40 hover:bg-accent/40"
-                            }`}
-                          >
-                            {blk.defaultJoint.type !== "fixed" && (
-                              <span className="absolute left-1 top-1 rounded bg-muted px-1 text-[9px] text-primary">
-                                {blk.defaultJoint.type === "slide" ? "滑" : "转"}
-                              </span>
-                            )}
-                            <SandboxBlockIcon shape={blk.spec.shape} finish={blk.spec.finish} blockId={blk.id} className="size-7" />
-                            <span className="line-clamp-2 text-[10px] font-medium leading-tight">{blk.name}</span>
-                          </button>
-                        );
-                      })}
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
+
+                  {showTrialVerdict && verdict && (
+                    <div
+                      className={`space-y-1 rounded-md border p-2.5 text-xs ${
+                        verdict.passed ? "border-emerald-500/40 bg-emerald-500/10" : "border-amber-500/40 bg-amber-500/10"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-semibold">
+                        <span>{verdict.passed ? `试机评级 ${verdict.grade}` : "物理校核提醒"}</span>
+                        <span className="mono text-[11px]">
+                          误差 ±{verdict.maxContourErrorMm}mm · 扭矩 {verdict.peakTorquePct}%
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">{verdict.diagnosis}</p>
+                    </div>
+                  )}
+
                   {solved.activeControls.length === 0 ? (
-                    <p className="rounded border bg-background/50 p-2.5 text-muted-foreground">
-                      暂无可动关节。添加导轨/回转关节或双击左栏零件设成 slide / hinge。
+                    <p className="rounded-md border bg-background/50 p-3 text-xs text-muted-foreground">
+                      暂无可动关节。添加导轨/电机/舵机或选中右栏零件设成 slide / hinge 即可在此手动摇动预览。
                     </p>
                   ) : (
                     solved.activeControls.map((ctrl) => (
-                      <label key={ctrl.path} className="block space-y-1 rounded border bg-background/60 p-2">
-                        <div className="flex justify-between">
+                      <label key={ctrl.path} className="block space-y-1 rounded-md border bg-background/60 p-2.5">
+                        <div className="flex justify-between gap-2 text-xs">
                           <span className="truncate font-medium">{ctrl.label}</span>
-                          <span className="mono text-primary">
+                          <span className="mono shrink-0 text-primary">
                             {formatNum(ctrl.value)} {ctrl.joint.type === "slide" ? "mm" : "°"}
                           </span>
                         </div>
@@ -2326,6 +2152,68 @@ export default function SandboxBuilderStudio({
                     ))
                   )}
                 </div>
+              ) : (
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 w-full border-dashed border-primary/40 text-xs text-primary hover:bg-primary/10"
+                    onClick={() => setCustomCreatorOpen(true)}
+                  >
+                    <Plus /> 自定义参数化原语零件 (13 种几何)
+                  </Button>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {filteredBlocks.map((blk) => {
+                      const isArmed = armedItem?.kind === "block" && armedItem.id === blk.id;
+                      return (
+                        <button
+                          key={blk.id}
+                          type="button"
+                          title={blk.subtitle}
+                          onClick={() => {
+                            if (activeSession.assembly.nodes.length === 0) {
+                              quickAttachItem({ kind: "block", id: blk.id });
+                            } else if (preferredParentId) {
+                              quickAttachItem({ kind: "block", id: blk.id }, preferredParentId);
+                            } else {
+                              setArmedItem(isArmed ? null : { kind: "block", id: blk.id });
+                            }
+                          }}
+                          onDoubleClick={() => quickAttachItem({ kind: "block", id: blk.id })}
+                          className={`relative flex flex-col items-center gap-1.5 rounded-md border p-2.5 text-center transition-colors ${
+                            isArmed
+                              ? "border-primary bg-primary/15 ring-1 ring-primary"
+                              : "bg-background/50 hover:border-primary/40 hover:bg-accent/40"
+                          }`}
+                        >
+                          {blk.defaultJoint.type !== "fixed" && (
+                            <span className="absolute left-1.5 top-1.5 rounded bg-muted px-1 text-[10px] text-primary">
+                              {blk.defaultJoint.type === "slide" ? "滑" : "转"}
+                            </span>
+                          )}
+                          <SandboxBlockIcon shape={blk.spec.shape} finish={blk.spec.finish} blockId={blk.id} className="size-8" />
+                          <span className="line-clamp-2 text-xs font-medium leading-tight">{blk.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {activeSession.assembly.nodes.length > 0 && (
+                <Button
+                  size="sm"
+                  className="h-8 w-full shrink-0 text-xs"
+                  onClick={() => {
+                    setArmedItem(null);
+                    setLastBuildPillar("sandbox");
+                    setPhysicsSourceHint("current");
+                    setPillar("physics");
+                  }}
+                >
+                  <Globe /> 在 MuJoCo 中运行刚体仿真 →
+                </Button>
               )}
             </div>
           )}
@@ -2340,7 +2228,7 @@ export default function SandboxBuilderStudio({
         {/* ============================================================ */}
         {/* CENTER PANE: 3D Physical Showroom & Sandbox Viewport         */}
         {/* ============================================================ */}
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-lg:row-start-1 lg:col-start-2 lg:row-start-1">
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:row-start-1 md:col-start-2 md:row-start-1">
           {/* Top Floating Banner */}
           <div className="pointer-events-none absolute inset-x-2.5 top-2.5 z-10 flex items-start justify-between gap-2">
             <div className="pointer-events-auto flex max-w-2xl flex-wrap items-center gap-1.5 rounded-full border border-primary/30 bg-[#101c1a]/92 px-3 py-1 text-xs text-foreground shadow-md backdrop-blur">
@@ -2372,7 +2260,7 @@ export default function SandboxBuilderStudio({
               <Button
                 size="sm"
                 variant="secondary"
-                className="hidden h-7 px-2 text-xs shadow-md lg:inline-flex"
+                className="hidden h-7 px-2 text-xs shadow-md md:inline-flex"
                 aria-label={outlinerOpen ? "收起右侧透视与结构栏" : "展开右侧透视与结构栏"}
                 onClick={() => setOutlinerOpen((v) => !v)}
               >
@@ -2416,75 +2304,172 @@ export default function SandboxBuilderStudio({
             showTipMarker={viewportPlayback.showTipMarker}
           />
 
-          {isInteractiveBuild && activeSession.assembly.nodes.length === 0 && (
+          {isInteractiveBuild && activeSession.assembly.nodes.length === 0 && !activeLabEval && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-4">
               <div className="max-w-sm rounded-lg border border-dashed border-primary/50 bg-[#0b1412]/85 px-4 py-3 text-center text-xs text-foreground shadow-lg backdrop-blur">
                 <p className="font-semibold text-primary">空白工作台 (0 件)</p>
-                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                  点击左侧任意原语积木或「自定义参数化原语零件」放置第 1 件基准刚体，即开始建立世界坐标系与物理模型。
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  点击左侧任意原子件或「自定义参数化原语零件」放置第 1 件基准刚体，即开始建立世界坐标系。
                 </p>
               </div>
             </div>
           )}
 
+          {/* Floating Bottom Step Guide Card for From-Zero Guided Labs */}
+          {pillar === "sandbox" && activeLabEval && (() => {
+            const doneCount = activeLabEval.steps.filter((s) => s.done).length;
+            const totalCount = activeLabEval.steps.length;
+            const nextStep = activeLabEval.steps.find((s) => !s.done);
+            return (
+              <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex justify-center">
+                <div className="pointer-events-auto w-full max-w-lg rounded-lg border border-primary/45 bg-[#0c1614]/94 p-3 text-xs shadow-xl backdrop-blur">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="truncate font-semibold text-foreground">{activeLabEval.def.title}</div>
+                      {activeLabEval.phaseLabel && (
+                        <div className="inline-block max-w-full truncate rounded bg-primary/20 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                          {activeLabEval.phaseLabel}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+                      <span className="mono font-semibold text-primary">
+                        {doneCount}/{totalCount}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="关闭实验课引导"
+                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onClick={() => setFromZeroLabId("")}
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {activeLabEval.readyForSim ? (
+                    <div className="mt-2 space-y-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-2.5">
+                      <p className="font-medium text-emerald-200">所有装配与物理判据已通过！</p>
+                      <Button
+                        size="sm"
+                        className="h-8 w-full text-xs"
+                        onClick={() => {
+                          setArmedItem(null);
+                          setLastBuildPillar("sandbox");
+                          setPhysicsSourceHint("current");
+                          setPillar("physics");
+                        }}
+                      >
+                        在 MuJoCo 中运行检验 →
+                      </Button>
+                    </div>
+                  ) : nextStep ? (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background/60 px-2.5 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-foreground">下一步：{nextStep.title}</p>
+                        <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{nextStep.hint}</p>
+                      </div>
+                      {nextStep.action ? (
+                        <Button
+                          size="sm"
+                          className="h-8 shrink-0 text-xs"
+                          onClick={() => handleLabStepAction(nextStep.action!)}
+                        >
+                          {nextStep.action.label}
+                        </Button>
+                      ) : nextStep.suggestedBlockId ? (
+                        <Button
+                          size="sm"
+                          className="h-8 shrink-0 text-xs"
+                          onClick={() => quickAttachItem({ kind: "block", id: nextStep.suggestedBlockId! })}
+                        >
+                          +放置
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <details className="mt-2 text-[11px]">
+                    <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">
+                      查看全部步骤 ({doneCount}/{totalCount}) · {activeLabEval.def.goalEquation}
+                    </summary>
+                    <div className="mt-1.5 space-y-1 border-t pt-1.5">
+                      {activeLabEval.steps.map((st) => (
+                        <div key={st.id} className="flex items-center justify-between gap-2">
+                          <span className={st.done ? "text-emerald-300" : "text-muted-foreground"}>
+                            {st.done ? "✓" : "○"} {st.title}
+                          </span>
+                          {!st.done && st.action && (
+                            <button
+                              type="button"
+                              className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[11px] text-primary hover:bg-primary/30"
+                              onClick={() => handleLabStepAction(st.action!)}
+                            >
+                              {st.action.label}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Bottom Floating Live Causal Physics HUD */}
-          <div className="pointer-events-none absolute inset-x-2.5 bottom-9 z-10 hidden justify-center sm:flex">
-            {pillar === "showroom" && activeMegaDef ? (
-              <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[#0b1412]/90 px-3 py-1.5 text-[11px] shadow-lg backdrop-blur">
-                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 font-semibold text-amber-300">
-                  {activeMegaDef.badge}
-                </span>
-                <span className="text-foreground">模块总成 {activeSession.assembly.nodes.length} 件</span>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="mono text-sky-300">结构总重 {livePhysics.totalMassKg.toFixed(2)} kg</span>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="text-emerald-300">{activeMegaDef.physicsHighlights}</span>
-              </div>
-            ) : (
-              <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[#0b1412]/90 px-3 py-1.5 text-[11px] shadow-lg backdrop-blur">
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">进给指令</span>
-                  <span className="mono font-medium text-sky-300">{causalFeed} mm/s</span>
-                </div>
-                <span className="text-muted-foreground/40">→</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">电机扭矩负荷</span>
-                  <span className={`mono font-semibold ${livePhysics.peakTorquePct > 100 ? "text-red-400" : "text-emerald-300"}`}>
-                    {livePhysics.peakTorquePct.toFixed(0)}%
+          {(!activeLabEval || pillar === "showroom") && (
+            <div className="pointer-events-none absolute inset-x-2.5 bottom-3 z-10 hidden justify-center sm:flex">
+              {pillar === "showroom" && activeMegaDef ? (
+                <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[#0b1412]/90 px-3 py-1.5 text-xs shadow-lg backdrop-blur">
+                  <span className="rounded bg-amber-500/20 px-1.5 py-0.5 font-semibold text-amber-300">
+                    {activeMegaDef.badge}
                   </span>
+                  <span className="text-foreground">模块总成 {activeSession.assembly.nodes.length} 件</span>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="mono text-sky-300">总重 {livePhysics.totalMassKg.toFixed(2)} kg</span>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="text-emerald-300">{activeMegaDef.physicsHighlights}</span>
                 </div>
-                <span className="text-muted-foreground/40">→</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">惯量比</span>
-                  <span className={`mono font-medium ${livePhysics.maxInertiaRatio > 8 ? "text-amber-300" : "text-foreground"}`}>
-                    {livePhysics.maxInertiaRatio}:1
-                  </span>
+              ) : (pillar === "commissions" || (pillar === "showroom" && !megaExhibitId)) ? (
+                <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[#0b1412]/90 px-3 py-1.5 text-xs shadow-lg backdrop-blur">
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground">进给指令</span>
+                    <span className="mono font-medium text-sky-300">{causalFeed} mm/s</span>
+                  </div>
+                  <span className="text-muted-foreground/40">→</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground">电机扭矩负荷</span>
+                    <span className={`mono font-semibold ${livePhysics.peakTorquePct > 100 ? "text-red-400" : "text-emerald-300"}`}>
+                      {livePhysics.peakTorquePct.toFixed(0)}%
+                    </span>
+                  </div>
+                  {livePhysics.hasSpindle && (
+                    <>
+                      <span className="text-muted-foreground/40">→</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">立柱让刀 δ</span>
+                        <span className={`mono font-medium ${livePhysics.columnDeflectionUm > 48 ? "text-red-400" : "text-emerald-300"}`}>
+                          {livePhysics.columnDeflectionUm} μm
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  {verdict && (
+                    <>
+                      <span className="text-muted-foreground/40">→</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">{livePhysics.hasSpindle ? "实切误差" : "跟随精度"}</span>
+                        <span className={`mono font-semibold ${verdict.passed ? "text-emerald-300" : "text-amber-300"}`}>
+                          ±{verdict.maxContourErrorMm} mm ({verdict.grade})
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
-                {livePhysics.hasSpindle && (
-                  <>
-                    <span className="text-muted-foreground/40">→</span>
-                    <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground">立柱让刀 δ</span>
-                      <span className={`mono font-medium ${livePhysics.columnDeflectionUm > 48 ? "text-red-400" : "text-emerald-300"}`}>
-                        {livePhysics.columnDeflectionUm} μm
-                      </span>
-                    </div>
-                  </>
-                )}
-                {verdict && (
-                  <>
-                    <span className="text-muted-foreground/40">→</span>
-                    <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground">{livePhysics.hasSpindle ? "实切误差" : "跟随精度"}</span>
-                      <span className={`mono font-semibold ${verdict.passed ? "text-emerald-300" : "text-amber-300"}`}>
-                        ±{verdict.maxContourErrorMm} mm ({verdict.grade})
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+              ) : null}
+            </div>
+          )}
         </main>
 
         {/* ============================================================ */}
@@ -2492,8 +2477,8 @@ export default function SandboxBuilderStudio({
         {/* ============================================================ */}
         <aside
           aria-label="右栏原理透视与结构管理"
-          className={`surface min-h-0 flex-col overflow-hidden p-2.5 text-xs max-lg:row-start-3 lg:col-start-3 lg:row-start-1 ${
-            mobileTab === "right" ? "flex" : outlinerOpen ? "hidden lg:flex" : "hidden"
+          className={`surface min-h-0 flex-col overflow-hidden p-3 text-xs max-md:row-start-3 md:col-start-3 md:row-start-1 ${
+            mobileTab === "right" ? "flex" : outlinerOpen ? "hidden md:flex" : "hidden"
           }`}
         >
           {pillar === "showroom" && (
@@ -2555,13 +2540,26 @@ export default function SandboxBuilderStudio({
               ) : (
                 <>
                   <div className="shrink-0 space-y-1.5">
-                    <div className="flex items-center justify-between border-b pb-1">
+                    <div className="flex items-center justify-between gap-2 border-b pb-1.5">
                       <h2 className="font-semibold text-foreground">四层功能解剖透视</h2>
-                      {activeLayerId && (
-                        <button type="button" className="text-[10px] text-primary underline" onClick={() => setActiveLayerId(null)}>
-                          显示全机
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setXrayMode((v) => !v)}
+                          className={`rounded border px-1.5 py-0.5 text-[11px] ${
+                            xrayMode
+                              ? "border-primary/50 bg-primary/15 text-primary"
+                              : "border-border text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {xrayMode ? "透视：开" : "开透视"}
                         </button>
-                      )}
+                        {activeLayerId && (
+                          <button type="button" className="text-[11px] text-primary underline" onClick={() => setActiveLayerId(null)}>
+                            显示全机
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {FUNCTIONAL_LAYERS.map((layer) => {
@@ -2661,48 +2659,67 @@ export default function SandboxBuilderStudio({
                 </div>
               ) : (
                 <>
-              {/* Live Pre-Check Physics Meter Strip */}
-              <div className="mb-2 shrink-0 space-y-1 rounded-md border bg-background/60 p-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-foreground">实时力学与结构预检</span>
-                  <span className="mono text-[10px] text-primary">¥{livePhysics.totalCostCny}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-1 text-center text-[10px]">
-                  <div className="rounded bg-background/80 p-1">
-                    <div className="text-muted-foreground">峰值扭矩</div>
-                    <div className={`mono font-semibold ${livePhysics.peakTorquePct > 100 ? "text-red-400" : "text-emerald-300"}`}>
-                      {livePhysics.peakTorquePct.toFixed(0)}%
+              {/* Only show CNC Spindle/Deflection Strip when building CNC or Spindle machine */}
+              {(pillar === "commissions" || livePhysics.hasSpindle) && (
+                <div className="mb-2 shrink-0 space-y-1.5 rounded-md border bg-background/60 p-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-foreground">主轴切削与电机负荷</span>
+                    <span className="mono text-[11px] text-primary">¥{livePhysics.totalCostCny}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-center text-[11px]">
+                    <div className="rounded bg-background/80 p-1">
+                      <div className="text-muted-foreground">扭矩</div>
+                      <div className={`mono font-semibold ${livePhysics.peakTorquePct > 100 ? "text-red-400" : "text-emerald-300"}`}>
+                        {livePhysics.peakTorquePct.toFixed(0)}%
+                      </div>
+                    </div>
+                    <div className="rounded bg-background/80 p-1">
+                      <div className="text-muted-foreground">让刀 δ</div>
+                      <div
+                        className={`mono font-semibold ${
+                          !livePhysics.hasSpindle
+                            ? "text-muted-foreground"
+                            : livePhysics.columnDeflectionUm > 48
+                              ? "text-amber-300"
+                              : "text-emerald-300"
+                        }`}
+                      >
+                        {livePhysics.hasSpindle ? `${livePhysics.columnDeflectionUm}μm` : "—"}
+                      </div>
+                    </div>
+                    <div className="rounded bg-background/80 p-1">
+                      <div className="text-muted-foreground">总重</div>
+                      <div className="mono font-semibold text-foreground">{livePhysics.totalMassKg}kg</div>
                     </div>
                   </div>
-                  <div className="rounded bg-background/80 p-1">
-                    <div className="text-muted-foreground">让刀变形</div>
-                    <div
-                      className={`mono font-semibold ${
-                        !livePhysics.hasSpindle
-                          ? "text-muted-foreground"
-                          : livePhysics.columnDeflectionUm > 48
-                            ? "text-amber-300"
-                            : "text-emerald-300"
-                      }`}
-                    >
-                      {livePhysics.hasSpindle ? `${livePhysics.columnDeflectionUm}μm` : "无主轴"}
-                    </div>
-                  </div>
-                  <div className="rounded bg-background/80 p-1">
-                    <div className="text-muted-foreground">总质量</div>
-                    <div className="mono font-semibold text-foreground">{livePhysics.totalMassKg}kg</div>
-                  </div>
+                  {livePhysics.warnings[0] && (
+                    <p className="text-[11px] leading-snug text-amber-300">⚠️ {livePhysics.warnings[0]}</p>
+                  )}
                 </div>
-                {livePhysics.warnings[0] && (
-                  <p className="text-[10px] leading-snug text-amber-300">⚠️ {livePhysics.warnings[0]}</p>
-                )}
-              </div>
+              )}
 
-              {/* Assembly Hierarchy Outliner Tree */}
+              {/* Assembly Hierarchy Outliner Tree + Inline Mobility Toggle */}
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div className="flex shrink-0 items-center justify-between gap-1 border-b pb-1">
-                  <h2 className="font-semibold text-foreground">装配结构树 ({activeSession.assembly.nodes.length}件)</h2>
-                  <span className="text-[10px] text-muted-foreground">点 + 挂载子件</span>
+                <div className="flex shrink-0 items-center justify-between gap-1.5 border-b pb-1.5">
+                  <h2 className="truncate text-xs font-semibold text-foreground">
+                    装配结构 ({activeSession.assembly.nodes.length}件 · {physicsModel.totalMassKg.toFixed(2)}kg)
+                  </h2>
+                  <button
+                    type="button"
+                    title="切换底座是螺栓固定在地面还是 6 自由度自由运动"
+                    className={`shrink-0 rounded border px-2 py-0.5 text-[11px] font-medium ${
+                      activeSession.assembly.baseMobility === "free"
+                        ? "border-primary bg-primary/20 text-primary"
+                        : "border-border bg-background/60 text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() =>
+                      mutateAssemblyConfig((asm) =>
+                        setAssemblyBaseMobility(asm, asm.baseMobility === "free" ? "fixed" : "free"),
+                      )
+                    }
+                  >
+                    {activeSession.assembly.baseMobility === "free" ? "🛞 自由底盘" : "🔩 固定基座"}
+                  </button>
                 </div>
 
                 <div className="mt-1.5 min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">
@@ -2711,14 +2728,14 @@ export default function SandboxBuilderStudio({
                     return (
                       <div
                         key={row.id}
-                        className={`flex items-center gap-1 rounded border px-1.5 py-1 transition-colors ${
+                        className={`flex items-center gap-1.5 rounded-md border px-2 py-1.5 transition-colors ${
                           isSel
                             ? "border-primary bg-primary/15 text-foreground"
                             : preferredParentId === row.id
                               ? "border-sky-400/60 bg-sky-500/10"
                               : "border-transparent bg-background/40 hover:border-border"
                         }`}
-                        style={{ paddingLeft: `${6 + Math.min(row.depth, 5) * 10}px` }}
+                        style={{ paddingLeft: `${8 + Math.min(row.depth, 5) * 10}px` }}
                       >
                         <button
                           type="button"
@@ -2729,18 +2746,11 @@ export default function SandboxBuilderStudio({
                           }}
                         >
                           <SandboxBlockIcon shape={row.shape} finish={row.finish} className="size-4 shrink-0" />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1">
-                              <span className="truncate font-medium">{row.label}</span>
-                              {row.isOutputTip && (
-                                <span className="shrink-0 rounded bg-orange-500/20 px-1 text-[9px] text-orange-300">末端</span>
-                              )}
-                            </div>
-                            <div className="text-[9px] text-muted-foreground">
-                              {row.jointSummary}
-                              {!row.isRoot ? ` · ${row.mountLabel}` : ""}
-                            </div>
-                          </div>
+                          <span className="truncate text-xs font-medium">{row.label}</span>
+                          {row.isOutputTip && (
+                            <span className="shrink-0 rounded bg-orange-500/20 px-1 text-[10px] text-orange-300">端</span>
+                          )}
+                          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{row.jointSummary}</span>
                         </button>
                         <button
                           type="button"
@@ -2761,7 +2771,7 @@ export default function SandboxBuilderStudio({
                           className="shrink-0 rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
                           onClick={() => deleteNodeById(row.id)}
                         >
-                          <Trash2 className="size-3" />
+                          <Trash2 className="size-3.5" />
                         </button>
                       </div>
                     );
@@ -2769,10 +2779,10 @@ export default function SandboxBuilderStudio({
                 </div>
               </div>
 
-              {/* Selected Part Tweaker */}
+              {/* Progressive Selected Part Tweaker */}
               {selectedSolved && selectedRawNode && (
-                <div className="mt-2 max-h-[50%] shrink-0 space-y-2 overflow-y-auto border-t pt-2">
-                  <div className="flex items-center justify-between gap-1">
+                <div className="mt-2 max-h-[52%] shrink-0 space-y-2 overflow-y-auto border-t pt-2.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-semibold text-primary">调整 · {selectedSolved.label}</span>
                     <button type="button" aria-label="关闭零件编辑" onClick={() => setSelectedNodeId("")}>
                       <X className="size-3.5 text-muted-foreground hover:text-foreground" />
@@ -2784,7 +2794,7 @@ export default function SandboxBuilderStudio({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 px-1.5 text-[10px]"
+                        className="h-7 px-2 text-[11px]"
                         disabled={(selectedPrimaryLen ?? 40) <= 30}
                         onClick={() => selectedPrimaryLen && mutateSelectedNode(selectedRawNode.id, { primaryLengthMm: Math.max(15, selectedPrimaryLen - 20) })}
                       >
@@ -2800,7 +2810,7 @@ export default function SandboxBuilderStudio({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 px-2 text-[10px]"
+                        className="h-7 px-2 text-[11px]"
                         onClick={() => {
                           const v = Number(customWidthInput);
                           if (v > 0) mutateSelectedNode(selectedRawNode.id, { primaryLengthMm: v });
@@ -2811,7 +2821,7 @@ export default function SandboxBuilderStudio({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 px-1.5 text-[10px]"
+                        className="h-7 px-2 text-[11px]"
                         onClick={() => selectedPrimaryLen && mutateSelectedNode(selectedRawNode.id, { primaryLengthMm: selectedPrimaryLen + 20 })}
                       >
                         +20
@@ -2820,93 +2830,21 @@ export default function SandboxBuilderStudio({
                   )}
 
                   <div className="grid grid-cols-3 gap-1">
-                    <Button size="sm" variant="outline" className="h-6 px-1 text-[10px]" onClick={() => mutateSelectedNode(selectedRawNode.id, { rotateAxis90: "x" })}>
-                      绕 X 90°
+                    <Button size="sm" variant="outline" className="h-7 px-1 text-[11px]" onClick={() => mutateSelectedNode(selectedRawNode.id, { rotateAxis90: "x" })}>
+                      绕X 90°
                     </Button>
-                    <Button size="sm" variant="outline" className="h-6 px-1 text-[10px]" onClick={() => mutateSelectedNode(selectedRawNode.id, { rotateAxis90: "y" })}>
-                      绕 Y 90°
+                    <Button size="sm" variant="outline" className="h-7 px-1 text-[11px]" onClick={() => mutateSelectedNode(selectedRawNode.id, { rotateAxis90: "y" })}>
+                      绕Y 90°
                     </Button>
-                    <Button size="sm" variant="outline" className="h-6 px-1 text-[10px]" onClick={() => mutateSelectedNode(selectedRawNode.id, { rotateAxis90: "z" })}>
-                      绕 Z 90°
+                    <Button size="sm" variant="outline" className="h-7 px-1 text-[11px]" onClick={() => mutateSelectedNode(selectedRawNode.id, { rotateAxis90: "z" })}>
+                      绕Z 90°
                     </Button>
                   </div>
-
-                  <div className="grid grid-cols-6 gap-1">
-                    {(
-                      [
-                        { label: "-X", d: [-10, 0, 0] as const },
-                        { label: "+X", d: [10, 0, 0] as const },
-                        { label: "-Y", d: [0, -10, 0] as const },
-                        { label: "+Y", d: [0, 10, 0] as const },
-                        { label: "-Z", d: [0, 0, -10] as const },
-                        { label: "+Z", d: [0, 0, 10] as const },
-                      ] as const
-                    ).map((nudge) => (
-                      <Button
-                        key={nudge.label}
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-0 text-[10px]"
-                        onClick={() => mutateSelectedNode(selectedRawNode.id, { inputOffsetDeltaMm: nudge.d })}
-                      >
-                        {nudge.label}
-                      </Button>
-                    ))}
-                  </div>
-
-                  {selectedPkg?.primitive && (
-                    <div className="grid grid-cols-2 gap-1">
-                      <select
-                        aria-label="更换表面材质与密度"
-                        className="h-7 rounded border bg-background px-1 text-[10px]"
-                        value={selectedPkg.primitive.finish ?? "aluminum"}
-                        onChange={(e) => mutateSelectedNode(selectedRawNode.id, { finish: e.target.value as PrimitiveFinish })}
-                      >
-                        {FINISH_EDIT_OPTIONS.map((f) => (
-                          <option key={f.value} value={f.value}>{f.label}</option>
-                        ))}
-                      </select>
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="number"
-                          step="0.1"
-                          className="h-7 min-w-0 flex-1 text-[10px]"
-                          placeholder="质量kg"
-                          value={customMassInput}
-                          onChange={(e) => setCustomMassInput(e.target.value)}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-1.5 text-[10px]"
-                          onClick={() => {
-                            const kg = Number(customMassInput);
-                            if (kg > 0) mutateSelectedNode(selectedRawNode.id, { massKg: kg });
-                          }}
-                        >
-                          定重
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedPkg?.primitive && "axis" in selectedPkg.primitive && (
-                    <select
-                      aria-label="切换零件几何朝向轴"
-                      className="h-7 w-full rounded border bg-background px-1.5 text-[11px]"
-                      value={selectedPkg.primitive.axis}
-                      onChange={(e) => mutateSelectedNode(selectedRawNode.id, { axis: e.target.value as AxisDir })}
-                    >
-                      <option value="x">零件朝向：沿 X 轴</option>
-                      <option value="y">零件朝向：沿 Y 轴</option>
-                      <option value="z">零件朝向：沿 Z 轴</option>
-                    </select>
-                  )}
 
                   {selectedPart && (
                     <select
                       aria-label="运动连接副类型"
-                      className="h-7 w-full rounded border bg-background px-1.5 text-[11px]"
+                      className="h-7 w-full rounded border bg-background px-2 text-xs"
                       value={selectedPart.joint.type}
                       onChange={(e) =>
                         mutateSelectedNode(selectedRawNode.id, { jointType: e.target.value as "fixed" | "slide" | "hinge" })
@@ -2920,10 +2858,10 @@ export default function SandboxBuilderStudio({
 
                   {selectedPart && selectedPart.joint.type !== "fixed" && (
                     <>
-                      <div className="grid grid-cols-2 gap-1">
+                      <div className="grid grid-cols-2 gap-1.5">
                         <select
                           aria-label="关节运动轴"
-                          className="h-7 rounded border bg-background px-1 text-[10px]"
+                          className="h-7 rounded border bg-background px-1.5 text-xs"
                           value={
                             Math.abs(selectedPart.joint.axis[0]) > 0.5
                               ? "x"
@@ -2933,13 +2871,13 @@ export default function SandboxBuilderStudio({
                           }
                           onChange={(e) => mutateSelectedNode(selectedRawNode.id, { jointAxis: e.target.value as AxisDir })}
                         >
-                          <option value="x">关节轴：X</option>
-                          <option value="y">关节轴：Y</option>
-                          <option value="z">关节轴：Z</option>
+                          <option value="x">轴：X</option>
+                          <option value="y">轴：Y</option>
+                          <option value="z">轴：Z</option>
                         </select>
                         <select
                           aria-label="MuJoCo 驱动模式"
-                          className="h-7 rounded border bg-background px-1 text-[10px]"
+                          className="h-7 rounded border bg-background px-1.5 text-xs"
                           value={selectedRawNode.jointMode ?? "actuated"}
                           onChange={(e) =>
                             mutateSelectedNode(selectedRawNode.id, {
@@ -2953,8 +2891,8 @@ export default function SandboxBuilderStudio({
                         </select>
                       </div>
 
-                      <div className="space-y-1 rounded border bg-background/50 p-1.5">
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                      <div className="space-y-1 rounded border bg-background/50 p-2">
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                           <span>从动耦合 (coupledTo)</span>
                           {selectedRawNode.coupledTo && (
                             <button
@@ -2969,7 +2907,7 @@ export default function SandboxBuilderStudio({
                         <div className="flex items-center gap-1">
                           <select
                             aria-label="耦合主关节"
-                            className="h-6 min-w-0 flex-1 rounded border bg-background px-1 text-[10px]"
+                            className="h-7 min-w-0 flex-1 rounded border bg-background px-1.5 text-[11px]"
                             value={coupleTargetDraft || selectedRawNode.coupledTo?.path || ""}
                             onChange={(e) => setCoupleTargetDraft(e.target.value)}
                           >
@@ -2985,7 +2923,7 @@ export default function SandboxBuilderStudio({
                           <Input
                             type="number"
                             step="0.5"
-                            className="h-6 w-14 text-[10px]"
+                            className="h-7 w-14 text-[11px]"
                             aria-label="耦合传动比"
                             value={coupleRatioDraft}
                             onChange={(e) => setCoupleRatioDraft(e.target.value)}
@@ -2993,7 +2931,7 @@ export default function SandboxBuilderStudio({
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-6 px-1.5 text-[10px]"
+                            className="h-7 px-2 text-[11px]"
                             disabled={!(coupleTargetDraft || selectedRawNode.coupledTo?.path)}
                             onClick={() => {
                               const targetPath = coupleTargetDraft || selectedRawNode.coupledTo?.path || "";
@@ -3010,56 +2948,135 @@ export default function SandboxBuilderStudio({
                     </>
                   )}
 
-                  <div className="flex items-center gap-1 rounded border bg-background/50 p-1.5">
-                    <Input
-                      type="number"
-                      className="h-6 min-w-0 flex-1 text-[10px]"
-                      aria-label="局部轴向推力 N"
-                      placeholder={selectedRawNode.thruster ? `推力 ${selectedRawNode.thruster.maxForceN} N` : "设局部推力 N"}
-                      value={thrusterDraftN}
-                      onChange={(e) => setThrusterDraftN(e.target.value)}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-1.5 text-[10px]"
-                      onClick={() => {
-                        const f = Number(thrusterDraftN);
-                        if (f > 0) mutateSelectedNode(selectedRawNode.id, { thrusterMaxForceN: f });
-                      }}
-                    >
-                      设推力
-                    </Button>
-                    {selectedRawNode.thruster && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 px-1 text-[10px] text-destructive"
-                        onClick={() => mutateSelectedNode(selectedRawNode.id, { thrusterMaxForceN: null })}
-                      >
-                        移除
-                      </Button>
-                    )}
-                  </div>
+                  <details className="rounded border bg-background/40 p-2 text-xs">
+                    <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground hover:text-foreground">
+                      高级微调（偏移 / 材质质量 / 推力 / 厂商型号）
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                      <div className="grid grid-cols-6 gap-1">
+                        {(
+                          [
+                            { label: "-X", d: [-10, 0, 0] as const },
+                            { label: "+X", d: [10, 0, 0] as const },
+                            { label: "-Y", d: [0, -10, 0] as const },
+                            { label: "+Y", d: [0, 10, 0] as const },
+                            { label: "-Z", d: [0, 0, -10] as const },
+                            { label: "+Z", d: [0, 0, 10] as const },
+                          ] as const
+                        ).map((nudge) => (
+                          <Button
+                            key={nudge.label}
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-0 text-[10px]"
+                            onClick={() => mutateSelectedNode(selectedRawNode.id, { inputOffsetDeltaMm: nudge.d })}
+                          >
+                            {nudge.label}
+                          </Button>
+                        ))}
+                      </div>
 
-                  <select
-                    aria-label="更换为真实厂商零件型号"
-                    className="h-7 w-full rounded border bg-background px-1.5 text-[11px]"
-                    value=""
-                    onChange={(e) => e.target.value && mutateSelectedNode(selectedRawNode.id, { vendorPresetId: e.target.value })}
-                  >
-                    <option value="">换现实品牌：{selectedPkg?.manufacturer} · {selectedPkg?.model}</option>
-                    {REAL_VENDOR_BOM_PRESETS.map((v) => (
-                      <option key={v.id} value={v.id}>换为 {v.label}</option>
-                    ))}
-                  </select>
+                      {selectedPkg?.primitive && (
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <select
+                            aria-label="更换表面材质与密度"
+                            className="h-7 rounded border bg-background px-1.5 text-[11px]"
+                            value={selectedPkg.primitive.finish ?? "aluminum"}
+                            onChange={(e) => mutateSelectedNode(selectedRawNode.id, { finish: e.target.value as PrimitiveFinish })}
+                          >
+                            {FINISH_EDIT_OPTIONS.map((f) => (
+                              <option key={f.value} value={f.value}>{f.label}</option>
+                            ))}
+                          </select>
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              step="0.1"
+                              className="h-7 min-w-0 flex-1 text-[11px]"
+                              placeholder="质量kg"
+                              value={customMassInput}
+                              onChange={(e) => setCustomMassInput(e.target.value)}
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-1.5 text-[11px]"
+                              onClick={() => {
+                                const kg = Number(customMassInput);
+                                if (kg > 0) mutateSelectedNode(selectedRawNode.id, { massKg: kg });
+                              }}
+                            >
+                              定重
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedPkg?.primitive && "axis" in selectedPkg.primitive && (
+                        <select
+                          aria-label="切换零件几何朝向轴"
+                          className="h-7 w-full rounded border bg-background px-2 text-[11px]"
+                          value={selectedPkg.primitive.axis}
+                          onChange={(e) => mutateSelectedNode(selectedRawNode.id, { axis: e.target.value as AxisDir })}
+                        >
+                          <option value="x">零件朝向：沿 X 轴</option>
+                          <option value="y">零件朝向：沿 Y 轴</option>
+                          <option value="z">零件朝向：沿 Z 轴</option>
+                        </select>
+                      )}
+
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          className="h-7 min-w-0 flex-1 text-[11px]"
+                          aria-label="局部轴向推力 N"
+                          placeholder={selectedRawNode.thruster ? `推力 ${selectedRawNode.thruster.maxForceN} N` : "设局部推力 N"}
+                          value={thrusterDraftN}
+                          onChange={(e) => setThrusterDraftN(e.target.value)}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() => {
+                            const f = Number(thrusterDraftN);
+                            if (f > 0) mutateSelectedNode(selectedRawNode.id, { thrusterMaxForceN: f });
+                          }}
+                        >
+                          设推力
+                        </Button>
+                        {selectedRawNode.thruster && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-1.5 text-[11px] text-destructive"
+                            onClick={() => mutateSelectedNode(selectedRawNode.id, { thrusterMaxForceN: null })}
+                          >
+                            移除
+                          </Button>
+                        )}
+                      </div>
+
+                      <select
+                        aria-label="更换为真实厂商零件型号"
+                        className="h-7 w-full rounded border bg-background px-2 text-[11px]"
+                        value=""
+                        onChange={(e) => e.target.value && mutateSelectedNode(selectedRawNode.id, { vendorPresetId: e.target.value })}
+                      >
+                        <option value="">换现实品牌：{selectedPkg?.manufacturer} · {selectedPkg?.model}</option>
+                        {REAL_VENDOR_BOM_PRESETS.map((v) => (
+                          <option key={v.id} value={v.id}>换为 {v.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </details>
 
                   {pillar === "sandbox" &&
                     activeSession.assembly.nodes.some((n) => n.parent?.node === selectedRawNode.id) && (
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 w-full text-[11px]"
+                        className="h-7 w-full text-xs"
                         onClick={() => {
                           setError("");
                           try {
@@ -3076,118 +3093,107 @@ export default function SandboxBuilderStudio({
                           }
                         }}
                       >
-                        <Package /> 封装此组件及下级为可复用模块
+                        <Package /> 封装此组件及下级为子总成
                       </Button>
                     )}
 
-                  <Button size="sm" variant="destructive" className="h-7 w-full text-[11px]" onClick={() => deleteNodeById(selectedRawNode.id)}>
-                    <Trash2 /> {selectedRawNode.parent !== null ? "拆掉此积木及下级子件" : "拆掉根部件回到 0 件空白台"}
+                  <Button size="sm" variant="destructive" className="h-7 w-full text-xs" onClick={() => deleteNodeById(selectedRawNode.id)}>
+                    <Trash2 /> {selectedRawNode.parent !== null ? "拆掉此零件及下级" : "拆掉根件回到 0 件"}
                   </Button>
                 </div>
               )}
 
-              {/* Base Mobility & Cross-Branch Closures Panel */}
-              <div className="mt-2 shrink-0 space-y-1.5 border-t pt-2">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="flex items-center gap-1 text-[11px] font-semibold text-foreground">
-                    <Link2 className="size-3 text-primary" /> 底盘与闭链约束
+              {/* Collapsible Cross-Branch Closures & Spring Connector */}
+              <details
+                className="mt-2 shrink-0 border-t pt-2 text-xs"
+                open={(activeSession.assembly.closures?.length ?? 0) > 0}
+              >
+                <summary className="flex cursor-pointer select-none items-center justify-between text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Link2 className="size-3.5 text-primary" /> 跨分支闭环与弹簧 ({activeSession.assembly.closures?.length ?? 0})
                   </span>
-                  <button
-                    type="button"
-                    className={`rounded border px-1.5 py-0.5 text-[10px] font-medium ${
-                      activeSession.assembly.baseMobility === "free"
-                        ? "border-primary bg-primary/20 text-primary"
-                        : "border-border bg-background/60 text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() =>
-                      mutateAssemblyConfig((asm) =>
-                        setAssemblyBaseMobility(asm, asm.baseMobility === "free" ? "fixed" : "free"),
-                      )
-                    }
-                  >
-                    {activeSession.assembly.baseMobility === "free" ? "🛞 自由落地底盘" : "🔩 固定基座"}
-                  </button>
+                </summary>
+                <div className="mt-2 space-y-1.5">
+                  {(activeSession.assembly.closures?.length ?? 0) > 0 && (
+                    <div className="space-y-1">
+                      {activeSession.assembly.closures!.map((cl) => (
+                        <div key={cl.id} className="flex items-center justify-between gap-1 rounded border bg-background/50 px-2 py-1 text-[11px]">
+                          <span className="truncate">
+                            {cl.kind ?? "connect"} · {cl.nodeA} ↔ {cl.nodeB}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`移除闭环约束 ${cl.id}`}
+                            className="shrink-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => mutateAssemblyConfig((asm) => removeAssemblyClosure(asm, cl.id))}
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {activeSession.assembly.nodes.length >= 2 && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      <select
+                        aria-label="闭环端点 A"
+                        className="h-7 min-w-0 flex-1 rounded border bg-background px-1.5 text-[11px]"
+                        value={closureNodeA}
+                        onChange={(e) => setClosureNodeA(e.target.value)}
+                      >
+                        <option value="">节点A…</option>
+                        {activeSession.assembly.nodes.map((n) => (
+                          <option key={n.id} value={n.id}>{n.label ?? n.id}</option>
+                        ))}
+                      </select>
+                      <select
+                        aria-label="闭环端点 B"
+                        className="h-7 min-w-0 flex-1 rounded border bg-background px-1.5 text-[11px]"
+                        value={closureNodeB}
+                        onChange={(e) => setClosureNodeB(e.target.value)}
+                      >
+                        <option value="">节点B…</option>
+                        {activeSession.assembly.nodes.map((n) => (
+                          <option key={n.id} value={n.id}>{n.label ?? n.id}</option>
+                        ))}
+                      </select>
+                      <select
+                        aria-label="闭环类型"
+                        className="h-7 rounded border bg-background px-1.5 text-[11px]"
+                        value={closureKind}
+                        onChange={(e) => setClosureKind(e.target.value as "connect" | "weld" | "spring")}
+                      >
+                        <option value="connect">销铰</option>
+                        <option value="weld">固焊</option>
+                        <option value="spring">弹簧</option>
+                      </select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-[11px]"
+                        disabled={!closureNodeA || !closureNodeB || closureNodeA === closureNodeB}
+                        onClick={() => {
+                          mutateAssemblyConfig((asm) =>
+                            addAssemblyClosure(asm, {
+                              kind: closureKind,
+                              nodeA: closureNodeA,
+                              mountA: "center",
+                              nodeB: closureNodeB,
+                              mountB: "center",
+                              ...(closureKind === "spring" ? { stiffnessNpm: 320, dampingNsPm: 8 } : {}),
+                            }),
+                          );
+                          setClosureNodeA("");
+                          setClosureNodeB("");
+                        }}
+                      >
+                        ＋连
+                      </Button>
+                    </div>
+                  )}
                 </div>
-
-                {(activeSession.assembly.closures?.length ?? 0) > 0 && (
-                  <div className="space-y-1">
-                    {activeSession.assembly.closures!.map((cl) => (
-                      <div key={cl.id} className="flex items-center justify-between gap-1 rounded border bg-background/50 px-1.5 py-1 text-[10px]">
-                        <span className="truncate">
-                          {cl.kind ?? "connect"} · {cl.nodeA} ↔ {cl.nodeB}
-                        </span>
-                        <button
-                          type="button"
-                          aria-label={`移除闭环约束 ${cl.id}`}
-                          className="shrink-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => mutateAssemblyConfig((asm) => removeAssemblyClosure(asm, cl.id))}
-                        >
-                          <X className="size-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {activeSession.assembly.nodes.length >= 2 && (
-                  <div className="flex flex-wrap items-center gap-1">
-                    <select
-                      aria-label="闭环端点 A"
-                      className="h-6 min-w-0 flex-1 rounded border bg-background px-1 text-[10px]"
-                      value={closureNodeA}
-                      onChange={(e) => setClosureNodeA(e.target.value)}
-                    >
-                      <option value="">节点A…</option>
-                      {activeSession.assembly.nodes.map((n) => (
-                        <option key={n.id} value={n.id}>{n.label ?? n.id}</option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label="闭环端点 B"
-                      className="h-6 min-w-0 flex-1 rounded border bg-background px-1 text-[10px]"
-                      value={closureNodeB}
-                      onChange={(e) => setClosureNodeB(e.target.value)}
-                    >
-                      <option value="">节点B…</option>
-                      {activeSession.assembly.nodes.map((n) => (
-                        <option key={n.id} value={n.id}>{n.label ?? n.id}</option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label="闭环类型"
-                      className="h-6 rounded border bg-background px-1 text-[10px]"
-                      value={closureKind}
-                      onChange={(e) => setClosureKind(e.target.value as "connect" | "weld" | "spring")}
-                    >
-                      <option value="connect">销铰</option>
-                      <option value="weld">固焊</option>
-                      <option value="spring">弹簧</option>
-                    </select>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-1.5 text-[10px]"
-                      disabled={!closureNodeA || !closureNodeB || closureNodeA === closureNodeB}
-                      onClick={() => {
-                        mutateAssemblyConfig((asm) =>
-                          addAssemblyClosure(asm, {
-                            kind: closureKind,
-                            nodeA: closureNodeA,
-                            mountA: "center",
-                            nodeB: closureNodeB,
-                            mountB: "center",
-                            ...(closureKind === "spring" ? { stiffnessNpm: 320, dampingNsPm: 8 } : {}),
-                          }),
-                        );
-                        setClosureNodeA("");
-                        setClosureNodeB("");
-                      }}
-                    >
-                      ＋连
-                    </Button>
-                  </div>
-                )}
-              </div>
+              </details>
                 </>
               )}
             </>
@@ -3236,7 +3242,7 @@ export default function SandboxBuilderStudio({
                   <div key={m.id} className="flex items-center justify-between gap-2 rounded border bg-background/60 p-2">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-foreground">{m.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{m.nodes.length} 个零件 · {Object.keys(m.commands).length} 个可动自由度</p>
+                      <p className="text-[11px] text-muted-foreground">{m.nodes.length} 个零件 · {Object.keys(m.commands).length} 个可动自由度</p>
                     </div>
                     <div className="flex gap-1">
                       <Button size="sm" onClick={() => handleOpenSavedMachine(m.id)}>打开编辑</Button>
@@ -3252,6 +3258,27 @@ export default function SandboxBuilderStudio({
                   </div>
                 ))
               )}
+            </div>
+
+            <div className="space-y-1.5 border-t pt-3">
+              <p className="font-semibold text-foreground">载入展馆原型样机到自由创造台拆改</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {UNIVERSAL_ARCHETYPES.map((arch) => (
+                  <button
+                    key={arch.id}
+                    type="button"
+                    onClick={() => {
+                      setFromZeroLabId("");
+                      loadArchetypeIntoSandbox(arch.id);
+                      setLibraryOpen(false);
+                    }}
+                    className="flex items-center justify-between gap-1.5 rounded border bg-background/60 px-2.5 py-2 text-left hover:border-primary/50 hover:bg-accent/40"
+                  >
+                    <span className="truncate font-medium text-foreground">{arch.title}</span>
+                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-primary">{arch.badge}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </DialogContent>
