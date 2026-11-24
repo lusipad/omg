@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
-  ArrowRight,
+  ArrowLeft,
+  Blocks,
   Code,
+  Compass,
   Download,
   Pause,
   Play,
   RotateCcw,
-  Sparkles,
-  Wrench,
 } from "lucide-react";
-import { parseImportCatalog, type ModelRef } from "@contracts/import-catalog";
 import type { ImportedModelInfo, ImportedRunSettings, ImportedSample } from "@contracts/imported-physics";
 import type { MechanicalAssembly } from "@contracts/mechanical-assembly";
 import {
@@ -19,32 +18,21 @@ import {
   inferDefaultArenaAndMobility,
   type ArenaPresetId,
 } from "@contracts/mujoco-compiler";
-import type { StudioRoute } from "@contracts/studio-navigation";
-import { parseWorkspace, type TwinWorkspace } from "@contracts/twin-simulation";
-import {
-  loadUniversalArchetype,
-  UNIVERSAL_ARCHETYPES,
-  type UniversalArchetypeId,
-} from "@contracts/universal-archetypes";
+import type { TwinWorkspace } from "@contracts/twin-simulation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { downloadBlob } from "@/lib/download";
 import { loadImportedPhysics, type ImportedPhysics } from "@/lib/imported-physics";
-import { describeModel, putModelBundle } from "@/lib/model-files";
 import PhysicsModelCard from "./PhysicsModelCard";
 import PhysicsScene from "./PhysicsScene";
 
 export interface MujocoSandboxArenaProps {
-  hostWorkspace: TwinWorkspace;
   currentWorkspace: TwinWorkspace;
   currentAssembly: MechanicalAssembly;
-  initialSource?: "current" | UniversalArchetypeId;
-  onLoadIntoSandbox: (ws: TwinWorkspace, assembly: MechanicalAssembly, notice?: string) => void;
-  onSaveHostWorkspace: (next: TwinWorkspace) => void;
-  onNavigate: (route: StudioRoute, message?: string) => void;
+  onBackToBuild: () => void;
+  onOpenTemplates: () => void;
+  onChangeBaseMobility?: (mobility: "fixed" | "free") => void;
 }
-
-type ArenaSourceChoice = "current" | UniversalArchetypeId;
 
 interface LoadedSimState {
   readonly key: string;
@@ -61,17 +49,12 @@ function fmtDisplacement(mm: number): string {
 }
 
 export default function MujocoSandboxArena({
-  hostWorkspace,
   currentWorkspace,
   currentAssembly,
-  initialSource,
-  onLoadIntoSandbox,
-  onSaveHostWorkspace,
-  onNavigate,
+  onBackToBuild,
+  onOpenTemplates,
+  onChangeBaseMobility,
 }: MujocoSandboxArenaProps) {
-  const [sourceChoice, setSourceChoice] = useState<ArenaSourceChoice>(() =>
-    initialSource ?? (currentAssembly.nodes.length >= 2 ? "current" : "reusable-tvc-rocket"),
-  );
   const [arenaOverride, setArenaOverride] = useState<ArenaPresetId | null>(null);
   const [mobilityOverride, setMobilityOverride] = useState<"fixed" | "free" | null>(null);
   const [manualCtrls, setManualCtrls] = useState<number[] | null>(null);
@@ -82,46 +65,55 @@ export default function MujocoSandboxArena({
   const [frameIdx, setFrameIdx] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [focusToken, setFocusToken] = useState(1);
-  const [exportingPro, setExportingPro] = useState(false);
   const [xmlOpen, setXmlOpen] = useState(false);
 
   const engineRef = useRef<ImportedPhysics | null>(null);
 
-  const activeInput = useMemo(() => {
-    if (sourceChoice === "current") {
-      return { workspace: currentWorkspace, assembly: currentAssembly, isArchetype: false as const };
-    }
-    const loaded = loadUniversalArchetype(sourceChoice);
-    return { ...loaded, isArchetype: true as const };
-  }, [sourceChoice, currentWorkspace, currentAssembly]);
+  const isEmpty = currentAssembly.nodes.length === 0;
 
   const inferredDefaults = useMemo(
-    () => inferDefaultArenaAndMobility(activeInput.workspace, activeInput.assembly),
-    [activeInput.workspace, activeInput.assembly],
+    () =>
+      isEmpty
+        ? { arena: "lab_floor" as ArenaPresetId, baseMobility: "fixed" as const }
+        : inferDefaultArenaAndMobility(currentWorkspace, currentAssembly),
+    [isEmpty, currentWorkspace, currentAssembly],
   );
 
   const effectiveArena = arenaOverride ?? inferredDefaults.arena;
   const effectiveMobility = mobilityOverride ?? inferredDefaults.baseMobility;
 
+  const displayAssembly = useMemo(
+    () =>
+      currentAssembly.baseMobility === effectiveMobility
+        ? currentAssembly
+        : { ...currentAssembly, baseMobility: effectiveMobility },
+    [currentAssembly, effectiveMobility],
+  );
+
   const compilation = useMemo(() => {
+    if (isEmpty) {
+      return { ok: false as const, empty: true as const, key: "empty", error: "" };
+    }
     try {
-      const result = compileAssemblyToMujoco(activeInput.workspace, activeInput.assembly, {
+      const result = compileAssemblyToMujoco(currentWorkspace, currentAssembly, {
         arena: effectiveArena,
         baseMobility: effectiveMobility,
       });
       return {
         ok: true as const,
-        key: `${sourceChoice}:${effectiveArena}:${effectiveMobility}:${activeInput.assembly.id}:${activeInput.assembly.nodes.length}:${result.xml.length}:${result.stats.equalityCount}`,
+        empty: false as const,
+        key: `${effectiveArena}:${effectiveMobility}:${currentAssembly.id}:${currentAssembly.nodes.length}:${result.xml.length}:${result.stats.equalityCount}`,
         result,
       };
     } catch (cause) {
       return {
         ok: false as const,
-        key: `err:${sourceChoice}`,
+        empty: false as const,
+        key: `err:${currentAssembly.id}`,
         error: cause instanceof Error ? cause.message : "装配尚未闭环，无法编译为 MuJoCo 物理模型。",
       };
     }
-  }, [activeInput.workspace, activeInput.assembly, effectiveArena, effectiveMobility, sourceChoice]);
+  }, [isEmpty, currentWorkspace, currentAssembly, effectiveArena, effectiveMobility]);
 
   // Spawn Worker and execute initial MuJoCo integration whenever compiled model changes
   useEffect(() => {
@@ -130,6 +122,14 @@ export default function MujocoSandboxArena({
 
     queueMicrotask(async () => {
       if (!alive) return;
+      if (compilation.empty) {
+        engineRef.current?.dispose();
+        engineRef.current = null;
+        setSimState(null);
+        setErrorMsg("");
+        setStatus("ready");
+        return;
+      }
       if (!compilation.ok) {
         setStatus("error");
         setErrorMsg(compilation.error);
@@ -176,7 +176,6 @@ export default function MujocoSandboxArena({
     };
   }, [compilation]);
 
-  // Playback animation loop synced to MuJoCo trajectory frames
   const totalSamples = simState?.samples.length ?? 0;
   useEffect(() => {
     if (!playing || status !== "ready" || totalSamples < 2) return;
@@ -207,56 +206,18 @@ export default function MujocoSandboxArena({
     }
   }
 
-  async function handleSendToProMujoco() {
-    if (!compilation.ok || exportingPro) return;
-    setExportingPro(true);
-    setErrorMsg("");
-    try {
-      const compiled = compilation.result;
-      const baseRef = await describeModel(compiled.bundle);
-      const runToSave = simState?.runUsed ?? compiled.recommendedRun;
-      const ref: ModelRef = { ...baseRef, run: runToSave };
-      await putModelBundle(ref, compiled.bundle);
-
-      const baseWs = parseWorkspace(hostWorkspace);
-      const existingCatalog = baseWs.catalog ?? { models: [], materials: [] };
-      const nextModels = [
-        ...existingCatalog.models.filter((m) => m.id !== ref.id),
-        ref,
-      ];
-      const nextWs: TwinWorkspace = {
-        ...baseWs,
-        catalog: parseImportCatalog(
-          { models: nextModels, materials: existingCatalog.materials },
-          baseWs.packages,
-        ),
-      };
-      onSaveHostWorkspace(nextWs);
-      onNavigate(
-        { view: "workbench", target: `model:${ref.id}` },
-        `已将「${activeInput.assembly.name}」实时编译为 MuJoCo 物理模型并载入专业求解工作台。`,
-      );
-    } catch (cause) {
-      setErrorMsg(cause instanceof Error ? cause.message : "写入 MuJoCo 模型库失败。");
-    } finally {
-      setExportingPro(false);
-    }
-  }
-
   function handleExportXml() {
     if (!compilation.ok) return;
     downloadBlob(
       compilation.result.xml,
-      `${activeInput.assembly.id}-${effectiveArena}.xml`,
+      `${currentAssembly.id}-${effectiveArena}.xml`,
       "application/xml;charset=utf-8",
     );
   }
 
-  function handleSelectSource(next: ArenaSourceChoice) {
-    setSourceChoice(next);
-    setArenaOverride(null);
-    setMobilityOverride(null);
-    setManualCtrls(null);
+  function handleChangeMobility(next: "fixed" | "free") {
+    setMobilityOverride(next);
+    onChangeBaseMobility?.(next);
   }
 
   const activeSample =
@@ -269,30 +230,22 @@ export default function MujocoSandboxArena({
     const first = simState.samples[0]!;
     const last = simState.samples.at(-1)!;
     const deltaXMm = (last.pointM[0] - first.pointM[0]) * 1000;
-    const deltaYMm = (last.pointM[1] - first.pointM[1]) * 1000;
     const deltaZMm = (last.pointM[2] - first.pointM[2]) * 1000;
     const peakZMm = Math.max(...simState.samples.map((s) => (s.pointM[2] - first.pointM[2]) * 1000));
-    const minZMm = Math.min(...simState.samples.map((s) => (s.pointM[2] - first.pointM[2]) * 1000));
 
     let payloadLiftMm: number | null = null;
-    let payloadPeakLiftMm: number | null = null;
     let payloadSlideMm: number | null = null;
     if (first.referenceM && last.referenceM) {
       payloadLiftMm = (last.referenceM[2] - first.referenceM[2]) * 1000;
-      payloadPeakLiftMm = Math.max(...simState.samples.map((s) => (s.referenceM![2] - first.referenceM![2]) * 1000));
       payloadSlideMm = (last.referenceM[0] - first.referenceM[0]) * 1000;
     }
 
     return {
       durationS: last.timeS,
-      sampleCount: simState.samples.length,
       deltaXMm,
-      deltaYMm,
       deltaZMm,
       peakZMm,
-      minZMm,
       payloadLiftMm,
-      payloadPeakLiftMm,
       payloadSlideMm,
     };
   }, [simState]);
@@ -307,71 +260,55 @@ export default function MujocoSandboxArena({
     return [...compilation.result.recommendedRun.controls];
   }, [compilation, manualCtrls]);
 
-  const activeArchetypeMeta =
-    sourceChoice !== "current" ? UNIVERSAL_ARCHETYPES.find((a) => a.id === sourceChoice) : undefined;
+  if (isEmpty) {
+    return (
+      <div className="surface flex flex-1 items-center justify-center p-6">
+        <div className="max-w-md space-y-3 rounded-lg border border-dashed border-primary/40 bg-background/60 p-6 text-center">
+          <h2 className="text-base font-semibold text-foreground">当前画布还没有零件（0 件）</h2>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            放置至少 1 个零件，或者从起点样机库直接载入成品原型，即可编译为 MJCF 并运行真实 MuJoCo 刚体动力学仿真。
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            <Button size="sm" className="h-8 text-xs" onClick={onBackToBuild}>
+              <Blocks className="size-3.5" /> ← 去拼装设计放零件
+            </Button>
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={onOpenTemplates}>
+              <Compass className="size-3.5" /> 浏览成品样机 →
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden max-md:grid-rows-[44dvh_auto_minmax(0,1fr)] md:grid-cols-[16.5rem_minmax(0,1fr)_16.5rem] xl:grid-cols-[18.5rem_minmax(0,1fr)_18.5rem]">
-      {/* Left Pane: Compact Subject Selector, Environment & Immediate Controls */}
+      {/* Left Pane: Testbed Environment & Motor Sliders */}
       <aside
-        aria-label="多体仿真对象与环境控制"
+        aria-label="试车控制台"
         className="surface flex min-h-0 flex-col gap-3 overflow-y-auto p-3 text-xs max-md:row-start-2 md:col-start-1 md:row-start-1"
       >
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <label htmlFor="arena-model-select" className="font-semibold text-foreground">
-              仿真装配模型
-            </label>
-            <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
-              MuJoCo 求解
-            </span>
+          <div className="grid grid-cols-2 gap-1.5">
+            <Button size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={onBackToBuild}>
+              <ArrowLeft className="size-3.5" /> 返回拼装
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={onOpenTemplates}>
+              <Compass className="size-3.5" /> 换其他样机
+            </Button>
           </div>
 
-          <select
-            id="arena-model-select"
-            aria-label="切换仿真装配模型"
-            className="h-8 w-full rounded-md border bg-background px-2 text-xs text-foreground"
-            value={sourceChoice}
-            onChange={(e) => handleSelectSource(e.target.value as ArenaSourceChoice)}
-          >
-            <option value="current">
-              当前拼装 · {currentAssembly.name} ({currentAssembly.nodes.length}件)
-            </option>
-            <optgroup label="空天载具与建筑结构">
-              {UNIVERSAL_ARCHETYPES.filter((a) => a.category === "flagship").map((item) => (
-                <option key={item.id} value={item.id}>
-                  [{item.badge}] {item.title}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="移动底盘与典型机构">
-              {UNIVERSAL_ARCHETYPES.filter((a) => a.category === "mechanism").map((item) => (
-                <option key={item.id} value={item.id}>
-                  [{item.badge}] {item.title}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-
-          {activeInput.isArchetype && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 w-full text-xs"
-              onClick={() =>
-                onLoadIntoSandbox(
-                  activeInput.workspace,
-                  activeInput.assembly,
-                  `已将「${activeInput.assembly.name}」送入自由创造台，可自由增删积木并生成采购 BOM`,
-                )
-              }
-            >
-              <Wrench /> 送入自由创造台拆改
-            </Button>
-          )}
+          <div className="rounded-md border bg-background/50 px-2.5 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate font-semibold text-foreground">{currentAssembly.name}</span>
+              <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                {currentAssembly.nodes.length}件
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Physical World & Root Mobility Settings */}
+        {/* Physical World & Root Mobility */}
         <div className="space-y-2.5 border-t pt-3">
           <div className="space-y-1">
             <label htmlFor="arena-select" className="font-semibold text-foreground">
@@ -399,7 +336,7 @@ export default function MujocoSandboxArena({
                 size="sm"
                 variant={effectiveMobility === "fixed" ? "default" : "outline"}
                 className="h-8 text-xs"
-                onClick={() => setMobilityOverride("fixed")}
+                onClick={() => handleChangeMobility("fixed")}
               >
                 🔩 固定基座
               </Button>
@@ -407,7 +344,7 @@ export default function MujocoSandboxArena({
                 size="sm"
                 variant={effectiveMobility === "free" ? "default" : "outline"}
                 className="h-8 text-xs"
-                onClick={() => setMobilityOverride("free")}
+                onClick={() => handleChangeMobility("free")}
               >
                 🛞 6-DOF 自由
               </Button>
@@ -415,7 +352,7 @@ export default function MujocoSandboxArena({
           </div>
         </div>
 
-        {/* Actuator Sliders & Script Re-run (Above the Fold!) */}
+        {/* Motor & Actuator Sliders */}
         {compilation.ok && compilation.result.actuatorMeta.length > 0 && (
           <div className="space-y-2 border-t pt-3">
             <div className="flex items-center justify-between gap-2">
@@ -430,7 +367,7 @@ export default function MujocoSandboxArena({
                   void runWithSettings(compilation.result.recommendedRun);
                 }}
               >
-                恢复推荐剧本
+                恢复默认剧本
               </button>
             </div>
 
@@ -499,15 +436,10 @@ export default function MujocoSandboxArena({
         )}
       </aside>
 
-      {/* Center Pane: Live MuJoCo WASM 3D Viewport + Timeline */}
+      {/* Center Pane: Live MuJoCo WASM 3D Playback */}
       <main className="surface relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2.5 max-md:row-start-1 md:col-start-2 md:row-start-1">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">
-              {activeInput.assembly.name}
-              {activeArchetypeMeta ? ` · ${activeArchetypeMeta.physicsHighlights}` : ""}
-            </h2>
-          </div>
+          <h2 className="truncate text-sm font-semibold text-foreground">{currentAssembly.name} · MuJoCo 实时求解</h2>
           <div className="flex shrink-0 items-center gap-1.5">
             <Button
               size="sm"
@@ -526,7 +458,7 @@ export default function MujocoSandboxArena({
               disabled={!compilation.ok || status === "loading"}
               onClick={() => compilation.ok && void runWithSettings(simState?.runUsed ?? compilation.result.recommendedRun)}
             >
-              <RotateCcw /> 重跑积分
+              <RotateCcw /> 重跑
             </Button>
           </div>
         </div>
@@ -544,7 +476,7 @@ export default function MujocoSandboxArena({
               geometry={simState.info.geometry}
               sample={activeSample}
               trail={simState.samples}
-              title={`${activeInput.assembly.name} MuJoCo 刚体接触动力学视图`}
+              title={`${currentAssembly.name} MuJoCo 刚体接触动力学视图`}
               pointName={compilation.ok && effectiveMobility === "free" ? "质心追踪" : "末端观测点"}
               coordinateLabel="MuJoCo 世界坐标"
               unit="mm"
@@ -579,9 +511,9 @@ export default function MujocoSandboxArena({
         )}
       </main>
 
-      {/* Right Pane: Hero Telemetry, Causal Chain, Physics Explanation & MJCF Inspect */}
+      {/* Right Pane: Hero Telemetry, Physics Equations & MJCF Inspect */}
       <aside
-        aria-label="MuJoCo 动力学遥测与专业台通道"
+        aria-label="实测表现与物理原理"
         className="surface flex min-h-0 flex-col gap-3 overflow-y-auto p-3 text-xs max-md:row-start-3 md:col-start-3 md:row-start-1"
       >
         <div className="space-y-2">
@@ -715,48 +647,34 @@ export default function MujocoSandboxArena({
           )}
         </div>
 
-        {/* Underlying Mathematical & Physical Equations (no duplicate body/mass header) */}
         <div className="border-t pt-3">
           <PhysicsModelCard
-            workspace={activeInput.workspace}
-            assembly={activeInput.assembly}
+            workspace={currentWorkspace}
+            assembly={displayAssembly}
             compact
             hideSystemSummary
           />
         </div>
 
-        {/* Pro Workbench Hand-off & MJCF Inspect/Export */}
-        <div className="mt-auto space-y-2 border-t pt-3">
+        <div className="mt-auto grid grid-cols-2 gap-1.5 border-t pt-2.5">
           <Button
             size="sm"
-            className="h-8 w-full text-xs"
-            disabled={!compilation.ok || exportingPro}
-            onClick={() => void handleSendToProMujoco()}
+            variant="outline"
+            className="h-8 px-2 text-xs"
+            disabled={!compilation.ok}
+            onClick={() => setXmlOpen(true)}
           >
-            <Sparkles />
-            {exportingPro ? "正在推送至专业求解器…" : "送入专业台 MuJoCo 求解器"}
-            <ArrowRight />
+            <Code /> 查看 MJCF
           </Button>
-          <div className="grid grid-cols-2 gap-1.5">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 px-2 text-xs"
-              disabled={!compilation.ok}
-              onClick={() => setXmlOpen(true)}
-            >
-              <Code /> 查看MJCF源码
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 px-2 text-xs"
-              disabled={!compilation.ok}
-              onClick={handleExportXml}
-            >
-              <Download /> 导出 .xml
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 px-2 text-xs"
+            disabled={!compilation.ok}
+            onClick={handleExportXml}
+          >
+            <Download /> 导出 .xml
+          </Button>
         </div>
       </aside>
 
